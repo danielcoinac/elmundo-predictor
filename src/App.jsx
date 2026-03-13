@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from '@supabase/supabase-js';
 
 /* ─── Supabase ──────────────────────────────────────────────────────────────── */
@@ -15,17 +15,8 @@ const ADMIN_PASS  = "ElMundo2026!";
 async function sget(k) { try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; } }
 async function sset(k, v) { try { await window.storage.set(k, JSON.stringify(v), true); } catch {} }
 
-/* ─── Default Matches ──────────────────────────────────────────────────────── */
-const DEFAULT_MATCHES = [
-  { id:"g1", home:"Brazil",      away:"Argentina",   date:"Jun 15", time:"18:00", status:"upcoming", hs:null, as:null, group:"Group A" },
-  { id:"g2", home:"France",      away:"Germany",     date:"Jun 15", time:"21:00", status:"upcoming", hs:null, as:null, group:"Group B" },
-  { id:"g3", home:"Spain",       away:"Portugal",    date:"Jun 16", time:"18:00", status:"upcoming", hs:null, as:null, group:"Group C" },
-  { id:"g4", home:"England",     away:"Netherlands", date:"Jun 16", time:"21:00", status:"upcoming", hs:null, as:null, group:"Group D" },
-  { id:"g5", home:"Italy",       away:"Croatia",     date:"Jun 17", time:"18:00", status:"upcoming", hs:null, as:null, group:"Group E" },
-  { id:"g6", home:"Morocco",     away:"Senegal",     date:"Jun 17", time:"21:00", status:"upcoming", hs:null, as:null, group:"Group F" },
-  { id:"r1", home:"Uruguay",     away:"Mexico",      date:"Jun 12", time:"18:00", status:"finished",  hs:2,    as:1,   group:"Group G" },
-  { id:"r2", home:"USA",         away:"Canada",      date:"Jun 12", time:"21:00", status:"finished",  hs:1,    as:1,   group:"Group H" },
-];
+/* ─── Default Matches — empty, always loads from Supabase ──────────────────── */
+const DEFAULT_MATCHES = [];
 
 /* ─── Default Rules ────────────────────────────────────────────────────────── */
 const DEFAULT_RULES = [
@@ -38,15 +29,18 @@ const DEFAULT_RULES = [
 
 /* ─── Default Sponsors ─────────────────────────────────────────────────────── */
 const DEFAULT_SPONSORS = [
-  { id:"s1", name:"El Mundo Bar-Rest", role:"Main Sponsor", detail:"Est. 2009 — Bonaire", emoji:"🏆" },
-  { id:"s2", name:"Your Business Here", role:"Gold Sponsor",  detail:"Contact us to become a sponsor", emoji:"⭐" },
-  { id:"s3", name:"Your Business Here", role:"Silver Sponsor", detail:"Contact us to become a sponsor", emoji:"🥈" },
+  { id:"s1", name:"El Mundo Bar-Rest", role:"EVENT HOST", detail:"Est. 2009 — Bonaire", logo:"/elmundo-logo.png" },
+  { id:"s2", name:"Your Business Here", role:"Gold Sponsor",  detail:"Contact us to become a sponsor", logo:"" },
+  { id:"s3", name:"Your Business Here", role:"Silver Sponsor", detail:"Contact us to become a sponsor", logo:"" },
 ];
 
 const FLAGS = {
-  Brazil:"🇧🇷",Argentina:"🇦🇷",France:"🇫🇷",Germany:"🇩🇪",Spain:"🇪🇸",
-  Portugal:"🇵🇹",England:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",Netherlands:"🇳🇱",Italy:"🇮🇹",Croatia:"🇭🇷",
-  Morocco:"🇲🇦",Senegal:"🇸🇳",Uruguay:"🇺🇾",Mexico:"🇲🇽",USA:"🇺🇸",Canada:"🇨🇦",
+  /* CONMEBOL */ Brazil:"🇧🇷",Argentina:"🇦🇷",Uruguay:"🇺🇾",Colombia:"🇨🇴",Ecuador:"🇪🇨",Venezuela:"🇻🇪",Paraguay:"🇵🇾",Chile:"🇨🇱",Bolivia:"🇧🇴",Peru:"🇵🇪",
+  /* UEFA */ France:"🇫🇷",Germany:"🇩🇪",Spain:"🇪🇸",Portugal:"🇵🇹",England:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",Netherlands:"🇳🇱",Italy:"🇮🇹",Croatia:"🇭🇷",Belgium:"🇧🇪",Switzerland:"🇨🇭",Austria:"🇦🇹",Denmark:"🇩🇰",Serbia:"🇷🇸",Hungary:"🇭🇺",Czechia:"🇨🇿",Slovakia:"🇸🇰",Turkey:"🇹🇷",Romania:"🇷🇴",Scotland:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",Wales:"🏴󠁧󠁢󠁷󠁬󠁳󠁿",Ukraine:"🇺🇦",Greece:"🇬🇷",Poland:"🇵🇱",
+  /* CONCACAF */ USA:"🇺🇸",Mexico:"🇲🇽",Canada:"🇨🇦",Jamaica:"🇯🇲","Costa Rica":"🇨🇷",Panama:"🇵🇦",Honduras:"🇭🇳","El Salvador":"🇸🇻",Guatemala:"🇬🇹","Trinidad & Tobago":"🇹🇹",Cuba:"🇨🇺",Haiti:"🇭🇹",
+  /* CAF */ Morocco:"🇲🇦",Senegal:"🇸🇳",Egypt:"🇪🇬","South Africa":"🇿🇦",Nigeria:"🇳🇬",Ghana:"🇬🇭","Ivory Coast":"🇨🇮",Cameroon:"🇨🇲",Algeria:"🇩🇿",Tunisia:"🇹🇳",Mali:"🇲🇱",
+  /* AFC */ Japan:"🇯🇵","South Korea":"🇰🇷",Iran:"🇮🇷",Australia:"🇦🇺","Saudi Arabia":"🇸🇦",Qatar:"🇶🇦","United Arab Emirates":"🇦🇪",Iraq:"🇮🇶","New Zealand":"🇳🇿",
+  /* OFC */ Tahiti:"🇵🇫",
 };
 const flag = t => FLAGS[t] || "⚽";
 
@@ -106,7 +100,7 @@ export default function App() {
 
       /* matches from Supabase */
       const { data: mRows } = await supabase.from("matches").select("*");
-      if (mRows && mRows.length > 0) {
+      if (mRows) {
         setMatches(mRows.map(r => ({
           id: r.id, home: r.home, away: r.away,
           group: r.match_group, date: r.match_date,
@@ -141,16 +135,16 @@ export default function App() {
           return;
         }
       }
-      setTimeout(() => setPage("auth"), 2500);
+      setTimeout(() => setPage("auth"), 18000);
     })();
   }, []);
 
-  /* Poll every 15s for live match/score/leaderboard updates */
+  /* Poll every 5s for live match/score/leaderboard updates */
   useEffect(() => {
     if (page !== "app") return;
     const id = setInterval(async () => {
       const { data: mRows } = await supabase.from("matches").select("*");
-      if (mRows && mRows.length > 0) {
+      if (mRows) {
         setMatches(mRows.map(r => ({
           id: r.id, home: r.home, away: r.away,
           group: r.match_group, date: r.match_date,
@@ -170,7 +164,7 @@ export default function App() {
         allPreds.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
         setPreds(predMap);
       }
-    }, 15000);
+    }, 5000);
     return () => clearInterval(id);
   }, [page]);
 
@@ -182,7 +176,7 @@ export default function App() {
     if (!form.name.trim())                 return setFormErr("Full name is required.");
     if (!/\S+@\S+\.\S+/.test(form.email)) return setFormErr("Enter a valid email address.");
     if (!form.phone.trim())                return setFormErr("Phone number is required.");
-    if (form.password.length < 6)          return setFormErr("Password must be at least 6 characters.");
+    if (form.password.length < 6)          return setFormErr("Password must be at least 8 characters.");
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
     await supabase.from("profiles").upsert({ id: data.user.id, name: form.name, phone: form.phone });
@@ -320,14 +314,108 @@ export default function App() {
 
 /* ═══ SPLASH ════════════════════════════════════════════════════════════════ */
 function Splash() {
+  const mainRef  = useRef(null);
+  const goldRef  = useRef(null);
+  const sub2Ref  = useRef(null);
+  const divRef   = useRef(null);
+  const sepRef   = useRef(null);
+  const signRef  = useRef(null);
+  const ballRef  = useRef(null);
+
+  const [showBall,  setShowBall]  = useState(true);
+  const [ballHit,   setBallHit]   = useState(false);
+  const [showSign,  setShowSign]  = useState(false);
+  const [shake,     setShake]     = useState(false);
+  const [flash,     setFlash]     = useState(false);
+  const [cracks,    setCracks]    = useState(false);
+  const [falling,   setFalling]   = useState(false);
+
+  useEffect(() => {
+    const T = [];
+    const at = (ms, fn) => T.push(setTimeout(fn, ms));
+
+    // 3.0s — ball has arrived at screen, trigger IMPACT
+    at(3000, () => {
+      setBallHit(true);    // switches ball to smash animation
+      setShake(true);
+      setFlash(true);
+      setCracks(true);
+      setTimeout(() => setShake(false), 850);
+      setTimeout(() => setFlash(false), 500);
+      setTimeout(() => setCracks(false), 1200);
+    });
+
+    // 3.7s — ball fully gone, sign descends
+    at(3700, () => {
+      setShowBall(false);
+      setShowSign(true);
+    });
+
+    // 5.8s — EL MUNDO white neon flickers on
+    at(5800, () => {
+      if (mainRef.current) mainRef.current.style.animation = 'neonWhiteOn 3.5s ease forwards';
+      if (sub2Ref.current) sub2Ref.current.style.animation = 'subWhiteOn 1.2s ease 2s forwards';
+      if (divRef.current)  divRef.current.style.animation  = 'dividerOn 0.6s ease 2.2s forwards';
+    });
+
+    // 9.8s — WORLD CUP 2026 gold neon flickers on
+    at(9800, () => {
+      if (goldRef.current) goldRef.current.style.animation = 'neonGoldOn 3.5s ease forwards';
+      if (sepRef.current)  sepRef.current.style.animation  = 'dividerOn 0.5s ease 0.3s forwards';
+    });
+
+    // 13.5s — switch to breathing
+    at(13500, () => {
+      if (mainRef.current) {
+        mainRef.current.style.color = '#fff';
+        mainRef.current.style.textShadow = '0 0 5px #fff,0 0 12px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9),0 0 85px rgba(180,200,255,.5)';
+        mainRef.current.style.animation = 'neonWhiteBreathe 3.5s ease-in-out infinite';
+      }
+      if (goldRef.current) {
+        goldRef.current.style.color = 'rgba(255,200,50,1)';
+        goldRef.current.style.textShadow = '0 0 5px rgba(255,200,50,1),0 0 12px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9),0 0 45px rgba(255,160,20,.7),0 0 85px rgba(255,140,10,.4)';
+        goldRef.current.style.animation = 'neonGoldBreathe 3s ease-in-out infinite';
+      }
+    });
+
+    // 16.5s — sign falls
+    at(16500, () => setFalling(true));
+
+    return () => T.forEach(clearTimeout);
+  }, []);
+
   return (
-    <div className="splash">
-      <div className="sp-inner">
-        <div className="sp-logo"><Logo w={156} /></div>
-        <div className="sp-divider" />
-        <p className="sp-label">WORLD CUP EVENT 2026</p>
-        <div className="sp-dots">{[0,1,2].map(i=><span key={i} className="sp-dot" style={{animationDelay:`${i*0.2}s`}}/>)}</div>
-      </div>
+    <div className={`splash${shake ? ' splash-shake' : ''}`}>
+      <div className="sp-vignette" />
+      {flash  && <div className="sp-flash" />}
+      {cracks && (
+        <div className="sp-cracks">
+          {[0,30,60,90,120,150,180,210,240,270,300,330].map(deg => (
+            <div key={deg} className="sp-crack" style={{transform:`rotate(${deg}deg)`}} />
+          ))}
+        </div>
+      )}
+
+      {showBall && (
+        <div ref={ballRef} className={ballHit ? 'sp-ball-smash' : 'sp-ball-fly'}>
+          <div className={`sp-ball${ballHit ? ' sp-ball-nospin' : ''}`}>⚽</div>
+        </div>
+      )}
+
+      {showSign && (
+        <div ref={signRef} className={falling ? 'sp-sign-wrap sp-sign-falling' : 'sp-sign-wrap sp-sign-drop'}>
+          <div className="sp-ropes">
+            <div className="sp-rope" /><div className="sp-rope" />
+          </div>
+          <div className="sp-sign-board">
+            <div ref={mainRef}  className="sp-neon-main">EL MUNDO</div>
+            <div ref={divRef}   className="sp-sign-divider" style={{opacity:0}} />
+            <div ref={sub2Ref}  className="sp-neon-sub2">BAR · REST · BONAIRE</div>
+            <div ref={sepRef}   className="sp-sign-sep"  style={{opacity:0}} />
+            <div ref={goldRef}  className="sp-neon-gold">WORLD CUP 2026</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -341,7 +429,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister }) 
       <div className="auth-grid-bg" />
       <div className="auth-wrap">
         <div className="auth-hero">
-          <Logo w={160} />
+          <Logo w={220} />
           <div className="auth-event">
             <span className="auth-event-rule" />
             <span className="auth-event-text">WORLD CUP EVENT 2026</span>
@@ -392,6 +480,12 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 adminSaveRules, adminSaveSponsors }) {
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
+  const [animKey, setAnimKey] = useState(appTab);
+
+  const switchTab = (id) => {
+    setAnimKey(id);
+    setAppTab(id);
+  };
 
   const tabs = [
     { id:"matches",     label:"Matches",   ico:<SoccerIco /> },
@@ -405,26 +499,38 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   return (
     <div className="shell">
       <header className="hdr">
+        <div className="hdr-inner">
         <div className="hdr-l">
           <HeaderLogo />
           <div className="hdr-text">
             <span className="hdr-brand">EL MUNDO</span>
-            <span className="hdr-caption">World Cup Predictor{isAdmin?" · Admin":""}</span>
+            <span className="hdr-caption">⚽ WORLD CUP 2026</span>
           </div>
         </div>
         <div className="hdr-r">
-          {!isAdmin && (
-            <div className="hdr-score">
-              <span className="hdr-score-n">{myPts}</span>
-              <span className="hdr-score-u">PTS{myRank > 0 ? ` · #${myRank}` : ""}</span>
+          {!isAdmin && myRank > 0 && (
+            <div className="hdr-badge">
+              <span className="hdr-badge-pts">{myPts}</span>
+              <div className="hdr-badge-meta">
+                <span className="hdr-badge-label">PTS</span>
+                <span className="hdr-badge-rank">#{myRank}</span>
+              </div>
+            </div>
+          )}
+          {!isAdmin && myRank === 0 && (
+            <div className="hdr-badge">
+              <span className="hdr-badge-pts">0</span>
+              <span className="hdr-badge-label">PTS</span>
             </div>
           )}
           {isAdmin && <span className="admin-badge">ADMIN</span>}
           <button className="hdr-out" onClick={onLogout} title="Log out"><LogoutIco /></button>
         </div>
+        </div>
       </header>
 
       <main className="body">
+        <div className="body-inner page-anim" key={animKey}>
         {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} />}
         {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
         {appTab === "rules"       && <RulesView   rules={rules} />}
@@ -437,15 +543,19 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             onSaveRules={adminSaveRules} onSaveSponsors={adminSaveSponsors}
           />
         )}
+        </div>
       </main>
 
       <nav className="bot-nav">
+        <div className="bot-nav-inner">
         {tabs.map(({ id, label, ico }) => (
-          <button key={id} className={`bnav-btn ${appTab===id?"bnav-on":""}`} onClick={()=>setAppTab(id)}>
+          <button key={id} className={`bnav-btn ${appTab===id?"bnav-on":""}`} onClick={()=>switchTab(id)}>
             <span className="bnav-ico">{ico}</span>
             <span className="bnav-lbl">{label}</span>
+            {appTab===id && <span className="bnav-indicator"/>}
           </button>
         ))}
+        </div>
       </nav>
     </div>
   );
@@ -456,21 +566,26 @@ function MatchesView({ matches, getPred, savePred }) {
   const upcoming = matches.filter(m => m.status === "upcoming");
   const finished = matches.filter(m => m.status === "finished");
   return (
-    <div className="vpad">
-      <SecHead title="Upcoming Matches" sub="Predict the exact score — 5 pts per correct answer" />
+    <div>
+      <div className="section-banner">
+        <span className="section-banner-title">UPCOMING</span>
+        <span className="section-banner-sub">Predict · 5 pts per correct score</span>
+      </div>
       <div className="card-stack">
         {upcoming.length === 0 && <div className="empty">No upcoming matches yet.</div>}
         {upcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} />)}
       </div>
-      <SecHead title="Finished Matches" sub="Results & your predictions" />
+      <div className="section-banner section-banner-dim">
+        <span className="section-banner-title">RESULTS</span>
+        <span className="section-banner-sub">Final scores & your predictions</span>
+      </div>
       <div className="card-stack">
-        {finished.length === 0 && <div className="empty">No finished matches yet.</div>}
+        {finished.length === 0 && <div className="empty">No results yet.</div>}
         {finished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} />)}
       </div>
     </div>
   );
 }
-
 /* Parse "Jun 15 2026 18:00" → Date object using match date/time */
 function matchKickoff(m) {
   try {
@@ -501,71 +616,86 @@ function MatchCard({ m, pred, onSave }) {
     setSaved(true);
   };
 
+  const statusColor = correct ? "#22c55e" : wrong ? "#ef4444" : locked && !fin ? "#f59e0b" : "transparent";
+
   return (
-    <div className={`mcard ${correct?"mcard-ok":wrong?"mcard-ng":locked&&!fin?"mcard-locked":""}`}>
-      <div className="mcard-meta">
-        <span className="mcard-group">{m.group}</span>
+    <div className={`mcard ${correct?"mcard-ok":wrong?"mcard-ng":""}`} style={{borderLeft:`3px solid ${statusColor}`}}>
+
+      {/* Top strip: group + date */}
+      <div className="mcard-topstrip">
+        <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} UTC</span>
-        {locked && !fin && (
-          <span className="lock-chip">🔒 {minsLeft < 1 ? "Locked" : `Locks in ${Math.round(minsLeft)}m`}</span>
-        )}
+        {locked && !fin && <span className="lock-chip">🔒 {minsLeft < 1 ? "LOCKED" : `${Math.round(minsLeft)}m`}</span>}
       </div>
-      <div className="mcard-body">
-        <div className="mteam">
-          <span className="mteam-flag">{flag(m.home)}</span>
-          <span className="mteam-name">{m.home}</span>
+
+      {/* Main scoreboard row */}
+      <div className="mcard-scoreboard">
+        {/* Home team */}
+        <div className="mteam-col">
+          <span className="mteam-flag-lg">{flag(m.home)}</span>
+          <span className="mteam-name-lg">{m.home}</span>
         </div>
-        {fin ? (
-          <div className="mscore-final">
-            <span className="mscore-num">{m.hs} – {m.as}</span>
-            <span className="mscore-lbl">FINAL</span>
-          </div>
-        ) : submitted ? (
-          /* Already predicted — show locked prediction, no editing */
-          <div className="mscore-final" style={{borderColor:"rgba(34,197,94,.3)"}}>
-            <span className="mscore-num" style={{fontSize:22}}>{pred.h} – {pred.a}</span>
-            <span className="mscore-lbl">YOUR PICK</span>
-          </div>
-        ) : locked ? (
-          /* Locked, no prediction yet */
-          <div className="mscore-final" style={{borderColor:"rgba(255,255,255,.06)"}}>
-            <span style={{fontSize:22}}>🔒</span>
-            <span className="mscore-lbl">LOCKED</span>
-          </div>
-        ) : (
-          <div className="mscore-input">
-            <input className="sinput" type="number" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="0" />
-            <span className="ssep">–</span>
-            <input className="sinput" type="number" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="0" />
-          </div>
-        )}
-        <div className="mteam mteam-r">
-          <span className="mteam-flag">{flag(m.away)}</span>
-          <span className="mteam-name">{m.away}</span>
+
+        {/* Center: score or inputs */}
+        <div className="mcard-center">
+          {fin ? (
+            <div className="score-board">
+              <div className="score-row">
+                <span className="score-digit">{m.hs}</span>
+                <span className="score-colon">:</span>
+                <span className="score-digit">{m.as}</span>
+              </div>
+              <span className="score-label">FINAL</span>
+            </div>
+          ) : submitted ? (
+            <div className="score-board score-board-pick">
+              <div className="score-row">
+                <span className="score-digit score-digit-sm">{pred.h}</span>
+                <span className="score-colon">:</span>
+                <span className="score-digit score-digit-sm">{pred.a}</span>
+              </div>
+              <span className="score-label score-label-green">YOUR PICK</span>
+            </div>
+          ) : locked ? (
+            <div className="score-board">
+              <span style={{fontSize:28,lineHeight:1}}>🔒</span>
+              <span className="score-label" style={{marginTop:6}}>LOCKED</span>
+            </div>
+          ) : (
+            <div className="score-inputs-row">
+              <input className="sinput" type="number" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
+              <span className="ssep">:</span>
+              <input className="sinput" type="number" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
+            </div>
+          )}
+        </div>
+
+        {/* Away team */}
+        <div className="mteam-col mteam-col-r">
+          <span className="mteam-flag-lg">{flag(m.away)}</span>
+          <span className="mteam-name-lg">{m.away}</span>
         </div>
       </div>
+
+      {/* Bottom action / verdict */}
       {!fin && !submitted && !locked && (
         <div className="mcard-foot">
           <button className={`pred-cta ${saved?"pred-cta-done":""}`} disabled={h===""||a===""} onClick={save}>
-            {saved ? <><IcoCheck />Prediction Saved</> : "Submit Prediction"}
+            {saved ? <><IcoCheck /> PREDICTION SAVED</> : "SUBMIT PREDICTION →"}
           </button>
         </div>
       )}
       {!fin && submitted && (
-        <div className="mverdict mv-locked">
-          <IcoCheck />Prediction locked in — {pred.h} – {pred.a}
-        </div>
+        <div className="mverdict mv-locked"><IcoCheck /> Locked in · {pred.h}:{pred.a}</div>
       )}
       {!fin && locked && !submitted && (
-        <div className="mverdict mv-ng">
-          <IcoX />Predictions closed for this match
-        </div>
+        <div className="mverdict mv-ng"><IcoX /> No prediction — predictions closed</div>
       )}
       {fin && (
         <div className={`mverdict ${correct?"mv-ok":"mv-ng"}`}>
-          {correct ? <><IcoCheck />Correct prediction — +5 points</>
-            : pred  ? <><IcoX />Incorrect — Your pick: {pred.h} – {pred.a}</>
-            :         <><IcoDash />No prediction submitted</>}
+          {correct ? <><IcoCheck /> Correct +5 pts</>
+            : pred  ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
+            :         <><IcoDash /> No prediction</>}
         </div>
       )}
     </div>
@@ -576,14 +706,18 @@ function MatchCard({ m, pred, onSave }) {
 function LeaderView({ board, user }) {
   const M = ["🥇","🥈","🥉"];
   return (
-    <div className="vpad">
-      <SecHead title="Leaderboard" sub="Top 10 players · updates automatically" />
+    <div>
       {board[0] && (
         <div className="leader-hero">
-          <div className="lh-crown">👑</div>
+          <div className="lh-crown-row">
+            <span className="lh-crown-ico">👑</span>
+            <span className="lh-crown-lbl">LEADING THE TOURNAMENT</span>
+          </div>
           <div className="lh-name">{board[0].name}</div>
-          <div className="lh-pts">{board[0].pts}<span> pts</span></div>
-          <div className="lh-tag">CURRENT LEADER</div>
+          <div className="lh-pts-row">
+            <span className="lh-pts">{board[0].pts}</span>
+            <span className="lh-pts-unit">PTS</span>
+          </div>
         </div>
       )}
       <div className="lboard">
@@ -609,8 +743,11 @@ function LeaderView({ board, user }) {
 /* ═══ RULES VIEW ════════════════════════════════════════════════════════════ */
 function RulesView({ rules }) {
   return (
-    <div className="vpad">
-      <SecHead title="Event Rules" sub="Please read before playing" />
+    <div>
+      <div className="section-banner">
+        <span className="section-banner-title">RULES</span>
+        <span className="section-banner-sub">Please read before playing</span>
+      </div>
       <div className="card-stack">
         {rules.map((r, i) => (
           <div key={r.id} className="rules-card">
@@ -634,24 +771,31 @@ function RulesView({ rules }) {
 /* ═══ SPONSORS VIEW ═════════════════════════════════════════════════════════ */
 function SponsorsView({ sponsors }) {
   return (
-    <div className="vpad">
-      <SecHead title="Our Sponsors" sub="Thank you for making this event possible" />
-
-      {/* Main / first sponsor — bigger card */}
+    <div>
+      <div className="section-banner">
+        <span className="section-banner-title">SPONSORS</span>
+        <span className="section-banner-sub">Thank you for making this event possible</span>
+      </div>
       {sponsors[0] && (
         <div className="sponsor-hero">
-          <div className="sponsor-hero-emoji">{sponsors[0].emoji}</div>
+          <div className="sponsor-hero-emoji">
+  {sponsors[0].logo
+    ? <img src={sponsors[0].logo} alt={sponsors[0].name} style={{width:80,height:80,objectFit:"contain"}} />
+    : sponsors[0].emoji}
+</div>
           <div className="sponsor-hero-role">{sponsors[0].role}</div>
           <div className="sponsor-hero-name">{sponsors[0].name}</div>
           <div className="sponsor-hero-detail">{sponsors[0].detail}</div>
         </div>
       )}
-
-      {/* Rest of sponsors */}
       <div className="card-stack">
         {sponsors.slice(1).map(s => (
           <div key={s.id} className="sponsor-card">
-            <div className="sponsor-emoji">{s.emoji}</div>
+            <div className="sponsor-emoji">
+  {s.logo
+    ? <img src={s.logo} alt={s.name} style={{width:48,height:48,objectFit:"contain"}} />
+    : s.emoji}
+</div>
             <div className="sponsor-info">
               <div className="sponsor-role">{s.role}</div>
               <div className="sponsor-name">{s.name}</div>
@@ -660,9 +804,8 @@ function SponsorsView({ sponsors }) {
           </div>
         ))}
       </div>
-
       <div className="sponsor-cta-box">
-        <div className="sponsor-cta-title">Want to become a sponsor?</div>
+        <div className="sponsor-cta-title">Become a Sponsor</div>
         <div className="sponsor-cta-body">Contact El Mundo Bar-Rest to learn about sponsorship opportunities for the World Cup event.</div>
       </div>
     </div>
@@ -675,22 +818,22 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
+  const initials = user.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   return (
-    <div className="vpad">
-      <SecHead title="My Profile" sub="Your tournament stats" />
-      <div className="prof-card">
-        <div className="prof-av">{user.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>
+    <div className="prof-wrap">
+      <div className="prof-hero">
+        <div className="prof-av">{initials}</div>
         <div className="prof-name">{user.name}</div>
         <div className="prof-detail">{user.email}</div>
         <div className="prof-detail">{user.phone}</div>
-        {myRank===1 && <div className="prof-leader">👑 Currently Leading the Tournament</div>}
+        {myRank===1 && <div className="prof-leader-badge">👑 LEADING THE TOURNAMENT</div>}
       </div>
       <div className="stats-grid">
         {[
-          {v:myPts,                       u:"pts",     l:"Total Points"},
-          {v:myRank>0?`#${myRank}`:"—",  u:"",        l:"Your Rank"},
-          {v:corr,                        u:`/${sub}`, l:"Correct"},
-          {v:acc,                         u:"%",       l:"Accuracy"},
+          {v:myPts,                       u:"PTS",  l:"Total Points"},
+          {v:myRank>0?`#${myRank}`:"—",  u:"",     l:"Your Rank"},
+          {v:corr,                        u:`/${sub}`,l:"Correct"},
+          {v:acc,                         u:"%",    l:"Accuracy"},
         ].map(s => (
           <div key={s.l} className="scard">
             <div className="sval">{s.v}<span className="sunit">{s.u}</span></div>
@@ -699,14 +842,12 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
         ))}
       </div>
       <div className="info-card">
-        <div className="info-ico">⚽</div>
-        <div className="info-title">How Points Work</div>
+        <div className="info-title">⚽ HOW POINTS WORK</div>
         <p className="info-body">Predict the exact final score for each match. A correct prediction earns <strong>5 points</strong>. Incorrect = 0. Most points at tournament end wins.</p>
       </div>
     </div>
   );
 }
-
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
 function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors }) {
   const [section, setSection] = useState("matches");
@@ -926,7 +1067,7 @@ function AdminSponsors({ sponsors, onSave }) {
         {local.map((s, i) => (
           <div key={s.id} className="admin-form-card" style={{marginBottom:0}}>
             <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10}}>
-              <span className="admin-form-title" style={{margin:0}}>SPONSOR {i+1}{i===0?" — MAIN SPONSOR":""}</span>
+              <span className="admin-form-title" style={{margin:0}}>SPONSOR {i+1}{i===0?" — EVENT HOST":""}</span>
               <button className="admin-del-btn" onClick={()=>removeSponsor(s.id)}>✕</button>
             </div>
             <div className="admin-form-grid">
@@ -981,208 +1122,479 @@ const IcoDash   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const CSS = `
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
-  ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:99px}
+  ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
 
-  .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:11px 24px;border-radius:99px;
-    font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;letter-spacing:.3px;white-space:nowrap;
-    z-index:9999;animation:fadeUp .3s cubic-bezier(.34,1.56,.64,1) both;pointer-events:none}
-  .tok{background:#fff;color:#000}.terr{background:#ef4444;color:#fff}
+  /* ── TOAST ── */
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:12px 28px;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;white-space:nowrap;z-index:9999;animation:toastIn .2s ease both;pointer-events:none;border:1px solid rgba(255,255,255,.2)}
+  .tok{background:#fff;color:#000}
+  .terr{background:#000;color:#ef4444;border-color:#ef4444}
 
-  .splash{display:flex;align-items:center;justify-content:center;height:100vh;background:#000}
-  .sp-inner{display:flex;flex-direction:column;align-items:center}
-  .sp-logo{animation:fadeUp .6s ease both}
-  .sp-divider{width:56px;height:1px;background:rgba(255,255,255,0.18);margin:20px 0 16px;animation:fadeUp .5s ease .2s both}
-  .sp-label{font-family:'Outfit',sans-serif;font-size:9px;font-weight:700;letter-spacing:4.5px;color:rgba(255,255,255,0.4);text-transform:uppercase;animation:fadeUp .5s ease .28s both}
-  .sp-dots{display:flex;gap:7px;margin-top:36px;animation:fadeUp .5s ease .36s both}
-  .sp-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,0.3);animation:blink 1.3s ease-in-out infinite}
+  /* ── SPLASH ── */
+  .splash{display:flex;align-items:center;justify-content:center;height:100vh;background:#000;overflow:hidden}
+  .sp-inner{display:flex;flex-direction:column;align-items:center;gap:0}
+  .sp-logo{animation:fadeUp .8s cubic-bezier(.16,1,.3,1) both}
+  .sp-line{width:120px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);margin:32px 0 28px;animation:expandW .7s ease .6s both;transform-origin:center}
+  .sp-tagline{display:flex;align-items:center;gap:14px;animation:fadeUp .5s ease .7s both;margin-bottom:32px}
+  .sp-tag-word{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:6px;color:#fff;text-transform:uppercase}
+  .sp-tag-dot{font-family:'Anton',sans-serif;font-size:10px;color:rgba(255,255,255,.2)}
+  .sp-bar{width:48px;height:2px;background:rgba(255,255,255,.08);overflow:hidden;animation:fadeUp .4s ease 1s both}
+  .sp-bar-inner{width:0;height:100%;background:#fff;animation:fillBar 2.2s cubic-bezier(.4,0,.2,1) 1.1s forwards}
+  .sp-sub{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:6px;color:rgba(255,255,255,.18);animation:fadeUp .4s ease 1.3s both;text-transform:uppercase;margin-top:14px}
 
-  .auth-root{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;padding:52px 20px 80px;position:relative;overflow:hidden}
-  .auth-grid-bg{position:fixed;inset:0;pointer-events:none;
-    background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
-    background-size:52px 52px;
-    -webkit-mask-image:radial-gradient(ellipse 75% 70% at 50% 50%,#000 30%,transparent 100%);
-    mask-image:radial-gradient(ellipse 75% 70% at 50% 50%,#000 30%,transparent 100%)}
-  .auth-wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;position:relative}
-  .auth-hero{display:flex;flex-direction:column;align-items:center;margin-bottom:30px;animation:fadeUp .55s ease both}
-  .auth-event{display:flex;align-items:center;gap:12px;margin-top:20px}
-  .auth-event-rule{flex-shrink:0;height:1px;width:38px;background:rgba(255,255,255,0.18)}
-  .auth-event-text{font-family:'Outfit',sans-serif;font-size:8.5px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.38);text-transform:uppercase;white-space:nowrap}
-  .auth-panel{width:100%;background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);overflow:hidden;animation:fadeUp .58s ease .13s both;box-shadow:0 40px 100px rgba(0,0,0,.9)}
-  .auth-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,0.08)}
-  .auth-tab{flex:1;padding:17px 0;background:transparent;border:none;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.32);cursor:pointer;transition:all .2s;position:relative}
-  .atab-on{color:#fff}.atab-on::after{content:'';position:absolute;bottom:0;left:18%;right:18%;height:2px;background:#fff;border-radius:1px}
-  .auth-form{padding:30px 26px 26px;display:flex;flex-direction:column}
-  .ffield{margin-bottom:20px}
-  .ffield-lbl{display:block;font-size:8.5px;font-weight:700;letter-spacing:2.2px;text-transform:uppercase;color:rgba(255,255,255,.38);margin-bottom:8px}
-  .ffield-inp{width:100%;padding:13px 15px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);color:#fff;font-family:'Outfit',sans-serif;font-size:14px;transition:all .2s}
-  .ffield-inp::placeholder{color:rgba(255,255,255,.2)}.ffield-inp:focus{outline:none;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.05)}
-  .auth-err{display:flex;align-items:center;gap:10px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);padding:11px 14px;font-size:12px;color:#fca5a5;margin-bottom:18px}
-  .auth-err-dot{width:18px;height:18px;border-radius:50%;background:rgba(239,68,68,.25);color:#fca5a5;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;flex-shrink:0}
-  .auth-cta{width:100%;padding:15px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:3.5px;transition:opacity .15s,transform .15s;margin-bottom:20px}
-  .auth-cta:hover{opacity:.87;transform:translateY(-1px)}.auth-cta:active{transform:translateY(0)}
-  .auth-footer-text{font-size:12px;color:rgba(255,255,255,.35);text-align:center}
-  .auth-footer-link{color:#fff;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  /* ── AUTH ── */
+  .auth-root{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;padding:48px 20px 80px;position:relative;overflow:hidden}
+  .auth-grid-bg{position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:40px 40px}
+  .auth-wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:440px}
+  .auth-hero{display:flex;flex-direction:column;align-items:center;margin-bottom:44px;animation:fadeUp .7s cubic-bezier(.16,1,.3,1) both}
+  .auth-event{display:flex;align-items:center;gap:16px;margin-top:22px}
+  .auth-event-rule{flex-shrink:0;height:1px;width:44px;background:rgba(255,255,255,.25)}
+  .auth-event-text{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:5px;color:rgba(255,255,255,.55);white-space:nowrap}
+  .auth-panel{width:100%;background:#000;border:1px solid rgba(255,255,255,.14);animation:fadeUp .7s cubic-bezier(.16,1,.3,1) .12s both}
+  .auth-tabs{display:flex}
+  .auth-tab{flex:1;padding:18px 0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.08);font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;color:rgba(255,255,255,.18);cursor:pointer;transition:all .2s;position:relative}
+  .atab-on{color:#fff;border-bottom-color:transparent;background:rgba(255,255,255,.02)}
+  .atab-on::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:#fff}
+  .auth-form{padding:32px 28px 28px;display:flex;flex-direction:column;gap:0}
+  .ffield{margin-bottom:18px}
+  .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(255,255,255,.25);margin-bottom:8px}
+  .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);color:#fff;font-family:'Outfit',sans-serif;font-size:15px;transition:all .2s;outline:none;border-radius:0}
+  .ffield-inp::placeholder{color:rgba(255,255,255,.13)}
+  .ffield-inp:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.045)}
+  .auth-err{display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#fca5a5;margin-bottom:18px;background:rgba(239,68,68,.06);border-left:2px solid #ef4444}
+  .auth-err-dot{font-family:'Anton',sans-serif;font-size:15px;color:#ef4444}
+  .auth-cta{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11.5px;letter-spacing:5px;transition:opacity .15s;margin-bottom:22px;margin-top:6px}
+  .auth-cta:hover{opacity:.88}
+  .auth-footer-text{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.22);text-align:center}
+  .auth-footer-link{color:rgba(255,255,255,.6);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
-  .shell{display:flex;flex-direction:column;height:100vh;background:#000}
-  .hdr{display:flex;align-items:center;justify-content:space-between;height:58px;padding:0 16px;background:#000;border-bottom:1px solid rgba(255,255,255,0.09);position:sticky;top:0;z-index:200;flex-shrink:0}
-  .hdr-l{display:flex;align-items:center;gap:11px}.hdr-r{display:flex;align-items:center;gap:10px}
-  .hdr-text{display:flex;flex-direction:column}
-  .hdr-brand{font-family:'Anton',sans-serif;font-size:17px;letter-spacing:2px;color:#fff;line-height:1}
-  .hdr-caption{font-size:9px;font-weight:600;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,.38)}
-  .hdr-score{display:flex;flex-direction:column;align-items:flex-end}
-  .hdr-score-n{font-family:'Anton',sans-serif;font-size:20px;color:#fff;line-height:1}
-  .hdr-score-u{font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.38)}
-  .admin-badge{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);padding:4px 10px;color:#fff}
-  .hdr-out{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.4);cursor:pointer;transition:all .15s}
-  .hdr-out:hover{background:rgba(255,255,255,.1);color:#fff}
-  .body{flex:1;overflow-y:auto;padding-bottom:72px}
-  .bot-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#000;border-top:1px solid rgba(255,255,255,.09);height:62px;z-index:200;overflow-x:auto}
-  .bnav-btn{flex:1;min-width:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent;border:none;color:rgba(255,255,255,.28);cursor:pointer;transition:color .2s;font-family:'Outfit',sans-serif;position:relative}
-  .bnav-on{color:#fff}.bnav-on::before{content:'';position:absolute;top:0;left:22%;right:22%;height:2px;background:#fff}
-  .bnav-ico{display:flex}.bnav-lbl{font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+  /* ── SHELL ── */
+  .shell{display:flex;flex-direction:column;height:100vh;background:#000;max-width:100%;margin:0 auto;position:relative}
 
-  .vpad{padding:24px 16px 8px}
-  .sechead{margin-bottom:20px}.sectitle{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:1.5px;text-transform:uppercase;color:#fff;font-weight:400}
-  .secsub{font-size:11px;color:rgba(255,255,255,.38);margin-top:5px}
-  .card-stack{display:flex;flex-direction:column;gap:8px;margin-bottom:28px}
+  /* ── HEADER ── */
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 20px;background:#000;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:200;flex-shrink:0}
+  .hdr-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:900px;margin:0 auto}
+  .body{flex:1;overflow-y:auto;padding-bottom:64px}
+  .body-inner{max-width:900px;margin:0 auto}
+  .hdr-l{display:flex;align-items:center;gap:12px}
+  .hdr-r{display:flex;align-items:center;gap:10px}
+  .hdr-text{display:flex;flex-direction:column;gap:2px}
+  .hdr-brand{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:3px;color:#fff;line-height:1}
+  .hdr-caption{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:3px;color:rgba(255,255,255,.22)}
+  .hdr-badge{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);padding:5px 12px}
+  .hdr-badge-pts{font-family:'Anton',sans-serif;font-size:22px;color:#fff;line-height:1}
+  .hdr-badge-meta{display:flex;flex-direction:column;gap:1px}
+  .hdr-badge-label{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:2px;color:rgba(255,255,255,.3)}
+  .hdr-badge-rank{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.55)}
+  .admin-badge{font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:3px;border:1px solid rgba(255,255,255,.15);padding:6px 12px;color:rgba(255,255,255,.55)}
+  .hdr-out{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.28);cursor:pointer;transition:all .15s;background:transparent}
+  .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
 
-  .mcard{background:#0d0d0d;border:1px solid rgba(255,255,255,.09);overflow:hidden;transition:border-color .2s,transform .2s}
-  .mcard:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.2)}
-  .mcard-ok{border-color:rgba(34,197,94,.38)!important;background:rgba(34,197,94,.03)!important}
-  .mcard-ng{border-color:rgba(239,68,68,.18)!important}
-  .mcard-meta{display:flex;align-items:center;justify-content:space-between;padding:11px 14px 0}
-  .mcard-group{font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.38)}
-  .mcard-dt{font-size:9px;color:rgba(255,255,255,.25);letter-spacing:.5px}
-  .mcard-body{display:flex;align-items:center;justify-content:space-between;padding:14px;gap:10px}
-  .mteam{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
-  .mteam-r{align-items:center}.mteam-flag{font-size:28px;line-height:1}
-  .mteam-name{font-size:11px;font-weight:700;color:#fff;text-align:center;letter-spacing:.3px}
-  .mscore-final{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);padding:10px 18px;min-width:90px}
-  .mscore-num{font-family:'Anton',sans-serif;font-size:28px;color:#fff;letter-spacing:3px;line-height:1}
-  .mscore-lbl{font-size:7.5px;font-weight:700;letter-spacing:2.5px;color:rgba(255,255,255,.35);margin-top:5px}
-  .mscore-input{display:flex;align-items:center;gap:8px}
-  .sinput{width:50px;height:54px;text-align:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#fff;font-family:'Anton',sans-serif;font-size:26px;transition:all .2s}
-  .sinput:focus{outline:none;border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.08)}
-  .ssep{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.22)}
+  /* ── BODY / NAV ── */
+  .body{flex:1;overflow-y:auto;padding-bottom:64px}
+  .bot-nav{display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.07);height:60px;z-index:200}
+  .bot-nav-inner{display:flex;width:100%;max-width:900px}
+  .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent;border:none;color:rgba(255,255,255,.18);cursor:pointer;transition:color .2s;position:relative;padding:0}
+  .bnav-on{color:#fff}
+  .bnav-indicator{position:absolute;top:0;left:20%;right:20%;height:1.5px;background:#fff;border-radius:0 0 2px 2px}
+  .bnav-ico{display:flex;align-items:center;justify-content:center}
+  .bnav-lbl{font-family:'Anton',sans-serif;font-size:6px;letter-spacing:2px;text-transform:uppercase}
+
+  /* ── SECTION BANNER ── */
+  .section-banner{padding:22px 16px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .section-banner-dim{background:rgba(255,255,255,.015)}
+  .section-banner-title{font-family:'Anton',sans-serif;font-size:32px;letter-spacing:2px;color:#fff;display:block;line-height:1;text-transform:uppercase}
+  .section-banner-sub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:5px;display:block}
+  .card-stack{display:flex;flex-direction:column}
+  .empty{text-align:center;color:rgba(255,255,255,.14);padding:56px 0;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;text-transform:uppercase}
+
+  /* ── MATCH CARD ── */
+  .mcard{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;transition:background .15s}
+  .mcard:hover{background:#060606}
+  .mcard-topstrip{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-wrap:wrap;gap:6px}
+  .mcard-group-pill{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(255,255,255,.5);text-transform:uppercase}
+  .mcard-dt{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.38)}
+  .lock-chip{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;color:rgba(251,191,36,.7);border:1px solid rgba(251,191,36,.2);padding:2px 8px}
+
+  /* scoreboard layout */
+  .mcard-scoreboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 14px 14px;gap:10px}
+  .mteam-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .mteam-col-r{align-items:center}
+  .mteam-flag-lg{font-size:36px;line-height:1}
+  .mteam-name-lg{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;color:#fff;text-align:center;text-transform:uppercase}
+  .mcard-center{display:flex;align-items:center;justify-content:center;min-width:96px}
+  .score-board{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);padding:12px 16px;gap:6px;min-width:90px}
+  .score-board-pick{border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.03)}
+  .score-row{display:flex;align-items:center;gap:6px}
+  .score-digit{font-family:'Anton',sans-serif;font-size:36px;color:#fff;line-height:1;letter-spacing:1px}
+  .score-digit-sm{font-size:28px}
+  .score-colon{font-family:'Anton',sans-serif;font-size:28px;color:rgba(255,255,255,.25);line-height:1;margin-bottom:2px}
+  .score-sep{display:none}
+  .score-label{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:3px;color:rgba(255,255,255,.25)}
+  .score-label-green{color:rgba(34,197,94,.6)}
+  .score-inputs-row{display:flex;align-items:center;gap:8px}
+  .sinput{width:52px;height:60px;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#fff;font-family:'Anton',sans-serif;font-size:30px;outline:none;transition:all .2s}
+  .sinput:focus{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.07)}
+  .sinput::placeholder{color:rgba(255,255,255,.1)}
+  .ssep{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.2)}
+
+  /* bottom of match card */
   .mcard-foot{padding:0 14px 14px}
-  .pred-cta{width:100%;padding:12px;background:transparent;border:1px solid rgba(255,255,255,.22);color:rgba(255,255,255,.65);cursor:pointer;font-family:'Outfit',sans-serif;font-size:11.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:2px}
-  .pred-cta:hover:not(:disabled){border-color:rgba(255,255,255,.55);color:#fff;background:rgba(255,255,255,.04)}
-  .pred-cta:disabled{opacity:.28;cursor:not-allowed}
-  .pred-cta-done{border-color:rgba(34,197,94,.45)!important;color:#86efac!important;background:rgba(34,197,94,.05)!important}
-  .mcard-locked{border-color:rgba(255,255,255,.06)!important;opacity:.75}
-  .lock-chip{font-size:8px;font-weight:700;letter-spacing:1px;color:rgba(255,200,50,.8);background:rgba(255,200,50,.08);border:1px solid rgba(255,200,50,.2);padding:2px 7px;border-radius:99px}
-  .mv-locked{display:flex;align-items:center;padding:9px 14px;border-top:1px solid rgba(255,255,255,.06);font-size:11px;font-weight:600;color:#86efac}
-  .mv-ok{color:#86efac}.mv-ng{color:rgba(255,255,255,.35)}
+  .pred-cta{width:100%;padding:14px;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:3px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+  .pred-cta:hover:not(:disabled){border-color:#fff;color:#fff;background:rgba(255,255,255,.03)}
+  .pred-cta:disabled{opacity:.15;cursor:not-allowed}
+  .pred-cta-done{border-color:rgba(34,197,94,.4)!important;color:rgba(34,197,94,.8)!important}
+  .mverdict{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
+  .mv-ok{color:#86efac}.mv-ng{color:rgba(255,255,255,.2)}.mv-locked{color:rgba(34,197,94,.7);display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
 
-  .leader-hero{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);padding:26px 20px;text-align:center;margin-bottom:16px;position:relative;overflow:hidden}
-  .leader-hero::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 55%);pointer-events:none}
-  .lh-crown{font-size:30px;margin-bottom:8px}.lh-name{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;color:#fff}
-  .lh-pts{font-family:'Anton',sans-serif;font-size:44px;color:#fff;line-height:1.05;margin-top:2px}.lh-pts span{font-size:18px;color:rgba(255,255,255,.4);margin-left:4px}
-  .lh-tag{font-size:8.5px;font-weight:700;letter-spacing:4.5px;color:rgba(255,255,255,.35);margin-top:8px}
-  .lboard{display:flex;flex-direction:column;gap:6px}
-  .lrow{display:flex;align-items:center;gap:14px;background:#0d0d0d;border:1px solid rgba(255,255,255,.08);padding:14px 16px;transition:all .15s}
-  .lrow:hover{border-color:rgba(255,255,255,.2)}.lrow-me{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.28)!important}
-  .lrank{font-size:22px;width:36px;text-align:center;flex-shrink:0}.lrank-n{font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:rgba(255,255,255,.38)}
-  .linfo{flex:1;display:flex;align-items:center;gap:9px;flex-wrap:wrap}.lname{font-size:14px;font-weight:600;color:#fff}
-  .you-chip{font-size:7.5px;font-weight:900;letter-spacing:1.5px;background:#fff;color:#000;padding:2px 8px;border-radius:99px}
-  .lpts-wrap{display:flex;align-items:baseline;gap:3px}.lpts-n{font-family:'Anton',sans-serif;font-size:22px;color:#fff}.lpts-u{font-size:10px;color:rgba(255,255,255,.35);font-weight:600}
-  .empty{text-align:center;color:rgba(255,255,255,.3);padding:40px 0;font-size:13px}
+  /* ── LEADERBOARD ── */
+  .leader-hero{background:#fff;padding:36px 20px 30px;text-align:center}
+  .lh-crown-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
+  .lh-crown-ico{font-size:20px}
+  .lh-crown-lbl{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:5px;color:rgba(0,0,0,.3);text-transform:uppercase}
+  .lh-name{font-family:'Anton',sans-serif;font-size:36px;letter-spacing:1.5px;color:#000;line-height:1;text-transform:uppercase}
+  .lh-pts-row{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:12px}
+  .lh-pts{font-family:'Anton',sans-serif;font-size:72px;color:#000;line-height:.9}
+  .lh-pts-unit{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:4px;color:rgba(0,0,0,.3)}
+  .lboard{display:flex;flex-direction:column}
+  .lrow{display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,.055);padding:15px 16px;transition:background .15s;cursor:default}
+  .lrow:hover{background:#060606}
+  .lrow-me{background:#0c0c0c!important;border-left:2px solid rgba(255,255,255,.45)}
+  .lrank{font-size:22px;width:34px;text-align:center;flex-shrink:0;line-height:1}
+  .lrank-n{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.4);letter-spacing:1px}
+  .linfo{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
+  .lname{font-family:'Anton',sans-serif;font-size:15px;color:#fff;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+  .you-chip{font-family:'Anton',sans-serif;font-size:6px;letter-spacing:2px;background:#fff;color:#000;padding:2px 8px;flex-shrink:0}
+  .lpts-wrap{display:flex;align-items:baseline;gap:4px;flex-shrink:0}
+  .lpts-n{font-family:'Anton',sans-serif;font-size:28px;color:#fff;line-height:1}
+  .lpts-u{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:1.5px;color:rgba(255,255,255,.4)}
 
-  /* RULES */
-  .rules-card{display:flex;gap:14px;background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:18px 16px}
-  .rules-num{font-family:'Anton',sans-serif;font-size:28px;color:rgba(255,255,255,.12);letter-spacing:1px;flex-shrink:0;line-height:1;margin-top:2px}
+  /* ── RULES ── */
+  .rules-card{display:flex;gap:18px;border-bottom:1px solid rgba(255,255,255,.055);padding:22px 16px;transition:background .15s}
+  .rules-card:hover{background:#060606}
+  .rules-num{font-family:'Anton',sans-serif;font-size:44px;color:rgba(255,255,255,.05);letter-spacing:1px;flex-shrink:0;min-width:44px;line-height:1;margin-top:-4px}
   .rules-content{flex:1}
-  .rules-title{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:1px;color:#fff;margin-bottom:7px}
-  .rules-body{font-size:13px;color:rgba(255,255,255,.5);line-height:1.7}
-  .rules-footer{display:flex;align-items:center;justify-content:center;gap:10px;padding:20px 0 8px;font-size:12px;color:rgba(255,255,255,.25);font-style:italic}
+  .rules-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#fff;text-transform:uppercase;margin-bottom:9px}
+  .rules-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.55);line-height:1.76}
+  .rules-footer{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px 16px;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.16)}
 
-  /* SPONSORS */
-  .sponsor-hero{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.18);padding:30px 20px;text-align:center;margin-bottom:16px;position:relative;overflow:hidden}
-  .sponsor-hero::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 60%);pointer-events:none}
-  .sponsor-hero-emoji{font-size:40px;margin-bottom:10px}
-  .sponsor-hero-role{font-size:9px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:6px}
-  .sponsor-hero-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:2px;color:#fff}
-  .sponsor-hero-detail{font-size:12px;color:rgba(255,255,255,.35);margin-top:6px}
-  .sponsor-card{display:flex;align-items:center;gap:16px;background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:16px}
-  .sponsor-emoji{font-size:28px;flex-shrink:0}
+  /* ── SPONSORS ── */
+  .sponsor-hero{background:#fff;padding:24px 20px 28px;text-align:center}
+  .sponsor-hero-emoji{font-size:64px;margin-bottom:8px;display:block}
+  .sponsor-hero-name{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:2px;color:#000;text-transform:uppercase}
+  .sponsor-hero-role{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:5px;color:rgba(0,0,0,.6);margin-bottom:10px;text-transform:uppercase;display:block}
+  .sponsor-hero-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(0,0,0,.4);margin-top:8px}
+  .sponsor-card{display:flex;align-items:center;gap:16px;border-bottom:1px solid rgba(255,255,255,.055);padding:18px 16px;transition:background .15s}
+  .sponsor-card:hover{background:#060606}
+  .sponsor-emoji{font-size:26px;flex-shrink:0}
   .sponsor-info{flex:1}
-  .sponsor-role{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:3px}
-  .sponsor-name{font-size:15px;font-weight:700;color:#fff}
-  .sponsor-detail{font-size:11px;color:rgba(255,255,255,.35);margin-top:2px}
-  .sponsor-cta-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);padding:20px;text-align:center;margin-top:8px;margin-bottom:16px}
-  .sponsor-cta-title{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:1.5px;color:#fff;margin-bottom:8px}
-  .sponsor-cta-body{font-size:12px;color:rgba(255,255,255,.35);line-height:1.6}
+  .sponsor-name{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.5px;color:#fff;text-transform:uppercase}
+  .sponsor-role{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(255,255,255,.25);text-transform:uppercase;margin-bottom:4px}
+  .sponsor-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:3px}
+  .sponsor-cta-box{padding:24px 16px;border-top:1px solid rgba(255,255,255,.055)}
+  .sponsor-cta-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;color:#fff;text-transform:uppercase;margin-bottom:8px}
+  .sponsor-cta-body{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.25);line-height:1.7}
 
-  .prof-card{background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:30px 20px;text-align:center;margin-bottom:12px}
-  .prof-av{width:72px;height:72px;border-radius:50%;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;margin:0 auto 16px}
-  .prof-name{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:1.5px;color:#fff;margin-bottom:6px}
-  .prof-detail{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:2px}
-  .prof-leader{margin-top:16px;display:inline-block;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);padding:8px 18px;font-size:11px;font-weight:700;letter-spacing:.5px;color:#fff;border-radius:99px}
-  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-  .scard{background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:18px 16px}
-  .sval{font-family:'Anton',sans-serif;font-size:30px;color:#fff;line-height:1}.sunit{font-size:13px;color:rgba(255,255,255,.35);margin-left:3px}
-  .slbl{font-size:8.5px;font-weight:700;letter-spacing:2.2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-top:7px}
-  .info-card{background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:24px 20px;text-align:center}
-  .info-ico{font-size:26px;margin-bottom:12px}
-  .info-title{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:2.5px;text-transform:uppercase;color:#fff;margin-bottom:12px}
-  .info-body{font-size:13px;color:rgba(255,255,255,.38);line-height:1.75}.info-body strong{color:#fff;font-weight:700}
+  /* ── PROFILE ── */
+  .prof-wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column}
+  .prof-hero{background:#fff;padding:40px 24px 32px;text-align:center;width:100%}
+  .prof-av{width:72px;height:72px;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:24px;letter-spacing:2px;margin:0 auto 20px}
+  .prof-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:8px}
+  .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(0,0,0,.55);margin-bottom:3px}
+  .prof-leader-badge{margin-top:18px;display:inline-block;background:#000;color:#fff;padding:10px 24px;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;text-transform:uppercase}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.08);width:100%}
+  .scard{background:#111;padding:24px 20px}
+  .sval{font-family:'Anton',sans-serif;font-size:44px;color:#fff;line-height:1}
+  .sunit{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.4);margin-left:3px}
+  .slbl{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);margin-top:8px;text-transform:uppercase;letter-spacing:.5px}
+  .info-card{padding:24px 20px;border-top:1px solid rgba(255,255,255,.08);width:100%}
+  .info-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#fff;margin-bottom:12px;text-transform:uppercase}
+  .info-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);line-height:1.78}
+  .info-body strong{color:#fff;font-weight:700}
 
-  /* ADMIN */
-  .admin-subtabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0}
-  .admin-subtab{padding:10px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.35);cursor:pointer;transition:all .2s;margin-bottom:-1px}
+  /* ── ADMIN ── */
+  .admin-subtabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07)}
+  .admin-subtab{padding:15px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.22);cursor:pointer;transition:all .2s;margin-bottom:-1px}
   .ast-on{color:#fff;border-bottom-color:#fff}
-  .admin-topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;gap:12px}
-  .admin-add-btn{flex-shrink:0;padding:10px 16px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;transition:opacity .15s;white-space:nowrap}
+  .admin-topbar{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 14px 0;margin-bottom:4px;gap:12px}
+  .admin-add-btn{flex-shrink:0;padding:10px 18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:2.5px;transition:opacity .15s;white-space:nowrap}
   .admin-add-btn:hover{opacity:.85}
-  .admin-section-lbl{font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:10px;display:flex;align-items:center;gap:8px}
-  .admin-count{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:2px 7px;font-size:9px;border-radius:99px}
-  .admin-row{display:flex;align-items:center;justify-content:space-between;background:#0d0d0d;border:1px solid rgba(255,255,255,.09);padding:13px 14px;gap:12px;flex-wrap:wrap}
+  .admin-section-lbl{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3.5px;color:rgba(255,255,255,.22);display:flex;align-items:center;gap:8px;padding:18px 14px 10px}
+  .admin-count{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);padding:2px 8px}
+  .admin-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.055);padding:14px 14px;gap:12px;flex-wrap:wrap;transition:background .15s}
+  .admin-row:hover{background:#060606}
   .admin-row-left{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
-  .admin-row-group{font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35)}
-  .admin-row-teams{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .admin-row-dt{font-size:10px;color:rgba(255,255,255,.3)}
+  .admin-row-group{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2.5px;color:rgba(255,255,255,.22)}
+  .admin-row-teams{font-family:'Anton',sans-serif;font-size:13px;color:#fff;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
+  .admin-row-dt{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.22);margin-top:2px}
   .admin-row-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-  .admin-score-badge{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:2px;display:flex;align-items:center;gap:6px}
-  .finished-tag{font-family:'Outfit',sans-serif;font-size:8px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.35);background:rgba(255,255,255,.07);padding:2px 6px}
-  .upcoming-tag{font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.4);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:3px 8px}
-  .admin-edit-btn{padding:7px 14px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all .15s}
-  .admin-edit-btn:hover{border-color:rgba(255,255,255,.5);color:#fff}
-  .admin-del-btn{width:30px;height:30px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s}
-  .admin-del-btn:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.5)}
-  .admin-form-card{background:#0d0d0d;border:1px solid rgba(255,255,255,.15);padding:18px;margin-bottom:8px}
-  .admin-edit-card{border-color:rgba(255,255,255,.3)}
-  .admin-form-title{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;color:rgba(255,255,255,.4);margin-bottom:14px}
+  .admin-score-badge{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:3px}
+  .finished-tag{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:2px;color:rgba(34,197,94,.6);border:1px solid rgba(34,197,94,.15);padding:2px 8px}
+  .upcoming-tag{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:2px;color:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.08);padding:2px 8px}
+  .admin-edit-btn{padding:7px 14px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.5);cursor:pointer;font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:2px;transition:all .15s}
+  .admin-edit-btn:hover{border-color:rgba(255,255,255,.45);color:#fff}
+  .admin-del-btn{width:30px;height:30px;background:transparent;border:1px solid rgba(239,68,68,.15);color:#f87171;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .admin-del-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4)}
+  .admin-form-card{background:#050505;border:1px solid rgba(255,255,255,.1);padding:18px;margin:0 0 8px}
+  .admin-edit-card{border-color:rgba(255,255,255,.22)}
+  .admin-form-title{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.28);margin-bottom:16px;text-transform:uppercase}
   .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:14px}
   .afield{display:flex;flex-direction:column;gap:6px}
-  .afield-lbl{font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35)}
-  .afield-inp{padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#fff;font-family:'Outfit',sans-serif;font-size:13px;transition:all .2s}
-  .afield-inp:focus{outline:none;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.06)}
-  .afield-inp::placeholder{color:rgba(255,255,255,.2)}
+  .afield-lbl{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:2px;color:rgba(255,255,255,.25)}
+  .afield-inp{padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);color:#fff;font-family:'Outfit',sans-serif;font-size:13px;transition:all .2s;outline:none}
+  .afield-inp:focus{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.04)}
+  .afield-inp::placeholder{color:rgba(255,255,255,.13)}
   .afield-ta{resize:vertical;min-height:80px;font-family:'Outfit',sans-serif}
   .admin-score-row{margin-bottom:16px}
-  .admin-score-lbl{display:block;font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:10px}
+  .admin-score-lbl{display:block;font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:2px;color:rgba(255,255,255,.25);margin-bottom:10px}
   .admin-score-inputs{display:flex;align-items:center;gap:10px}
-  .admin-sinput{width:56px;height:48px;text-align:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:'Anton',sans-serif;font-size:22px;transition:all .2s}
-  .admin-sinput:focus{outline:none;border-color:rgba(255,255,255,.5)}
-  .admin-sinput-lg{width:62px;height:54px;font-size:26px}
-  .admin-sep{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.25)}
+  .admin-sinput{width:56px;height:48px;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);color:#fff;font-family:'Anton',sans-serif;font-size:22px;transition:all .2s;outline:none}
+  .admin-sinput:focus{border-color:rgba(255,255,255,.4)}
+  .admin-sep{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.15)}
   .admin-form-actions{display:flex;gap:10px}
-  .admin-save-btn{flex:1;padding:13px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:12px;letter-spacing:2.5px;transition:opacity .15s}
+  .admin-save-btn{flex:1;padding:13px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;transition:opacity .15s}
   .admin-save-btn:hover{opacity:.85}
-  .admin-cancel-btn{padding:13px 18px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s}
-  .admin-cancel-btn:hover{border-color:rgba(255,255,255,.35);color:#fff}
-  .admin-hint{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);padding:12px 14px;font-size:12px;color:rgba(255,255,255,.35);line-height:1.6;margin-bottom:24px}
+  .admin-cancel-btn{padding:13px 18px;background:transparent;border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.35);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s}
+  .admin-cancel-btn:hover{border-color:rgba(255,255,255,.3);color:#fff}
+  .admin-hint{border-top:1px solid rgba(255,255,255,.05);padding:14px 0;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.22);line-height:1.65;margin-bottom:24px}
+  .vpad{padding:0}
 
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
-  .modal{background:#111;border:1px solid rgba(255,255,255,.2);padding:28px 24px;width:100%;max-width:360px}
-  .modal-title{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:1.5px;color:#fff;margin-bottom:12px}
-  .modal-body{font-size:13px;color:rgba(255,255,255,.45);line-height:1.65;margin-bottom:22px}
+  /* ── MODAL ── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:#000;border:1px solid rgba(255,255,255,.2);padding:32px 24px;width:100%;max-width:340px}
+  .modal-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:1.5px;color:#fff;margin-bottom:12px;text-transform:uppercase}
+  .modal-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.35);line-height:1.7;margin-bottom:24px}
   .modal-actions{display:flex;gap:10px}
-  .modal-del-btn{flex:1;padding:13px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:12px;letter-spacing:2px;transition:opacity .15s}
+  .modal-del-btn{flex:1;padding:14px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;transition:opacity .15s}
   .modal-del-btn:hover{opacity:.85}
-  .modal-cancel-btn{padding:13px 20px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s}
-  .modal-cancel-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
+  .modal-cancel-btn{padding:14px 20px;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.4);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s}
+  .modal-cancel-btn:hover{border-color:rgba(255,255,255,.3);color:#fff}
 
-  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes blink{0%,100%{opacity:.2}50%{opacity:.9}}
+  /* ── SECHEAD (admin only) ── */
+  .sechead{padding:20px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:20px}
+  .sectitle{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;color:#fff;text-transform:uppercase}
+  .secsub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:5px}
+
+  /* ══════════════════════════════════════════
+
+
+  /* ══════════════════════════════════════
+     SPLASH — BALL + ROPE SIGN + NEON
+  ══════════════════════════════════════ */
+  .splash{position:relative;display:flex;align-items:center;justify-content:center;height:100vh;background:#000;overflow:hidden}
+  .splash-shake{animation:screenShake 0.8s cubic-bezier(.36,.07,.19,.97) both}
+  .sp-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,.92) 100%);pointer-events:none;z-index:1}
+  .sp-flash{position:absolute;inset:0;background:#fff;z-index:20;animation:flashOut 0.5s ease forwards;pointer-events:none}
+  .sp-cracks{position:absolute;top:50%;left:50%;z-index:3;pointer-events:none}
+  .sp-crack{position:absolute;top:0;left:0;width:1px;height:0;background:linear-gradient(to bottom,rgba(255,255,255,.9),transparent);transform-origin:top center;animation:crackGrow 1.2s ease forwards}
+
+  /* BALL — kicked from below, grows smoothly toward screen */
+  .sp-ball-fly{
+    position:absolute;z-index:5;
+    bottom:0; left:50%;
+    transform:translateX(-50%) scale(0.06);
+    animation:ballApproach 3s cubic-bezier(.25,0,.15,1) forwards;
+  }
+  .sp-ball-smash{
+    position:absolute;z-index:5;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%) scale(4.5);
+    animation:ballSmash 0.7s cubic-bezier(.1,0,.4,1) forwards;
+  }
+  .sp-ball{
+    font-size:72px;
+    line-height:1;
+    display:block;
+    animation:ballSpin 3s linear forwards;
+  }
+  .sp-ball-nospin{ animation:none }
+
+  /* SIGN WRAPPER */
+  .sp-sign-wrap{
+    position:absolute;z-index:10;
+    left:50%;
+    display:flex;flex-direction:column;align-items:center;
+    width:min(500px,88vw);
+  }
+  .sp-sign-drop{
+    top:-500px;
+    animation:signDrop 1.8s cubic-bezier(.22,1,.36,1) forwards;
+  }
+  .sp-sign-falling{
+    top:50%;
+    transform:translate(-50%,-50%);
+    animation:signFall 1.2s cubic-bezier(.55,0,1,.45) forwards;
+  }
+
+  /* ROPES */
+  .sp-ropes{display:flex;justify-content:space-between;width:65%;padding:0 8px}
+  .sp-rope{width:2px;height:0;background:linear-gradient(to bottom,rgba(255,255,255,.05),rgba(255,255,255,.4),rgba(255,255,255,.15));animation:ropeGrow 0.5s ease 0.2s forwards}
+
+  /* SIGN BOARD */
+  .sp-sign-board{
+    background:#080808;
+    border:2px solid rgba(255,255,255,.2);
+    padding:30px 38px 34px;
+    text-align:center;
+    width:100%;
+    box-shadow:0 8px 60px rgba(0,0,0,.95), inset 0 0 40px rgba(0,0,0,.6);
+    position:relative;
+  }
+  .sp-sign-board::before{content:'';position:absolute;inset:5px;border:1px solid rgba(255,255,255,.06);pointer-events:none}
+
+  /* EL MUNDO — dim by default, neon turns on via JS */
+  .sp-neon-main{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(46px,10vw,82px);
+    letter-spacing:8px;
+    color:rgba(255,255,255,.18);
+    line-height:1;
+    text-transform:uppercase;
+  }
+
+  /* Divider */
+  .sp-sign-divider{height:1px;background:rgba(255,255,255,.18);margin:14px 0 10px;width:100%}
+
+  /* BAR · REST · BONAIRE */
+  .sp-neon-sub2{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(9px,2vw,13px);
+    letter-spacing:5px;
+    color:rgba(255,255,255,.18);
+    text-transform:uppercase;
+    margin-bottom:16px;
+  }
+
+  /* Separator gold line */
+  .sp-sign-sep{height:1px;background:rgba(255,200,50,.2);margin:0 0 14px;width:80%}
+
+  /* WORLD CUP 2026 — dim gold by default */
+  .sp-neon-gold{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(11px,2.4vw,17px);
+    letter-spacing:10px;
+    color:rgba(255,200,50,.18);
+    text-transform:uppercase;
+  }
+
+  /* ── PAGE TRANSITIONS & UI ANIMATIONS ── */
+  .page-anim{animation:pageIn 0.3s cubic-bezier(.4,0,.2,1) both}
+  .bnav-btn{transition:color .2s,transform .12s}
+  .bnav-btn:active{transform:scale(.85)}
+  .bnav-ico{transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+  .bnav-on .bnav-ico{transform:scale(1.25) translateY(-2px)}
+  .card-stack .mcard{animation:cardIn .35s ease both}
+  .card-stack .mcard:nth-child(1){animation-delay:.04s}.card-stack .mcard:nth-child(2){animation-delay:.09s}.card-stack .mcard:nth-child(3){animation-delay:.14s}.card-stack .mcard:nth-child(4){animation-delay:.19s}.card-stack .mcard:nth-child(5){animation-delay:.24s}.card-stack .mcard:nth-child(6){animation-delay:.29s}
+  .lrow{animation:cardIn .32s ease both}
+  .lrow:nth-child(1){animation-delay:.05s}.lrow:nth-child(2){animation-delay:.10s}.lrow:nth-child(3){animation-delay:.15s}.lrow:nth-child(4){animation-delay:.20s}.lrow:nth-child(5){animation-delay:.25s}
+  .rules-card{animation:cardIn .32s ease both}
+  .rules-card:nth-child(1){animation-delay:.05s}.rules-card:nth-child(2){animation-delay:.11s}.rules-card:nth-child(3){animation-delay:.17s}.rules-card:nth-child(4){animation-delay:.23s}.rules-card:nth-child(5){animation-delay:.29s}
+  .leader-hero{animation:heroReveal .5s cubic-bezier(.4,0,.2,1) both}
+  .prof-hero{animation:heroReveal .5s cubic-bezier(.4,0,.2,1) both}
+  .sponsor-hero{animation:heroReveal .5s cubic-bezier(.4,0,.2,1) both}
+  .prof-wrap .stats-grid{animation:fadeUp .4s ease .15s both}
+  .prof-wrap .info-card{animation:fadeUp .4s ease .28s both}
+  .scard{animation:cardIn .32s ease both}
+  .scard:nth-child(1){animation-delay:.06s}.scard:nth-child(2){animation-delay:.12s}.scard:nth-child(3){animation-delay:.18s}.scard:nth-child(4){animation-delay:.24s}
+  .score-digit{animation:digitPop .3s cubic-bezier(.34,1.56,.64,1) both}
+  .toast{animation:toastBounce .4s cubic-bezier(.34,1.56,.64,1) both}
+  .auth-panel{animation:fadeUp .5s cubic-bezier(.4,0,.2,1) .12s both}
+  .auth-cta:active{transform:scale(.97)}
+
+  /* ══ KEYFRAMES ══ */
+  @keyframes screenShake{
+    0%{transform:translate(0,0)}
+    8%{transform:translate(-16px,-12px) rotate(-1.2deg)}
+    16%{transform:translate(18px,14px) rotate(1.2deg)}
+    24%{transform:translate(-16px,8px) rotate(-.8deg)}
+    32%{transform:translate(14px,-14px) rotate(.8deg)}
+    42%{transform:translate(-10px,10px) rotate(-.4deg)}
+    52%{transform:translate(9px,-8px) rotate(.4deg)}
+    63%{transform:translate(-6px,6px)}
+    74%{transform:translate(4px,-4px)}
+    86%{transform:translate(-2px,2px)}
+    100%{transform:translate(0,0)}
+  }
+  @keyframes flashOut{0%{opacity:1}100%{opacity:0}}
+  @keyframes crackGrow{0%{height:0;opacity:1}55%{opacity:.8}100%{height:clamp(90px,17vw,170px);opacity:0}}
+  @keyframes ballApproach{
+    /* single smooth perspective zoom from bottom — no jumps */
+    0%   { bottom:0;    left:50%; transform:translateX(-50%) scale(0.06);  filter:blur(1px)   }
+    20%  { bottom:8%;   left:50%; transform:translateX(-50%) scale(0.18);  filter:blur(0px)   }
+    40%  { bottom:20%;  left:50%; transform:translate(-50%,-20%) scale(0.45) }
+    60%  { bottom:40%;  left:50%; transform:translate(-50%,-40%) scale(1.0)  }
+    78%  { bottom:50%;  left:50%; transform:translate(-50%,-50%) scale(2.2)  }
+    90%  { bottom:50%;  left:50%; transform:translate(-50%,-50%) scale(3.6)  }
+    100% { bottom:50%;  left:50%; transform:translate(-50%,-50%) scale(4.5)  }
+  }
+  @keyframes ballSmash{
+    0%   { transform:translate(-50%,-50%) scale(4.5);  opacity:1   }
+    30%  { transform:translate(-50%,-50%) scale(5.8);  opacity:1   }
+    60%  { transform:translate(-50%,-50%) scale(4.2);  opacity:.75 }
+    100% { transform:translate(-50%,-50%) scale(0.1);  opacity:0   }
+  }
+  @keyframes ballSpin{ from{transform:rotate(0deg)} to{transform:rotate(1440deg)} }
+  @keyframes ropeGrow{from{height:0}to{height:clamp(30px,5.5vw,52px)}}
+  @keyframes signDrop{
+    0%  {top:-500px; transform:translateX(-50%) rotate(-4deg)}
+    45% {top:53%;    transform:translateX(calc(-50% + 10px)) rotate(2.5deg)}
+    62% {top:46%;    transform:translateX(calc(-50% - 6px))  rotate(-1.2deg)}
+    75% {top:51%;    transform:translateX(calc(-50% + 3px))  rotate(.6deg)}
+    86% {top:49%;    transform:translateX(calc(-50% - 1px))  rotate(-.2deg)}
+    100%{top:50%;    transform:translate(-50%,-50%)           rotate(0deg)}
+  }
+  @keyframes signFall{
+    0%  {top:50%; transform:translate(-50%,-50%) rotate(0deg);  opacity:1}
+    12% {         transform:translate(-50%,-44%) rotate(4deg);  opacity:1}
+    100%{top:160%;transform:translate(-50%,0)    rotate(18deg); opacity:0}
+  }
+  @keyframes neonWhiteOn{
+    0%  {color:rgba(255,255,255,.18); text-shadow:none}
+    5%  {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    10% {color:rgba(255,255,255,.1);  text-shadow:none}
+    18% {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    24% {color:rgba(255,255,255,.05); text-shadow:none}
+    33% {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    40% {color:rgba(255,255,255,.2);  text-shadow:none}
+    50% {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    58% {color:rgba(255,255,255,.4)}
+    67% {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    78% {color:rgba(255,255,255,.65)}
+    88% {color:#fff;                  text-shadow:0 0 8px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9)}
+    100%{color:#fff;                  text-shadow:0 0 5px #fff,0 0 12px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9),0 0 85px rgba(180,200,255,.5)}
+  }
+  @keyframes neonWhiteBreathe{
+    0%,100%{text-shadow:0 0 5px #fff,0 0 12px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9),0 0 85px rgba(180,200,255,.5)}
+    50%    {text-shadow:0 0 3px #fff,0 0 6px  #fff,0 0 12px #fff,0 0 22px rgba(200,220,255,.5),0 0 45px rgba(180,200,255,.25)}
+  }
+  @keyframes neonGoldOn{
+    0%  {color:rgba(255,200,50,.18); text-shadow:none}
+    6%  {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    13% {color:rgba(255,200,50,.05); text-shadow:none}
+    21% {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    28% {color:rgba(255,200,50,.1);  text-shadow:none}
+    37% {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    46% {color:rgba(255,200,50,.25)}
+    55% {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    65% {color:rgba(255,200,50,.5)}
+    74% {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    85% {color:rgba(255,200,50,.75)}
+    93% {color:rgba(255,200,50,1);   text-shadow:0 0 8px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9)}
+    100%{color:rgba(255,200,50,1);   text-shadow:0 0 5px rgba(255,200,50,1),0 0 12px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9),0 0 45px rgba(255,160,20,.7),0 0 85px rgba(255,140,10,.4)}
+  }
+  @keyframes neonGoldBreathe{
+    0%,100%{text-shadow:0 0 5px rgba(255,200,50,1),0 0 12px rgba(255,200,50,1),0 0 22px rgba(255,180,30,.9),0 0 45px rgba(255,160,20,.7),0 0 85px rgba(255,140,10,.4)}
+    50%    {text-shadow:0 0 3px rgba(255,200,50,.7),0 0 7px rgba(255,200,50,.7),0 0 12px rgba(255,180,30,.5),0 0 25px rgba(255,160,20,.35),0 0 50px rgba(255,140,10,.2)}
+  }
+  @keyframes subWhiteOn{from{color:rgba(255,255,255,.18)}to{color:rgba(255,255,255,.5)}}
+  @keyframes dividerOn{from{opacity:0}to{opacity:1}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes cardIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes heroReveal{from{opacity:0;transform:scaleY(.96)}to{opacity:1;transform:scaleY(1)}}
+  @keyframes digitPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+  @keyframes toastBounce{from{opacity:0;transform:translateX(-50%) translateY(-120%) scale(.85)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+  @keyframes expandW{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes fillBar{from{width:0}to{width:100%}}
 `;
+
+
