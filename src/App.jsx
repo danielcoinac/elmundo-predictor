@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-
-/* ─── ADMIN CONFIG — change this to your own email ─────────────────────────── */
-const ADMIN_EMAIL = "admin@elmundo.com";
-const ADMIN_PASS  = "ElMundo2026!";
+import { createClient } from '@supabase/supabase-js';
 
 /* ─── Supabase ──────────────────────────────────────────────────────────────── */
-import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+
+/* ─── ADMIN CONFIG — change this to your own email ─────────────────────────── */
+const ADMIN_EMAIL = "admin@elmundo.com";
+const ADMIN_PASS  = "ElMundo2026!";
 
 /* ─── Storage (rules/sponsors only — still use local storage) ──────────────── */
 async function sget(k) { try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; } }
