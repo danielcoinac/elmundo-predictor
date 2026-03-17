@@ -15,7 +15,7 @@ const DEFAULT_MATCHES = [];
 
 const DEFAULT_RULES = [
   { id:"r1", title:"How to Play",   body:"Register your account and predict the exact final score for each match before it starts. You cannot change your prediction once the match has kicked off." },
-  { id:"r2", title:"Points System", body:"Predict the exact final score correctly and earn 5 points. An incorrect prediction earns 0 points. There are no partial points." },
+  { id:"r2", title:"Points System", body:"Predict the exact final score correctly and earn 5 points. Predict the correct winner (or a draw) but with the wrong score and earn 1 point. An incorrect prediction earns 0 points." },
   { id:"r3", title:"Leaderboard",   body:"The player with the most points at the end of the tournament wins. The leaderboard updates automatically every time a match result is entered." },
   { id:"r4", title:"Tiebreaker",    body:"In case of a tie in points, the player who registered first will be ranked higher." },
   { id:"r5", title:"Fair Play",     body:"One account per person. Any attempt to cheat or create multiple accounts will result in immediate disqualification." },
@@ -33,6 +33,18 @@ const matchDate = m => {
   return new Date(2026, (MONTHS[mon]||1)-1, parseInt(day)||1);
 };
 const sortMatches = arr => [...arr].sort((a,b) => matchDate(a) - matchDate(b));
+
+// Points: 5 for exact score, 1 for correct winner/draw (but not exact)
+function calcPts(pred, homeScore, awayScore) {
+  if (!pred) return 0;
+  const ph = +pred.h, pa = +pred.a;
+  const mh = +homeScore,  ma = +awayScore;
+  if (ph === mh && pa === ma) return 5;
+  const predWinner = ph > pa ? "home" : ph < pa ? "away" : "draw";
+  const realWinner = mh > ma ? "home" : mh < ma ? "away" : "draw";
+  if (predWinner === realWinner) return 1;
+  return 0;
+}
 
 const FLAGS = {
   /* CONMEBOL */ Brazil:"🇧🇷",Argentina:"🇦🇷",Uruguay:"🇺🇾",Colombia:"🇨🇴",Ecuador:"🇪🇨",Venezuela:"🇻🇪",Paraguay:"🇵🇾",Chile:"🇨🇱",Bolivia:"🇧🇴",Peru:"🇵🇪",
@@ -88,6 +100,9 @@ export default function App() {
   const [toast,    setToast]    = useState(null);
   const [form,     setForm]     = useState({ name:"", email:"", phone:"", password:"" });
   const [formErr,  setFormErr]  = useState("");
+  const [rooms,    setRooms]    = useState([]);
+  const [myRooms,  setMyRooms]  = useState([]); // room_ids the user belongs to
+  const [publicBoard, setPublicBoard] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -106,6 +121,24 @@ export default function App() {
         })));
       }
 
+      // Load public leaderboard (available before login, for TV screen)
+      const { data: pubProfiles } = await supabase.from("profiles").select("*");
+      const { data: pubPreds }    = await supabase.from("predictions").select("*");
+      if (pubProfiles && pubPreds && mRows) {
+        const predMap = {};
+        pubPreds.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
+        const finished = mRows.filter(r => r.status === "finished");
+        const noAdmins = pubProfiles.filter(u => !u.is_admin);
+        const pubBoard = noAdmins.map(u => ({
+          ...u,
+          pts: finished.reduce((acc, m) => {
+            const p = predMap[`${u.id}__${m.id}`];
+            return acc + calcPts(p, m.home_score, m.away_score);
+          }, 0)
+        })).sort((a,b) => b.pts - a.pts).slice(0, 10);
+        setPublicBoard(pubBoard);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
@@ -120,14 +153,22 @@ export default function App() {
           const { data: allProfiles } = await supabase.from("profiles").select("*");
           if (allProfiles) {
             const usersMap = {};
-            allProfiles.forEach(p => { usersMap[p.id] = p; });
+            allProfiles.filter(p => p.is_admin !== true && p.is_admin !== 1 && p.is_admin !== "true").forEach(p => { usersMap[p.id] = p; });
             setUsers(usersMap);
           }
-          setPage("app");
+          // load rooms
+          const { data: rpRows } = await supabase.from("room_participants").select("room_id").eq("user_id", session.user.id);
+          if (rpRows) setMyRooms(rpRows.map(r => r.room_id));
+          const { data: roomRows } = await supabase.from("rooms").select("*");
+          if (roomRows) setRooms(roomRows);
+
+          // Show splash briefly (ball smash moment ~3.5s), then go to app
+          setTimeout(() => setPage("app"), 3500);
           return;
         }
       }
-      setTimeout(() => setPage("auth"), 18000);
+      // Not logged in — show splash until ball hits then go to auth
+      setTimeout(() => setPage("auth"), 3500);
     })();
   }, []);
 
@@ -146,14 +187,57 @@ export default function App() {
       const { data: allProfiles } = await supabase.from("profiles").select("*");
       if (allProfiles) {
         const usersMap = {};
-        allProfiles.forEach(p => { usersMap[p.id] = p; });
+        allProfiles.filter(p => !p.is_admin).forEach(p => { usersMap[p.id] = p; });
         setUsers(usersMap);
+        // also refresh public TV board
+        const { data: allPreds2 } = await supabase.from("predictions").select("*");
+        if (allPreds2 && mRows) {
+          const pm = {};
+          allPreds2.forEach(p => { pm[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
+          const fin = mRows.filter(r => r.status === "finished");
+          const pb = allProfiles.filter(u => !u.is_admin).map(u => ({
+            ...u,
+            pts: fin.reduce((acc, m) => {
+              const p = pm[`${u.id}__${m.id}`];
+              return acc + calcPts(p, m.home_score, m.away_score);
+            }, 0)
+          })).sort((a,b) => b.pts - a.pts).slice(0, 10);
+          setPublicBoard(pb);
+        }
       }
       const { data: allPreds } = await supabase.from("predictions").select("*");
       if (allPreds) {
         const predMap = {};
         allPreds.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
         setPreds(predMap);
+      }
+      const { data: roomRows } = await supabase.from("rooms").select("*");
+      if (roomRows) {
+        setRooms(roomRows);
+        // Auto self-join: if the current user created a room that just got approved
+        // and they're not yet a participant — insert themselves
+        const { data: rpRefresh } = await supabase.auth.getSession();
+        if (rpRefresh?.session) {
+          const uid = rpRefresh.session.user.id;
+          const { data: myRoomRows } = await supabase.from("room_participants").select("room_id").eq("user_id", uid);
+          if (myRoomRows) {
+            const myRoomIds = myRoomRows.map(r => r.room_id);
+            setMyRooms(myRoomIds);
+            // Find rooms I created that are now approved but I'm not yet in
+            const needsJoin = roomRows.filter(r =>
+              r.created_by === uid &&
+              r.status === "approved" &&
+              !myRoomIds.includes(r.id)
+            );
+            for (const r of needsJoin) {
+              await supabase.from("room_participants").upsert(
+                { room_id: r.id, user_id: uid },
+                { onConflict: "room_id,user_id" }
+              );
+              setMyRooms(prev => prev.includes(r.id) ? prev : [...prev, r.id]);
+            }
+          }
+        }
       }
     }, 5000);
     return () => clearInterval(id);
@@ -191,9 +275,13 @@ export default function App() {
     const { data: allProfiles } = await supabase.from("profiles").select("*");
     if (allProfiles) {
       const usersMap = {};
-      allProfiles.forEach(p => { usersMap[p.id] = p; });
+      allProfiles.filter(p => p.is_admin !== true && p.is_admin !== 1 && p.is_admin !== "true").forEach(p => { usersMap[p.id] = p; });
       setUsers(usersMap);
     }
+    const { data: rpRows2 } = await supabase.from("room_participants").select("room_id").eq("user_id", data.user.id);
+    if (rpRows2) setMyRooms(rpRows2.map(r => r.room_id));
+    const { data: roomRows2 } = await supabase.from("rooms").select("*");
+    if (roomRows2) setRooms(roomRows2);
     setPage("app");
     toast$(`Welcome back, ${profile.name}!`);
   };
@@ -202,7 +290,7 @@ export default function App() {
     await supabase.auth.signOut();
     setUser(null); setPage("auth");
     setForm({ name:"", email:"", phone:"", password:"" });
-    setPreds({}); setUsers({});
+    setPreds({}); setUsers({}); setRooms([]); setMyRooms([]);
   };
 
   const getPred = id => preds[`${user?.id}__${id}`] || null;
@@ -251,13 +339,99 @@ export default function App() {
     setSponsors(newSponsors); await sset("em_sponsors", newSponsors); toast$("Sponsors saved ✓");
   };
 
+  /* ── Rooms ── */
+  const requestRoom = async ({ name, prize, description, max_members, enable_chat, enable_leaderboard, enable_feed }) => {
+    const { data, error } = await supabase.from("rooms").insert({
+      room_name: name,
+      prize: prize || null,
+      description: description || null,
+      max_members: max_members || 50,
+      enable_chat: enable_chat !== false,
+      enable_leaderboard: enable_leaderboard !== false,
+      enable_feed: enable_feed !== false,
+      created_by: user.id,
+      requested_by_name: user.name,
+      status: "pending",
+      room_code: "PENDING",   // placeholder — overwritten on approval
+    }).select().single();
+    if (error) {
+      console.error("requestRoom error:", error);
+      toast$(`Error: ${error.message}`, false);
+      return;
+    }
+    setRooms(r => [...r, data]);
+    toast$("Room request submitted! Waiting for admin approval ⏳");
+    return data;
+  };
+
+  const approveRoom = async (roomId) => {
+    const code = Math.random().toString(36).substring(2,6).toUpperCase();
+    const { error } = await supabase.from("rooms").update({ status: "approved", room_code: code }).eq("id", roomId);
+    if (error) { toast$("Error approving room", false); return; }
+
+    // Get the room to find its creator
+    const room = rooms.find(r => r.id === roomId);
+    if (room?.created_by) {
+      // Add creator as participant — upsert so it won't fail if already exists
+      await supabase.from("room_participants").upsert(
+        { room_id: roomId, user_id: room.created_by },
+        { onConflict: "room_id,user_id" }
+      );
+    }
+
+    setRooms(r => r.map(x => x.id === roomId ? { ...x, status: "approved", room_code: code } : x));
+    toast$(`Room approved! Code: ${code} ✓`);
+  };
+
+  const rejectRoom = async (roomId) => {
+    const { error } = await supabase.from("rooms").update({ status: "rejected" }).eq("id", roomId);
+    if (error) { toast$("Error rejecting room", false); return; }
+    setRooms(r => r.map(x => x.id === roomId ? { ...x, status: "rejected" } : x));
+    toast$("Room rejected");
+  };
+
+  const updateRoomSettings = async (roomId, settings) => {
+    const { error } = await supabase.from("rooms").update(settings).eq("id", roomId);
+    if (error) { toast$("Error saving settings", false); return; }
+    setRooms(r => r.map(x => x.id === roomId ? { ...x, ...settings } : x));
+    toast$("Settings saved ✓");
+  };
+
+  const joinRoom = async (code) => {
+    const room = rooms.find(r => r.room_code === code.toUpperCase() && r.status === "approved" && r.room_code !== "PENDING");
+    if (!room) { toast$("Room not found or not yet approved — check the code", false); return; }
+    if (myRooms.includes(room.id)) { toast$("You're already in this room!", false); return; }
+    if (room.max_members) {
+      const { count } = await supabase.from("room_participants").select("*", { count:"exact", head:true }).eq("room_id", room.id);
+      if (count >= room.max_members) { toast$("This room is full!", false); return; }
+    }
+    const { error } = await supabase.from("room_participants").insert({ room_id: room.id, user_id: user.id });
+    if (error) { toast$("Error joining room", false); return; }
+    setMyRooms(r => [...r, room.id]);
+    toast$(`Joined "${room.room_name}" 🎉`);
+  };
+
+  const leaveRoom = async (roomId) => {
+    await supabase.from("room_participants").delete().eq("room_id", roomId).eq("user_id", user.id);
+    setMyRooms(r => r.filter(id => id !== roomId));
+    toast$("Left room");
+  };
+
+  const deleteRoom = async (roomId) => {
+    await supabase.from("rooms").delete().eq("id", roomId);
+    setRooms(r => r.filter(x => x.id !== roomId));
+    setMyRooms(r => r.filter(id => id !== roomId));
+    toast$("Room deleted ✓");
+  };
+
   const pts = useCallback((uid) =>
     matches.filter(m => m.status === "finished").reduce((acc, m) => {
       const p = preds[`${uid}__${m.id}`];
-      return acc + (p && p.h === m.hs && p.a === m.as ? 5 : 0);
+      return acc + calcPts(p, m.hs, m.as);
     }, 0), [matches, preds]);
 
   const board = Object.values(users)
+    .filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true")
     .map(u => ({ ...u, pts: pts(u.id) }))
     .sort((a, b) => b.pts - a.pts).slice(0, 10);
 
@@ -267,11 +441,17 @@ export default function App() {
     <div style={{ fontFamily:"'Outfit',sans-serif", background:"#000", minHeight:"100vh", color:"#fff" }}>
       <link href="https://fonts.googleapis.com/css2?family=Anton&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
       <style>{CSS}</style>
-      {toast && <div className={`toast ${toast.ok?"tok":"terr"}`}>{toast.msg}</div>}
-      {page === "splash" && <Splash />}
+      {toast && (
+        <div className={`notification ${toast.ok ? "notif-ok" : "notif-err"}`}>
+          <span className="notif-dot">{toast.ok ? "✓" : "!"}</span>
+          <span className="notif-msg">{toast.msg}</span>
+        </div>
+      )}
+      {page === "splash" && <Splash onSkip={() => setPage(user ? "app" : "auth")} />}
       {page === "auth"   && (
         <Auth tab={authTab} setTab={setAuthTab} form={form} setForm={setForm}
-              err={formErr} setErr={setFormErr} onLogin={doLogin} onRegister={doRegister} />
+              err={formErr} setErr={setFormErr} onLogin={doLogin} onRegister={doRegister}
+              publicBoard={publicBoard} />
       )}
       {page === "app" && (
         <Main
@@ -281,6 +461,9 @@ export default function App() {
           rules={rules} sponsors={sponsors}
           getPred={getPred} savePred={savePred} pts={pts}
           onLogout={doLogout}
+          rooms={rooms} myRooms={myRooms} users={users}
+          requestRoom={requestRoom} joinRoom={joinRoom} leaveRoom={leaveRoom} deleteRoom={deleteRoom} updateRoomSettings={updateRoomSettings}
+          approveRoom={approveRoom} rejectRoom={rejectRoom}
           adminUpdateMatch={adminUpdateMatch}
           adminAddMatch={adminAddMatch}
           adminDeleteMatch={adminDeleteMatch}
@@ -293,7 +476,7 @@ export default function App() {
 }
 
 /* ═══ SPLASH ════════════════════════════════════════════════════════════════ */
-function Splash() {
+function Splash({ onSkip }) {
   const mainRef  = useRef(null);
   const goldRef  = useRef(null);
   const sub2Ref  = useRef(null);
@@ -309,10 +492,14 @@ function Splash() {
   const [flash,    setFlash]    = useState(false);
   const [cracks,   setCracks]   = useState(false);
   const [falling,  setFalling]  = useState(false);
+  const [tapHint,  setTapHint]  = useState(false);
 
   useEffect(() => {
     const T = [];
     const at = (ms, fn) => T.push(setTimeout(fn, ms));
+
+    // Show tap hint after ball appears
+    at(800, () => setTapHint(true));
 
     at(3000, () => {
       setBallHit(true);
@@ -321,7 +508,7 @@ function Splash() {
       setTimeout(() => setFlash(false), 500);
       setTimeout(() => setCracks(false), 1200);
     });
-    at(3700, () => { setShowBall(false); setShowSign(true); });
+    at(3700, () => { setShowBall(false); setShowSign(true); setTapHint(false); });
     at(5800, () => {
       if (mainRef.current) mainRef.current.style.animation = 'neonWhiteOn 3.5s ease forwards';
       if (sub2Ref.current) sub2Ref.current.style.animation = 'subWhiteOn 1.2s ease 2s forwards';
@@ -348,9 +535,10 @@ function Splash() {
   }, []);
 
   return (
-    <div className={`splash${shake ? ' splash-shake' : ''}`}>
+    <div className={`splash${shake ? ' splash-shake' : ''}`} onClick={onSkip}>
       <div className="sp-vignette" />
       {flash  && <div className="sp-flash" />}
+      {tapHint && <div className="sp-tap-hint">TAP TO SKIP</div>}
       {cracks && (
         <div className="sp-cracks">
           {[0,30,60,90,120,150,180,210,240,270,300,330].map(deg => (
@@ -381,12 +569,176 @@ function Splash() {
   );
 }
 
+/* ═══ STADIUM SKY ════════════════════════════════════════════════════════════ */
+function StadiumSky() {
+  const canvasRef = useRef(null);
+  const rafRef    = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const particles = Array.from({ length: 120 }, () => ({
+      x: Math.random(),
+      y: 0.1 + Math.random() * 0.9,
+      vy: -(0.00015 + Math.random() * 0.0003),
+      vx: (Math.random() - 0.5) * 0.0001,
+      size: 0.5 + Math.random() * 1.8,
+      alpha: 0.08 + Math.random() * 0.38,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.3 + Math.random() * 0.8,
+    }));
+
+    const sweeps = Array.from({ length: 3 }, (_, i) => ({
+      y: 0.55 + i * 0.18,
+      x: Math.random(),
+      vx: 0.0003 + Math.random() * 0.0004,
+      width: 0.08 + Math.random() * 0.12,
+      alpha: 0.035 + Math.random() * 0.03,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    let t = 0;
+
+    const draw = () => {
+      const W = canvas.width;
+      const H = canvas.height;
+      t += 0.008;
+
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, W, H);
+
+      // Green pitch glow from bottom
+      const pitchGlow = ctx.createRadialGradient(W*0.5, H*1.1, 0, W*0.5, H*1.1, W*0.85);
+      pitchGlow.addColorStop(0,    "rgba(18,38,12,0.5)");
+      pitchGlow.addColorStop(0.4,  "rgba(8,20,6,0.2)");
+      pitchGlow.addColorStop(0.75, "rgba(3,8,3,0.07)");
+      pitchGlow.addColorStop(1,    "transparent");
+      ctx.fillStyle = pitchGlow;
+      ctx.fillRect(0, 0, W, H);
+
+      // Side vignette
+      [[0, W*0.35], [W, W*0.65]].forEach(([x0, x1]) => {
+        const g = ctx.createLinearGradient(x0, 0, x1, 0);
+        g.addColorStop(0, "rgba(6,10,18,0.55)");
+        g.addColorStop(1, "transparent");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      });
+
+      // Horizontal sweep glows
+      sweeps.forEach(s => {
+        s.x += s.vx;
+        if (s.x > 1.2) s.x = -0.2;
+        const pulse = 0.7 + 0.3 * Math.sin(t * 0.5 + s.phase);
+        const sx = s.x * W, sy = s.y * H, sw = s.width * W;
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sw);
+        grad.addColorStop(0,   `rgba(200,220,255,${s.alpha * pulse})`);
+        grad.addColorStop(0.45,`rgba(180,205,255,${s.alpha * 0.35 * pulse})`);
+        grad.addColorStop(1,   "transparent");
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, sw, sw * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Floating dust particles
+      particles.forEach(p => {
+        p.y += p.vy;
+        p.x += p.vx + Math.sin(t * p.speed + p.phase) * 0.00008;
+        if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
+        const flicker = 0.45 + 0.55 * Math.sin(t * p.speed * 3 + p.phase);
+        const fadeTop = Math.min(1, p.y / 0.12);
+        const finalAlpha = p.alpha * flicker * fadeTop;
+        if (finalAlpha < 0.012) return;
+        const px = p.x * W, py = p.y * H;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        const pg = ctx.createRadialGradient(px, py, 0, px, py, p.size * 3);
+        pg.addColorStop(0, `rgba(210,228,255,${finalAlpha})`);
+        pg.addColorStop(1, "transparent");
+        ctx.fillStyle = pg;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Two minimal corner lights
+      [[W * 0.11, 0], [W * 0.89, 0]].forEach(([lx, ly], idx) => {
+        const tilt = idx === 0 ? -0.2 : 0.2;
+        const pulse = 0.88 + 0.12 * Math.sin(t * 0.6 + idx * 2.1);
+
+        // Bulb glow
+        const src = ctx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.055);
+        src.addColorStop(0,   `rgba(235,245,255,${0.22 * pulse})`);
+        src.addColorStop(0.35,`rgba(215,232,255,${0.08 * pulse})`);
+        src.addColorStop(1,   "transparent");
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = src; ctx.beginPath();
+        ctx.arc(lx, ly, W * 0.055, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+        // Single tight beam
+        const bLen = H * 1.5;
+        const la = tilt - 0.018, ra = tilt + 0.018;
+        const bg = ctx.createRadialGradient(lx, ly, 0, lx, ly, bLen * 0.45);
+        bg.addColorStop(0,   `rgba(215,232,255,${0.14 * pulse})`);
+        bg.addColorStop(0.25,`rgba(200,225,255,${0.06 * pulse})`);
+        bg.addColorStop(0.6, `rgba(185,215,255,${0.015 * pulse})`);
+        bg.addColorStop(1,   "transparent");
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        ctx.beginPath(); ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + Math.sin(la)*bLen, ly + Math.cos(Math.abs(la))*bLen);
+        ctx.lineTo(lx + Math.sin(ra)*bLen, ly + Math.cos(Math.abs(ra))*bLen);
+        ctx.closePath(); ctx.fillStyle = bg; ctx.fill(); ctx.restore();
+
+        // Small bulb cluster dots
+        const dots = idx === 0
+          ? [{dx:-0.04,dy:0.002},{dx:-0.025,dy:-0.012},{dx:-0.010,dy:-0.016},{dx:0.006,dy:-0.013},{dx:0.018,dy:-0.005}]
+          : [{dx:0.04,dy:0.002},{dx:0.025,dy:-0.012},{dx:0.010,dy:-0.016},{dx:-0.006,dy:-0.013},{dx:-0.018,dy:-0.005}];
+        dots.forEach((d, di) => {
+          const bp = pulse * (0.85 + 0.15 * Math.sin(t * 1.2 + di * 0.8));
+          const dx = lx + d.dx * W, dy = ly + d.dy * H;
+          const cg = ctx.createRadialGradient(dx, dy, 0, dx, dy, W * 0.012);
+          cg.addColorStop(0,   `rgba(255,255,255,${0.9 * bp})`);
+          cg.addColorStop(0.3, `rgba(235,245,255,${0.5 * bp})`);
+          cg.addColorStop(1,   "transparent");
+          ctx.save(); ctx.globalCompositeOperation = "lighter";
+          ctx.fillStyle = cg; ctx.beginPath();
+          ctx.arc(dx, dy, W * 0.012, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        });
+      });
+
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    rafRef.current = requestAnimationFrame(draw);
+    return () => { cancelAnimationFrame(rafRef.current); window.removeEventListener("resize", resize); };
+  }, []);
+
+  return (
+    <canvas ref={canvasRef} style={{ position:"fixed", inset:0, width:"100%", height:"100%", pointerEvents:"none", zIndex:0 }} />
+  );
+}
+
 /* ═══ AUTH ══════════════════════════════════════════════════════════════════ */
-function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister }) {
+function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard }) {
+  const [showTV, setShowTV] = useState(false);
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(""); };
   const isLogin = tab === "login";
+
+  if (showTV) return <TVLeaderboard board={publicBoard} onBack={() => setShowTV(false)} />;
+
   return (
     <div className="auth-root">
+      <StadiumSky />
       <div className="auth-grid-bg" />
       <div className="auth-wrap">
         <div className="auth-hero">
@@ -421,6 +773,13 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister }) 
             </p>
           </div>
         </div>
+        <button className="tv-lb-btn" onClick={() => setShowTV(true)}>
+          <span className="tv-lb-btn-ico">📺</span>
+          <div className="tv-lb-btn-inner">
+            <span className="tv-lb-btn-text">VIEW LEADERBOARD</span>
+            <span className="tv-lb-btn-sub">TV / Big screen display</span>
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -434,9 +793,187 @@ function FField({ label, val, on, ph, type="text" }) {
   );
 }
 
+/* ═══ TV LEADERBOARD ════════════════════════════════════════════════════════ */
+function useBalls() {
+  const [balls, setBalls] = useState(() =>
+    Array.from({ length: 18 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      vx: (Math.random() - 0.5) * 0.55,
+      vy: (Math.random() - 0.5) * 0.55,
+      size: 28 + Math.random() * 44,
+      rot: Math.random() * 360,
+      rotSpeed: (Math.random() - 0.5) * 4.5,
+      opacity: 0.06 + Math.random() * 0.13,
+      blur: Math.random() > 0.5 ? 1 : 0,
+    }))
+  );
+
+  useEffect(() => {
+    let raf;
+    const tick = () => {
+      setBalls(prev => prev.map(b => {
+        let { x, y, vx, vy, rot, rotSpeed } = b;
+        x += vx; y += vy; rot += rotSpeed;
+        // bounce off walls
+        if (x < -5)  { x = -5;  vx = Math.abs(vx) + Math.random() * 0.1; }
+        if (x > 105) { x = 105; vx = -(Math.abs(vx) + Math.random() * 0.1); }
+        if (y < -5)  { y = -5;  vy = Math.abs(vy) + Math.random() * 0.1; }
+        if (y > 105) { y = 105; vy = -(Math.abs(vy) + Math.random() * 0.1); }
+        // cap speed
+        const spd = Math.sqrt(vx*vx + vy*vy);
+        if (spd > 0.7) { vx *= 0.97; vy *= 0.97; }
+        if (spd < 0.1) { vx += (Math.random()-0.5)*0.15; vy += (Math.random()-0.5)*0.15; }
+        return { ...b, x, y, vx, vy, rot, rotSpeed };
+      }));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return balls;
+}
+
+function TVBalls() {
+  const balls = useBalls();
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:0}}>
+      {balls.map(b => (
+        <div key={b.id} style={{
+          position:"absolute",
+          left:`${b.x}%`, top:`${b.y}%`,
+          fontSize:`${b.size}px`,
+          transform:`translate(-50%,-50%) rotate(${b.rot}deg)`,
+          opacity: b.opacity,
+          filter: b.blur ? `blur(${b.blur}px)` : "none",
+          transition:"none",
+          userSelect:"none",
+          lineHeight:1,
+        }}>⚽</div>
+      ))}
+    </div>
+  );
+}
+
+function TVLeaderboard({ board, onBack }) {
+  const [mode,   setMode]   = useState("scroll");
+  const [visIdx, setVisIdx] = useState(0);
+  const M = ["🥇","🥈","🥉"];
+
+  // Auto-cycle scroll ↔ podium every 12s with smooth fade
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMode(m => m === "scroll" ? "podium" : "scroll");
+    }, 12000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Row highlight sweep
+  useEffect(() => {
+    if (mode !== "scroll") return;
+    setVisIdx(0);
+    const id = setInterval(() => setVisIdx(i => (i + 1) % Math.max(board.length, 1)), 1800);
+    return () => clearInterval(id);
+  }, [mode, board.length]);
+
+  const top3 = board.slice(0, 3);
+
+  return (
+    <div className="tv-root">
+      {/* Animated soccer balls */}
+      <TVBalls />
+
+      {/* Scanline overlay for TV effect */}
+      <div className="tv-scanlines" />
+
+      {/* Back */}
+      <button className="tv-back-btn" onClick={onBack}>← BACK TO LOGIN</button>
+
+      {/* Header */}
+      <div className="tv-header" style={{position:"relative",zIndex:2}}>
+        <Logo w={80} />
+        <div className="tv-header-text">
+          <div className="tv-title">WORLD CUP 2026</div>
+          <div className="tv-subtitle">EL MUNDO BAR · BONAIRE</div>
+        </div>
+      </div>
+
+      {/* Mode dots */}
+      <div className="tv-mode-dots" style={{position:"relative",zIndex:2}}>
+        <span className={`tv-dot ${mode==="scroll"?"tv-dot-on":""}`} />
+        <span className={`tv-dot ${mode==="podium"?"tv-dot-on":""}`} />
+      </div>
+
+      {/* SCROLL MODE */}
+      {mode === "scroll" && (
+        <div key="scroll" className="tv-scroll-wrap tv-mode-fade" style={{position:"relative",zIndex:2}}>
+          <div className="tv-section-label">LEADERBOARD — TOP 10</div>
+          {board.length === 0 && <div className="tv-empty">No players yet — be the first to register!</div>}
+          {board.map((u, i) => (
+            <div key={u.id} className={`tv-row ${visIdx===i?"tv-row-lit":""}`}>
+              <div className="tv-rank">
+                {i<3 ? <span className="tv-medal">{M[i]}</span> : <span className="tv-rank-n">#{i+1}</span>}
+              </div>
+              <div className="tv-name">{u.name}</div>
+              <div className="tv-pts-wrap">
+                <span className="tv-pts">{u.pts}</span>
+                <span className="tv-pts-u">PTS</span>
+              </div>
+              {visIdx===i && <div className="tv-row-ball" style={{display:"none"}}>⚽</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* PODIUM MODE */}
+      {mode === "podium" && (
+        <div key="podium" className="tv-podium-wrap tv-mode-fade" style={{position:"relative",zIndex:2}}>
+          <div className="tv-section-label">TOP 3 PODIUM</div>
+          <div className="tv-podium">
+            {top3[1] && (
+              <div className="tv-pod tv-pod-2">
+                <div className="tv-pod-medal">🥈</div>
+                <div className="tv-pod-name">{top3[1].name}</div>
+                <div className="tv-pod-pts">{top3[1].pts}<span className="tv-pod-pts-u">pts</span></div>
+                <div className="tv-pod-block tv-pod-block-2" />
+              </div>
+            )}
+            {top3[0] && (
+              <div className="tv-pod tv-pod-1">
+                <div className="tv-pod-crown">👑</div>
+                <div className="tv-pod-medal">🥇</div>
+                <div className="tv-pod-name tv-pod-name-1">{top3[0].name}</div>
+                <div className="tv-pod-pts tv-pod-pts-1">{top3[0].pts}<span className="tv-pod-pts-u">pts</span></div>
+                <div className="tv-pod-block tv-pod-block-1" />
+              </div>
+            )}
+            {top3[2] && (
+              <div className="tv-pod tv-pod-3">
+                <div className="tv-pod-medal">🥉</div>
+                <div className="tv-pod-name">{top3[2].name}</div>
+                <div className="tv-pod-pts">{top3[2].pts}<span className="tv-pod-pts-u">pts</span></div>
+                <div className="tv-pod-block tv-pod-block-3" />
+              </div>
+            )}
+          </div>
+          {board.length === 0 && <div className="tv-empty">No players yet!</div>}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="tv-footer" style={{position:"relative",zIndex:2}}>⚽ Exact score = 5 pts · Correct winner or draw = 1 pt · Most points wins</div>
+    </div>
+  );
+}
+
 /* ═══ MAIN SHELL ════════════════════════════════════════════════════════════ */
 function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, sponsors,
                 getPred, savePred, pts, onLogout,
+                rooms, myRooms, users,
+                requestRoom, joinRoom, leaveRoom, deleteRoom, updateRoomSettings,
+                approveRoom, rejectRoom,
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
                 adminSaveRules, adminSaveSponsors }) {
   const myPts  = pts(user.id);
@@ -448,6 +985,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const tabs = [
     { id:"matches",     label:"Matches",  ico:<SoccerIco /> },
     { id:"leaderboard", label:"Ranking",  ico:<TrophyIco /> },
+    { id:"rooms",       label:"Rooms",    ico:<RoomsIco />  },
     { id:"rules",       label:"Rules",    ico:<RulesIco />  },
     { id:"sponsors",    label:"Sponsors", ico:<StarIco />   },
     { id:"profile",     label:"Profile",  ico:<PersonIco /> },
@@ -490,14 +1028,16 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} />}
           {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
+          {appTab === "rooms" && <RoomsView user={user} rooms={rooms} myRooms={myRooms} users={users} preds={preds} matches={matches} pts={pts} requestRoom={requestRoom} joinRoom={joinRoom} leaveRoom={leaveRoom} deleteRoom={deleteRoom} updateRoomSettings={updateRoomSettings} isAdmin={isAdmin} />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
           {appTab === "sponsors"    && <SponsorsView sponsors={sponsors} />}
           {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} />}
           {appTab === "admin" && isAdmin && (
             <AdminView
-              matches={matches} rules={rules} sponsors={sponsors}
+              matches={matches} rules={rules} sponsors={sponsors} rooms={rooms}
               onUpdate={adminUpdateMatch} onAdd={adminAddMatch} onDelete={adminDeleteMatch}
               onSaveRules={adminSaveRules} onSaveSponsors={adminSaveSponsors}
+              onDeleteRoom={deleteRoom} onApproveRoom={approveRoom} onRejectRoom={rejectRoom}
             />
           )}
         </div>
@@ -544,7 +1084,7 @@ function MatchesView({ matches, getPred, savePred }) {
 
       <div className="section-banner">
         <span className="section-banner-title">UPCOMING</span>
-        <span className="section-banner-sub">Predict · 5 pts per correct score</span>
+        <span className="section-banner-sub">Exact score = 5 pts · Correct winner = 1 pt</span>
       </div>
       <div className="card-stack">
         {visUpcoming.length === 0 && <div className="empty">No upcoming matches{selDate!=="all"?` on ${selDate}`:""}</div>}
@@ -574,6 +1114,30 @@ function minsUntilKickoff(m) {
   return (ko - Date.now()) / 60000;
 }
 
+function useCountdown(m) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (m.status === "finished") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [m.status]);
+  const ko = matchKickoff(m);
+  if (!ko) return { minsLeft: Infinity, label: "", urgency: "none" };
+  const ms = ko - now;
+  const totalMins = ms / 60000;
+  if (totalMins <= 0) return { minsLeft: 0, label: "LOCKED", urgency: "locked" };
+  const h = Math.floor(totalMins / 60);
+  const min = Math.floor(totalMins % 60);
+  const sec = Math.floor((ms % 60000) / 1000);
+  let label, urgency;
+  if (totalMins > 1440) { label = `${Math.floor(totalMins/1440)}d left`; urgency = "green"; }
+  else if (totalMins > 120) { label = `${h}h ${min}m left`; urgency = "green"; }
+  else if (totalMins > 60) { label = `${h}h ${min}m left`; urgency = "yellow"; }
+  else if (totalMins > 10) { label = `${min}m ${sec}s left`; urgency = "red"; }
+  else { label = `${min}m ${sec}s`; urgency = "red"; }
+  return { minsLeft: totalMins, label, urgency };
+}
+
 function MatchCard({ m, pred, onSave }) {
   const [h, setH] = useState(pred?.h ?? "");
   const [a, setA] = useState(pred?.a ?? "");
@@ -581,7 +1145,12 @@ function MatchCard({ m, pred, onSave }) {
   const fin       = m.status === "finished";
   const correct   = fin && pred && pred.h === m.hs && pred.a === m.as;
   const wrong     = fin && pred && !correct;
-  const minsLeft  = minsUntilKickoff(m);
+  const partialCorrect = fin && pred && !correct && (() => {
+    const pw = pred.h > pred.a ? "home" : pred.h < pred.a ? "away" : "draw";
+    const mw = m.hs  > m.as   ? "home" : m.hs  < m.as   ? "away" : "draw";
+    return pw === mw;
+  })();
+  const { minsLeft, label: countdownLabel, urgency } = useCountdown(m);
   const locked    = !fin && minsLeft <= 60;
   const submitted = !!pred;
 
@@ -591,14 +1160,25 @@ function MatchCard({ m, pred, onSave }) {
     setSaved(true);
   };
 
-  const statusColor = correct ? "#22c55e" : wrong ? "#ef4444" : locked && !fin ? "#f59e0b" : "transparent";
+  const urgencyColor = urgency === "red" ? "rgba(255,255,255,1)" : urgency === "yellow" ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.6)";
+  const urgencyBg    = urgency === "red" ? "rgba(255,255,255,.1)" : urgency === "yellow" ? "rgba(255,255,255,.05)" : "transparent";
+  const urgencyBorder= urgency === "red" ? "rgba(255,255,255,.5)" : urgency === "yellow" ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.15)";
+  const urgencyGlow  = urgency === "red"    ? "0 0 6px rgba(239,68,68,.5), 0 0 12px rgba(239,68,68,.2)"
+                     : urgency === "yellow" ? "0 0 6px rgba(251,191,36,.4), 0 0 12px rgba(251,191,36,.15)"
+                     : urgency === "green"  ? "0 0 6px rgba(74,222,128,.35), 0 0 10px rgba(74,222,128,.12)"
+                     : "none";
+  const statusColor  = correct ? "#22c55e" : partialCorrect ? "#f59e0b" : wrong ? "#ef4444" : locked && !fin ? "#f59e0b" : "transparent";
 
   return (
-    <div className={`mcard ${correct?"mcard-ok":wrong?"mcard-ng":""}`} style={{borderLeft:`3px solid ${statusColor}`}}>
+    <div className={`mcard ${correct?"mcard-ok":partialCorrect?"mcard-partial":wrong?"mcard-ng":""}`} style={{borderLeft:`3px solid ${statusColor}`}}>
       <div className="mcard-topstrip">
         <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} BON</span>
-        {locked && !fin && <span className="lock-chip">🔒 {minsLeft < 1 ? "LOCKED" : `${Math.round(minsLeft)}m`}</span>}
+        {!fin && countdownLabel && (
+          <span className="countdown-chip" style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
+            {urgency === "locked" ? "🔒 LOCKED" : countdownLabel}
+          </span>
+        )}
       </div>
       <div className="mcard-scoreboard">
         <div className="mteam-col">
@@ -656,10 +1236,11 @@ function MatchCard({ m, pred, onSave }) {
         <div className="mverdict mv-ng"><IcoX /> No prediction — predictions closed</div>
       )}
       {fin && (
-        <div className={`mverdict ${correct?"mv-ok":"mv-ng"}`}>
-          {correct ? <><IcoCheck /> Correct +5 pts</>
-            : pred  ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
-            :         <><IcoDash /> No prediction</>}
+        <div className={`mverdict ${correct?"mv-ok": partialCorrect?"mv-partial":"mv-ng"}`}>
+          {correct      ? <><IcoCheck /> Correct +5 pts</>
+            : partialCorrect ? <><IcoCheck /> Right winner +1 pt · Your pick: {pred.h}:{pred.a}</>
+            : pred        ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
+            :               <><IcoDash /> No prediction</>}
         </div>
       )}
     </div>
@@ -668,38 +1249,85 @@ function MatchCard({ m, pred, onSave }) {
 
 /* ═══ LEADERBOARD ═══════════════════════════════════════════════════════════ */
 function LeaderView({ board, user }) {
-  const M = ["🥇","🥈","🥉"];
+  const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
+  const top3 = filtered.slice(0, 3);
+  const rest = filtered.slice(3);
+  const myRank = filtered.findIndex(u => u.id === user.id) + 1;
+  const myEntry = filtered.find(u => u.id === user.id);
+
   return (
-    <div>
-      {board[0] && (
-        <div className="leader-hero">
-          <div className="lh-crown-row">
-            <span className="lh-crown-ico">👑</span>
-            <span className="lh-crown-lbl">LEADING THE TOURNAMENT</span>
+    <div className="lb-root">
+
+      {/* ── TITLE BAR ── */}
+      <div className="lb-title-bar">
+        <span className="lb-title">RANKINGS</span>
+      </div>
+
+      {/* ── TOP 3 PODIUM ── */}
+      {top3.length > 0 && (
+        <div className="lb-podium">
+          {/* 2nd */}
+          {top3[1] ? (
+            <div className="lb-pod lb-pod-2">
+              <div className="lb-pod-medal">🥈</div>
+              <div className="lb-pod-name">{top3[1].name}</div>
+              <div className="lb-pod-pts">{top3[1].pts}<span className="lb-pod-pts-u">pts</span></div>
+              {top3[1].id === user.id && <div className="lb-pod-you">YOU</div>}
+              <div className="lb-pod-plinth lb-pod-plinth-2" />
+            </div>
+          ) : <div className="lb-pod" />}
+
+          {/* 1st — tallest */}
+          <div className="lb-pod lb-pod-1">
+            <div className="lb-pod-crown">👑</div>
+            <div className="lb-pod-medal lb-pod-medal-1">🥇</div>
+            <div className="lb-pod-name lb-pod-name-1">{top3[0].name}</div>
+            <div className="lb-pod-pts lb-pod-pts-1">{top3[0].pts}<span className="lb-pod-pts-u">pts</span></div>
+            {top3[0].id === user.id && <div className="lb-pod-you">YOU</div>}
+            <div className="lb-pod-plinth lb-pod-plinth-1" />
           </div>
-          <div className="lh-name">{board[0].name}</div>
-          <div className="lh-pts-row">
-            <span className="lh-pts">{board[0].pts}</span>
-            <span className="lh-pts-unit">PTS</span>
-          </div>
+
+          {/* 3rd */}
+          {top3[2] ? (
+            <div className="lb-pod lb-pod-3">
+              <div className="lb-pod-medal">🥉</div>
+              <div className="lb-pod-name">{top3[2].name}</div>
+              <div className="lb-pod-pts">{top3[2].pts}<span className="lb-pod-pts-u">pts</span></div>
+              {top3[2].id === user.id && <div className="lb-pod-you">YOU</div>}
+              <div className="lb-pod-plinth lb-pod-plinth-3" />
+            </div>
+          ) : <div className="lb-pod" />}
         </div>
       )}
-      <div className="lboard">
-        {board.map((u,i) => (
-          <div key={u.id} className={`lrow ${u.id===user.id?"lrow-me":""}`}>
-            <div className="lrank">{i<3 ? M[i] : <span className="lrank-n">#{i+1}</span>}</div>
-            <div className="linfo">
-              <span className="lname">{u.name}</span>
-              {u.id===user.id && <span className="you-chip">YOU</span>}
-            </div>
-            <div className="lpts-wrap">
-              <span className="lpts-n">{u.pts}</span>
-              <span className="lpts-u">pts</span>
-            </div>
+
+      {/* ── REST OF TABLE ── */}
+      {rest.length > 0 && (
+        <div className="lb-table">
+          <div className="lb-table-header">
+            <span className="lb-th-rank">POS</span>
+            <span className="lb-th-name">PLAYER</span>
+            <span className="lb-th-pts">PTS</span>
           </div>
-        ))}
-        {board.length===0 && <div className="empty">No players yet — be the first!</div>}
-      </div>
+          {rest.map((u, i) => (
+            <div key={u.id} className={`lb-row ${u.id===user.id?"lb-row-me":""}`}>
+              <span className="lb-row-rank">#{i + 4}</span>
+              <span className="lb-row-name">
+                {u.name}
+                {u.id===user.id && <span className="lb-you-tag">YOU</span>}
+              </span>
+              <span className="lb-row-pts">{u.pts}<span className="lb-row-pts-u"> pts</span></span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filtered.length === 0 && (
+        <div className="lb-empty">
+          <div style={{fontSize:48,marginBottom:16}}>🏆</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"rgba(255,255,255,.4)"}}>NO PLAYERS YET</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -807,15 +1435,16 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
       </div>
       <div className="info-card">
         <div className="info-title">⚽ HOW POINTS WORK</div>
-        <p className="info-body">Predict the exact final score for each match. A correct prediction earns <strong>5 points</strong>. Incorrect = 0. Most points at tournament end wins.</p>
+        <p className="info-body">Predict the exact final score for each match. A correct prediction earns <strong>5 points</strong>. Predict the right winner or draw (wrong score) earns <strong>1 point</strong>. Most points at tournament end wins.</p>
       </div>
     </div>
   );
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors }) {
+function AdminView({ matches, rules, sponsors, rooms, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, onDeleteRoom, onApproveRoom, onRejectRoom }) {
   const [section, setSection] = useState("matches");
+  const pendingCount = rooms.filter(r => r.status === "pending").length;
   return (
     <div className="vpad">
       <SecHead title="Admin Panel" sub="Manage all content from here" />
@@ -824,6 +1453,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
           { id:"matches",  label:"⚽ Matches"  },
           { id:"rules",    label:"📋 Rules"    },
           { id:"sponsors", label:"⭐ Sponsors" },
+          { id:"rooms",    label: pendingCount > 0 ? `🏠 Rooms · ${pendingCount} pending` : "🏠 Rooms" },
         ].map(t => (
           <button key={t.id} className={`admin-subtab ${section===t.id?"ast-on":""}`} onClick={()=>setSection(t.id)}>
             {t.label}
@@ -833,6 +1463,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "matches"  && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
       {section === "rules"    && <AdminRules    rules={rules}       onSave={onSaveRules} />}
       {section === "sponsors" && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
+      {section === "rooms"    && <AdminRooms    rooms={rooms}       onDelete={onDeleteRoom} onApprove={onApproveRoom} onReject={onRejectRoom} />}
     </div>
   );
 }
@@ -1063,6 +1694,94 @@ function AdminSponsors({ sponsors, onSave }) {
   );
 }
 
+/* ── Admin: Rooms ── */
+function AdminRooms({ rooms, onDelete, onApprove, onReject }) {
+  const [confirm, setConfirm] = useState(null);
+  const pending  = rooms.filter(r => r.status === "pending");
+  const approved = rooms.filter(r => r.status === "approved");
+  const rejected = rooms.filter(r => r.status === "rejected");
+
+  return (
+    <div>
+      {confirm && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Delete this room?</div>
+            <p className="modal-body">All messages and participants will be removed. This cannot be undone.</p>
+            <div className="modal-actions">
+              <button className="modal-del-btn" onClick={()=>{ onDelete(confirm); setConfirm(null); }}>Yes, Delete</button>
+              <button className="modal-cancel-btn" onClick={()=>setConfirm(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PENDING */}
+      <div className="admin-section-lbl" style={{marginTop:16}}>
+        PENDING APPROVAL <span className="admin-count" style={{background: pending.length?"rgba(251,191,36,.15)":"", borderColor: pending.length?"rgba(251,191,36,.3)":""}}>{pending.length}</span>
+      </div>
+      {pending.length === 0 && <div className="empty" style={{padding:"28px 0"}}>No pending requests</div>}
+      {pending.map(r => (
+        <div key={r.id} className="admin-row" style={{borderLeft:"3px solid rgba(251,191,36,.4)"}}>
+          <div className="admin-row-left">
+            <span className="admin-row-group" style={{color:"rgba(251,191,36,.8)"}}>⏳ PENDING</span>
+            <span className="admin-row-teams">{r.room_name}</span>
+            <span className="admin-row-dt">Requested by: {r.requested_by_name}</span>
+            {r.prize && <span className="admin-row-dt">🏆 {r.prize}</span>}
+            {r.description && <span className="admin-row-dt" style={{color:"rgba(255,255,255,.4)"}}>"{r.description}"</span>}
+            <span className="admin-row-dt" style={{fontSize:10}}>
+              Chat: {r.enable_chat?"✓":"✗"} · Feed: {r.enable_feed?"✓":"✗"} · Leaderboard: {r.enable_leaderboard?"✓":"✗"} · Max: {r.max_members}
+            </span>
+          </div>
+          <div className="admin-row-right">
+            <button className="admin-save-btn" style={{padding:"8px 14px",fontSize:9,letterSpacing:2,background:"#22c55e",color:"#000"}} onClick={()=>onApprove(r.id)}>✓ APPROVE</button>
+            <button className="admin-cancel-btn" style={{padding:"8px 12px",fontSize:10}} onClick={()=>onReject(r.id)}>✕ REJECT</button>
+            <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>🗑</button>
+          </div>
+        </div>
+      ))}
+
+      {/* APPROVED */}
+      <div className="admin-section-lbl" style={{marginTop:20}}>
+        APPROVED <span className="admin-count">{approved.length}</span>
+      </div>
+      {approved.length === 0 && <div className="empty" style={{padding:"20px 0"}}>No approved rooms yet</div>}
+      {approved.map(r => (
+        <div key={r.id} className="admin-row" style={{borderLeft:"3px solid rgba(34,197,94,.3)"}}>
+          <div className="admin-row-left">
+            <span className="admin-row-group" style={{color:"rgba(34,197,94,.7)",letterSpacing:3}}>{r.room_code}</span>
+            <span className="admin-row-teams">{r.room_name}</span>
+            <span className="admin-row-dt">By: {r.requested_by_name}{r.prize ? ` · 🏆 ${r.prize}` : ""}</span>
+          </div>
+          <div className="admin-row-right">
+            <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>✕</button>
+          </div>
+        </div>
+      ))}
+
+      {/* REJECTED */}
+      {rejected.length > 0 && <>
+        <div className="admin-section-lbl" style={{marginTop:20}}>REJECTED <span className="admin-count">{rejected.length}</span></div>
+        {rejected.map(r => (
+          <div key={r.id} className="admin-row" style={{opacity:.45}}>
+            <div className="admin-row-left">
+              <span className="admin-row-group" style={{color:"rgba(239,68,68,.6)"}}>✕ REJECTED</span>
+              <span className="admin-row-teams">{r.room_name}</span>
+              <span className="admin-row-dt">By: {r.requested_by_name}</span>
+            </div>
+            <div className="admin-row-right">
+              <button className="admin-save-btn" style={{padding:"6px 12px",fontSize:8,letterSpacing:2}} onClick={()=>onApprove(r.id)}>RE-APPROVE</button>
+              <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>✕</button>
+            </div>
+          </div>
+        ))}
+      </>}
+
+      <div className="admin-hint">💡 Approving generates a unique code. The room creator sees it in their app to share.</div>
+    </div>
+  );
+}
+
 function AField({ label, val, on, ph }) {
   return (
     <div className="afield">
@@ -1082,6 +1801,7 @@ function SecHead({ title, sub }) {
 }
 
 /* Icons */
+const RoomsIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
 const SoccerIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20M12 2C8 6 8 18 12 22M12 2c4 4 4 16 0 20M2 12h20"/></svg>;
 const TrophyIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M6 2h12v7a6 6 0 0 1-12 0V2z"/></svg>;
 const PersonIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
@@ -1093,41 +1813,608 @@ const IcoCheck  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const IcoX      = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",marginRight:5,verticalAlign:"middle"}}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 const IcoDash   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",marginRight:5,verticalAlign:"middle"}}><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 
+/* ═══ ROOMS VIEW ════════════════════════════════════════════════════════════ */
+function RoomsView({ user, rooms, myRooms, users, preds, matches, pts, requestRoom, joinRoom, leaveRoom, deleteRoom, updateRoomSettings, isAdmin }) {
+  const [subTab,     setSubTab]     = useState("mine");
+  const [joinCode,   setJoinCode]   = useState("");
+  const [activeRoom, setActiveRoom] = useState(null);
+  const [joining,    setJoining]    = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [reqForm,    setReqForm]    = useState({
+    name:"", prize:"", description:"", max_members:50,
+    enable_chat:true, enable_leaderboard:true, enable_feed:true
+  });
+
+  // My rooms: approved ones I joined, plus my own pending/rejected requests
+  const myApprovedRooms = rooms.filter(r => r.status === "approved" && myRooms.includes(r.id));
+  const myRequests      = rooms.filter(r => r.created_by === user.id && r.status !== "approved");
+  const browseRooms     = rooms.filter(r => r.status === "approved" && !myRooms.includes(r.id));
+
+  const handleJoin = async () => {
+    if (!joinCode.trim()) return;
+    setJoining(true);
+    await joinRoom(joinCode.trim());
+    setJoinCode(""); setJoining(false); setSubTab("mine");
+  };
+
+  const handleRequest = async () => {
+    if (!reqForm.name.trim()) return;
+    setRequesting(true);
+    await requestRoom(reqForm);
+    setRequesting(false);
+    setReqForm({ name:"", prize:"", description:"", max_members:50, enable_chat:true, enable_leaderboard:true, enable_feed:true });
+    setSubTab("mine");
+  };
+
+  const currentActiveRoom = activeRoom ? rooms.find(r => r.id === activeRoom.id) || activeRoom : null;
+
+  if (currentActiveRoom && currentActiveRoom.status === "approved") {
+    return (
+      <RoomDetail
+        room={currentActiveRoom} user={user} users={users}
+        preds={preds} matches={matches} pts={pts}
+        isOwner={currentActiveRoom.created_by === user.id} isAdmin={isAdmin}
+        onBack={() => setActiveRoom(null)}
+        onLeave={async () => { await leaveRoom(currentActiveRoom.id); setActiveRoom(null); }}
+        onDelete={async () => { await deleteRoom(currentActiveRoom.id); setActiveRoom(null); }}
+        onSaveSettings={(s) => updateRoomSettings(currentActiveRoom.id, s)}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div className="section-banner">
+        <span className="section-banner-title">ROOMS</span>
+        <span className="section-banner-sub">Request a private room · Admin approves · Share code</span>
+      </div>
+      <div className="admin-subtabs">
+        {[{id:"mine",label:"My Rooms"},{id:"request",label:"+ Request Room"},{id:"join",label:"Join with Code"}].map(t => (
+          <button key={t.id} className={`admin-subtab ${subTab===t.id?"ast-on":""}`} onClick={()=>setSubTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* MY ROOMS */}
+      {subTab === "mine" && (
+        <div>
+          {/* Approved rooms I'm in */}
+          {myApprovedRooms.length === 0 && myRequests.length === 0 && (
+            <div className="room-empty-state">
+              <div className="room-empty-ico">🏠</div>
+              <div className="room-empty-title">No rooms yet</div>
+              <div className="room-empty-sub">Request a room or join one with a code</div>
+            </div>
+          )}
+          {myApprovedRooms.map(r => (
+            <RoomCard key={r.id} room={r} isOwner={r.created_by === user.id} isAdmin={isAdmin} myRooms={myRooms}
+              onView={() => setActiveRoom(r)}
+              onDelete={async (e) => { e.stopPropagation(); await deleteRoom(r.id); }}
+            />
+          ))}
+
+          {/* My pending/rejected requests */}
+          {myRequests.length > 0 && (
+            <div>
+              <div className="admin-section-lbl" style={{padding:"18px 14px 8px"}}>MY REQUESTS</div>
+              {myRequests.map(r => (
+                <div key={r.id} className={`room-request-row ${r.status === "rejected" ? "room-request-rejected" : ""}`}>
+                  <div className="room-request-left">
+                    <span className={`room-request-status ${r.status === "pending" ? "rrs-pending" : "rrs-rejected"}`}>
+                      {r.status === "pending" ? "⏳ PENDING APPROVAL" : "✕ REJECTED"}
+                    </span>
+                    <span className="room-card-name">{r.room_name}</span>
+                    {r.prize && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,200,50,.6)"}}>🏆 {r.prize}</span>}
+                    {r.status === "pending" && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>Waiting for admin to review</span>}
+                    {r.status === "rejected" && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(239,68,68,.4)"}}>Your request was not approved</span>}
+                  </div>
+                  <div className="admin-row-right">
+                    <button className="admin-del-btn" onClick={() => deleteRoom(r.id)} title="Cancel request">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* REQUEST ROOM */}
+      {subTab === "request" && (
+        <div style={{padding:"16px 14px"}}>
+          <div className="room-request-info">
+            <span className="room-request-info-ico">ℹ️</span>
+            <span className="room-request-info-text">Submit your room details below. Once the admin approves, a unique code will appear in your room so you can invite people.</span>
+          </div>
+          <div className="admin-form-card" style={{marginTop:12}}>
+            <div className="admin-form-title">ROOM REQUEST</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+              <AField label="Room Name *" val={reqForm.name} on={e=>setReqForm(f=>({...f,name:e.target.value}))} ph="e.g. Los Amigos FC" />
+              <AField label="Prize (optional)" val={reqForm.prize} on={e=>setReqForm(f=>({...f,prize:e.target.value}))} ph="e.g. Free round of drinks 🍺" />
+              <AField label="Description (optional)" val={reqForm.description} on={e=>setReqForm(f=>({...f,description:e.target.value}))} ph="e.g. Office World Cup group" />
+              <div className="afield">
+                <label className="afield-lbl">Max Members</label>
+                <input className="afield-inp" type="number" min="2" max="200" value={reqForm.max_members} onChange={e=>setReqForm(f=>({...f,max_members:+e.target.value}))} />
+              </div>
+            </div>
+
+            <div className="admin-section-lbl" style={{padding:"0 0 12px",fontSize:9}}>FEATURES TO ENABLE</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+              {[
+                {key:"enable_leaderboard", label:"🏅 Room Leaderboard", sub:"Members ranked by points"},
+                {key:"enable_feed",        label:"🔔 Activity Feed",    sub:"Who predicted what after matches"},
+                {key:"enable_chat",        label:"💬 Chat / Trash talk", sub:"Real-time messages between members"},
+              ].map(({key,label,sub}) => (
+                <div key={key} className="room-toggle-row" onClick={()=>setReqForm(f=>({...f,[key]:!f[key]}))} style={{cursor:"pointer"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:.5}}>{label}</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>{sub}</div>
+                  </div>
+                  <div className={`room-toggle ${reqForm[key]?"room-toggle-on":""}`}>
+                    <div className="room-toggle-knob"/>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button className="admin-save-btn" style={{width:"100%"}} disabled={!reqForm.name.trim()||requesting} onClick={handleRequest}>
+              {requesting ? "Submitting..." : "Submit Room Request →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* JOIN */}
+      {subTab === "join" && (
+        <div style={{padding:"16px 14px"}}>
+          <div className="admin-form-card">
+            <div className="admin-form-title">JOIN A ROOM</div>
+            <div style={{marginBottom:16}}>
+              <AField label="Room Code (4 characters)" val={joinCode} on={e=>setJoinCode(e.target.value.toUpperCase())} ph="e.g. A1B2" />
+            </div>
+            <button className="admin-save-btn" style={{width:"100%"}} disabled={joinCode.length < 2 || joining} onClick={handleJoin}>
+              {joining ? "Joining..." : "Join Room →"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RoomCard({ room, isOwner, isAdmin, myRooms, onView, onJoin, onDelete }) {
+  const joined = myRooms.includes(room.id);
+  const canDelete = isOwner || isAdmin;
+  return (
+    <div className="room-card" onClick={joined && onView ? onView : undefined} style={{cursor: joined && onView ? "pointer" : "default"}}>
+      <div className="room-card-left">
+        <div className="room-card-name">{room.room_name}</div>
+        <div className="room-card-meta">
+          <span className="room-code-badge">{room.room_code}</span>
+          {room.prize && <span className="room-prize-badge">🏆 {room.prize}</span>}
+          {isOwner && <span className="room-owner-badge">OWNER</span>}
+        </div>
+      </div>
+      <div className="room-card-right">
+        {joined && onView && (
+          <button className="room-view-btn-pill" onClick={onView}>VIEW →</button>
+        )}
+        {!joined && onJoin && (
+          <button className="room-join-btn" onClick={e=>{e.stopPropagation();onJoin();}}>JOIN</button>
+        )}
+        {canDelete && onDelete && (
+          <button className="room-card-del-btn" onClick={e=>{e.stopPropagation();onDelete();}} title="Delete room">✕</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RoomDetail({ room, user, users, preds, matches, pts, isOwner, isAdmin, onBack, onLeave, onDelete, onSaveSettings }) {
+  const [tab,       setTab]       = useState("board");
+  const [members,   setMembers]   = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [settings,  setSettings]  = useState({
+    room_name:         room.room_name,
+    prize:             room.prize || "",
+    description:       room.description || "",
+    max_members:       room.max_members || 50,
+    enable_chat:       room.enable_chat !== false,
+    enable_leaderboard:room.enable_leaderboard !== false,
+    enable_feed:       room.enable_feed !== false,
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const M = ["🥇","🥈","🥉"];
+  // Only the room CREATOR can delete from inside the room — admin uses Admin panel
+  const canDelete = isOwner;
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("room_participants").select("user_id").eq("room_id", room.id);
+      if (data) setMembers(data.map(r => r.user_id));
+      setLoading(false);
+    })();
+  }, [room.id]);
+
+  const board = members
+    .map(uid => ({ ...users[uid], id: uid, pts: pts(uid) }))
+    .filter(u => u.name && u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true")
+    .sort((a, b) => b.pts - a.pts);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    await onSaveSettings({
+      room_name: settings.room_name,
+      prize: settings.prize || null,
+      description: settings.description || null,
+      max_members: settings.max_members,
+      enable_chat: settings.enable_chat,
+      enable_leaderboard: settings.enable_leaderboard,
+      enable_feed: settings.enable_feed,
+    });
+    setSavingSettings(false);
+  };
+
+  const tabs = [
+    ...(room.enable_leaderboard !== false ? [{id:"board",  label:"🏅 Ranking"}]   : []),
+    ...(room.enable_feed        !== false ? [{id:"feed",   label:"🔔 Activity"}]   : []),
+    ...(room.enable_chat        !== false ? [{id:"chat",   label:"💬 Chat"}]       : []),
+    ...(isOwner                           ? [{id:"settings",label:"⚙️ Settings"}]  : []),
+  ];
+
+  // Default to first available tab
+  const activeTab = tabs.find(t => t.id === tab) ? tab : tabs[0]?.id || "board";
+
+  return (
+    <div>
+      {/* Confirm delete */}
+      {confirmDel && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Delete this room?</div>
+            <p className="modal-body">All messages and participants will be removed. This cannot be undone.</p>
+            <div className="modal-actions">
+              <button className="modal-del-btn" onClick={onDelete}>Yes, Delete</button>
+              <button className="modal-cancel-btn" onClick={()=>setConfirmDel(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Confirm leave */}
+      {confirmLeave && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Leave this room?</div>
+            <p className="modal-body">You can rejoin later with the room code.</p>
+            <div className="modal-actions">
+              <button className="modal-del-btn" onClick={onLeave}>Yes, Leave</button>
+              <button className="modal-cancel-btn" onClick={()=>setConfirmLeave(false)}>Stay</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="room-lb-header">
+        <button className="room-back-btn" onClick={onBack}>← ROOMS</button>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div>
+            <div className="room-lb-title">{room.room_name}</div>
+            {room.prize && <div className="room-lb-prize">🏆 {room.prize}</div>}
+            {room.description && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",marginTop:4}}>{room.description}</div>}
+          </div>
+          {canDelete && (
+            <button className="room-delete-btn" onClick={()=>setConfirmDel(true)}>DELETE ROOM</button>
+          )}
+        </div>
+      </div>
+
+      {/* Code strip — only visible to owner */}
+      {isOwner && (
+        <div className="room-code-strip">
+          <span className="room-code-strip-lbl">YOUR CODE</span>
+          <span className="room-code-strip-val">{room.room_code}</span>
+          <span className="room-code-strip-hint">Share this with people you want to invite</span>
+        </div>
+      )}
+
+      {room.prize && (
+        <div className="room-prize-banner">
+          <span className="room-prize-banner-ico">🏆</span>
+          <div className="room-prize-banner-text">
+            <span className="room-prize-banner-label">PRIZE FOR THE WINNER</span>
+            <span className="room-prize-banner-val">{room.prize}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="admin-subtabs">
+        {tabs.map(t => (
+          <button key={t.id} className={`admin-subtab ${activeTab===t.id?"ast-on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {activeTab === "board" && (
+        <div>
+          {!loading && board[0] && (
+            <div className="room-leader-hero">
+              <div className="room-leader-crown">👑</div>
+              <div className="room-leader-label">LEADING THIS ROOM</div>
+              <div className="room-leader-name">{board[0].name}</div>
+              <div className="room-leader-pts-row">
+                <span className="room-leader-pts">{board[0].pts}</span>
+                <span className="room-leader-pts-unit">PTS</span>
+              </div>
+            </div>
+          )}
+          <div className="lboard">
+            {board.map((u,i) => (
+              <div key={u.id} className={`lrow ${u.id===user.id?"lrow-me":""}`}>
+                <div className="lrank">{i<3?M[i]:<span className="lrank-n">#{i+1}</span>}</div>
+                <div className="linfo"><span className="lname">{u.name}</span>{u.id===user.id&&<span className="you-chip">YOU</span>}</div>
+                <div className="lpts-wrap"><span className="lpts-n">{u.pts}</span><span className="lpts-u">pts</span></div>
+              </div>
+            ))}
+            {!loading && board.length === 0 && <div className="empty" style={{padding:"40px 0"}}>No members yet — share your code!</div>}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "feed" && <RoomFeed room={room} members={members} users={users} preds={preds} matches={matches} />}
+      {activeTab === "chat" && <RoomChat room={room} user={user} />}
+
+      {activeTab === "settings" && isOwner && (
+        <div style={{padding:"16px 14px"}}>
+          <div className="admin-form-card">
+            <div className="admin-form-title">ROOM SETTINGS</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+              <AField label="Room Name" val={settings.room_name} on={e=>setSettings(s=>({...s,room_name:e.target.value}))} ph="Room name" />
+              <AField label="Prize" val={settings.prize} on={e=>setSettings(s=>({...s,prize:e.target.value}))} ph="e.g. Free round of drinks 🍺" />
+              <AField label="Description" val={settings.description} on={e=>setSettings(s=>({...s,description:e.target.value}))} ph="A note for your members" />
+              <div className="afield">
+                <label className="afield-lbl">Max Members</label>
+                <input className="afield-inp" type="number" min="2" max="200" value={settings.max_members} onChange={e=>setSettings(s=>({...s,max_members:+e.target.value}))} />
+              </div>
+            </div>
+            <div className="admin-section-lbl" style={{padding:"0 0 12px",fontSize:9}}>FEATURES</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+              {[
+                {key:"enable_leaderboard", label:"🏅 Room Leaderboard"},
+                {key:"enable_feed",        label:"🔔 Activity Feed"},
+                {key:"enable_chat",        label:"💬 Chat"},
+              ].map(({key,label}) => (
+                <div key={key} className="room-toggle-row" onClick={()=>setSettings(s=>({...s,[key]:!s[key]}))} style={{cursor:"pointer"}}>
+                  <div style={{flex:1,fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:.5}}>{label}</div>
+                  <div className={`room-toggle ${settings[key]?"room-toggle-on":""}`}><div className="room-toggle-knob"/></div>
+                </div>
+              ))}
+            </div>
+            <button className="admin-save-btn" style={{width:"100%"}} disabled={savingSettings} onClick={handleSaveSettings}>
+              {savingSettings ? "Saving..." : "Save Settings ✓"}
+            </button>
+          </div>
+          <div style={{padding:"16px 0 8px"}}>
+            <button className="room-delete-btn" onClick={()=>setConfirmDel(true)}>Delete This Room</button>
+          </div>
+        </div>
+      )}
+
+      {!isOwner && (
+        <div style={{padding:"16px 14px 32px"}}>
+          <button className="room-leave-subtle-btn" onClick={()=>setConfirmLeave(true)}>
+            ← Leave this room
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Room Activity Feed ── */
+function RoomFeed({ room, members, users, preds, matches }) {
+  const finished = matches.filter(m => m.status === "finished");
+
+  // Build activity events from predictions on finished matches for members
+  const events = [];
+  finished.forEach(m => {
+    members.forEach(uid => {
+      const u = users[uid];
+      if (!u) return;
+      const p = preds[`${uid}__${m.id}`];
+      if (!p) return;
+      const exact = p.h === m.hs && p.a === m.as;
+      const pw = p.h > p.a ? "home" : p.h < p.a ? "away" : "draw";
+      const mw = m.hs > m.as ? "home" : m.hs < m.as ? "away" : "draw";
+      const partial = !exact && pw === mw;
+      const pts = exact ? 5 : partial ? 1 : 0;
+      events.push({
+        uid, name: u.name,
+        match: `${m.home} vs ${m.away}`,
+        pred: `${p.h}:${p.a}`,
+        result: `${m.hs}:${m.as}`,
+        correct: exact,
+        partial,
+        pts,
+        date: m.date,
+      });
+    });
+  });
+  events.sort((a,b) => b.pts - a.pts);
+
+  if (events.length === 0) return (
+    <div className="room-empty-state">
+      <div className="room-empty-ico">🔔</div>
+      <div className="room-empty-title">No activity yet</div>
+      <div className="room-empty-sub">Correct predictions will appear here once matches finish</div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="admin-section-lbl" style={{padding:"14px 14px 8px"}}>PREDICTION RESULTS</div>
+      {events.map((e,i) => (
+        <div key={i} className={`feed-row ${e.correct?"feed-row-ok":e.partial?"feed-row-partial":"feed-row-ng"}`}>
+          <div className="feed-ico">{e.correct ? "✅" : e.partial ? "🟡" : "❌"}</div>
+          <div className="feed-body">
+            <span className="feed-name">{e.name}</span>
+            <span className="feed-match">{e.match} · {e.date}</span>
+            <span className="feed-detail">
+              Predicted <strong>{e.pred}</strong> · Result <strong>{e.result}</strong>
+              {e.correct && <span className="feed-pts"> +5 pts 🎯</span>}
+              {e.partial  && <span className="feed-pts" style={{color:"#fbbf24"}}> +1 pt ✓ winner</span>}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Room Chat ── */
+function RoomChat({ room, user }) {
+  const [messages,  setMessages]  = useState([]);
+  const [input,     setInput]     = useState("");
+  const [sending,   setSending]   = useState(false);
+  const [loading,   setLoading]   = useState(true);
+  const bottomRef   = useRef(null);
+  const lastIdRef   = useRef(null);
+
+  const fetchMessages = async () => {
+    const { data } = await supabase.from("room_messages").select("*")
+      .eq("room_id", room.id).order("created_at", { ascending: true }).limit(100);
+    if (data) {
+      setMessages(data);
+      if (data.length > 0) lastIdRef.current = data[data.length - 1].id;
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMessages();
+
+    // Realtime subscription (works if Realtime is enabled in Supabase dashboard)
+    const channel = supabase.channel(`room-chat-${room.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public",
+        table: "room_messages", filter: `room_id=eq.${room.id}`
+      }, payload => {
+        setMessages(m => {
+          if (m.find(x => x.id === payload.new.id)) return m;
+          return [...m, payload.new];
+        });
+      }).subscribe();
+
+    // Polling fallback every 3s — ensures messages show even without Realtime
+    const poll = setInterval(fetchMessages, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
+  }, [room.id]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || sending) return;
+    setSending(true);
+    const optimistic = {
+      id: `tmp-${Date.now()}`, room_id: room.id,
+      user_id: user.id, user_name: user.name,
+      message: input.trim(), created_at: new Date().toISOString(),
+    };
+    setMessages(m => [...m, optimistic]);
+    setInput("");
+    await supabase.from("room_messages").insert({
+      room_id: room.id, user_id: user.id,
+      user_name: user.name, message: optimistic.message
+    });
+    setSending(false);
+  };
+
+  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+
+  return (
+    <div className="chat-wrap">
+      <div className="chat-messages">
+        {loading && <div className="empty" style={{padding:30}}>Loading...</div>}
+        {!loading && messages.length === 0 && (
+          <div className="chat-empty">
+            <div style={{fontSize:32,marginBottom:8}}>💬</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>NO MESSAGES YET</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",marginTop:4}}>Be the first to say something!</div>
+          </div>
+        )}
+        {messages.map(msg => (
+          <div key={msg.id} className={`chat-msg ${msg.user_id === user.id ? "chat-msg-me" : ""}`}>
+            <div className="chat-msg-header">
+              <span className="chat-msg-name">{msg.user_id === user.id ? "You" : msg.user_name}</span>
+              <span className="chat-msg-time">{formatTime(msg.created_at)}</span>
+            </div>
+            <div className="chat-msg-bubble">{msg.message}</div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div className="chat-input-row">
+        <input
+          className="chat-input"
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&send()}
+          placeholder="Say something... 🗣️"
+          maxLength={200}
+        />
+        <button className="chat-send-btn" onClick={send} disabled={!input.trim()||sending}>
+          {sending ? "..." : "→"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ CSS ════════════════════════════════════════════════════════════════════ */
 const CSS = `
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
   ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
 
-  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:12px 28px;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;white-space:nowrap;z-index:9999;animation:toastBounce .4s cubic-bezier(.34,1.56,.64,1) both;pointer-events:none;border:1px solid rgba(255,255,255,.2)}
-  .tok{background:#fff;color:#000}
-  .terr{background:#000;color:#ef4444;border-color:#ef4444}
+  /* ── NOTIFICATIONS ── */
+  .notification{position:fixed;bottom:80px;right:20px;display:flex;align-items:center;gap:12px;padding:14px 20px;z-index:9999;pointer-events:none;animation:notifSlideIn .4s cubic-bezier(.16,1,.3,1) both;max-width:320px;border-left:3px solid}
+  .notif-ok{background:rgba(10,10,10,.96);border-color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+  .notif-err{background:rgba(10,10,10,.96);border-color:rgba(255,255,255,.4);box-shadow:0 8px 32px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+  .notif-dot{font-family:'Anton',sans-serif;font-size:14px;flex-shrink:0;line-height:1}
+  .notif-ok .notif-dot{color:#fff}
+  .notif-err .notif-dot{color:rgba(255,255,255,.6)}
+  .notif-msg{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:#fff;letter-spacing:.2px;line-height:1.4}
+  @keyframes notifSlideIn{from{opacity:0;transform:translateX(110%)}to{opacity:1;transform:translateX(0)}}
 
   /* ── AUTH ── */
-  .auth-root{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;padding:48px 20px 80px;position:relative;overflow:hidden}
-  .auth-grid-bg{position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:40px 40px}
-  .auth-wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:440px}
+  .auth-root{min-height:100vh;display:flex;align-items:center;justify-content:center;background:transparent;padding:48px 20px 80px;position:relative;overflow:hidden}
+  .auth-grid-bg{position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.012) 1px,transparent 1px);background-size:40px 40px;z-index:1}
+  .auth-wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:440px;position:relative;z-index:2}
   .auth-hero{display:flex;flex-direction:column;align-items:center;margin-bottom:44px;animation:fadeUp .7s cubic-bezier(.16,1,.3,1) both}
   .auth-event{display:flex;align-items:center;gap:16px;margin-top:24px}
   .auth-event-rule{flex-shrink:0;height:1px;width:44px;background:rgba(255,255,255,.25)}
-  .auth-event-text{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:5px;color:rgba(255,255,255,.55);white-space:nowrap}
+  .auth-event-text{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:5px;color:rgba(255,255,255,.7);white-space:nowrap}
   .auth-panel{width:100%;background:#000;border:1px solid rgba(255,255,255,.14);animation:fadeUp .7s cubic-bezier(.16,1,.3,1) .12s both}
   .auth-tabs{display:flex}
-  .auth-tab{flex:1;padding:18px 0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.08);font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;color:rgba(255,255,255,.18);cursor:pointer;transition:all .2s;position:relative}
+  .auth-tab{flex:1;padding:18px 0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.08);font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;color:rgba(255,255,255,.45);cursor:pointer;transition:all .2s;position:relative}
   .atab-on{color:#fff;border-bottom-color:transparent;background:rgba(255,255,255,.02)}
   .atab-on::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:#fff}
   .auth-form{padding:32px 28px 28px;display:flex;flex-direction:column;gap:0}
   .ffield{margin-bottom:18px}
-  .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(255,255,255,.25);margin-bottom:8px}
-  .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);color:#fff;font-family:'Outfit',sans-serif;font-size:15px;transition:all .2s;outline:none;border-radius:0}
-  .ffield-inp::placeholder{color:rgba(255,255,255,.13)}
-  .ffield-inp:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.045)}
+  .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.6);margin-bottom:8px}
+  .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:'Outfit',sans-serif;font-size:16px;font-weight:500;transition:all .2s;outline:none;border-radius:0}
+  .ffield-inp::placeholder{color:rgba(255,255,255,.35)}
+  .ffield-inp:focus{border-color:rgba(255,255,255,.6);background:rgba(255,255,255,.09)}
   .auth-err{display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#fca5a5;margin-bottom:18px;background:rgba(239,68,68,.06);border-left:2px solid #ef4444}
   .auth-err-dot{font-family:'Anton',sans-serif;font-size:15px;color:#ef4444}
   .auth-cta{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11.5px;letter-spacing:5px;transition:opacity .15s;margin-bottom:22px;margin-top:6px}
   .auth-cta:hover{opacity:.88}
-  .auth-footer-text{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.22);text-align:center}
-  .auth-footer-link{color:rgba(255,255,255,.6);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .auth-footer-text{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);text-align:center}
+  .auth-footer-link{color:rgba(255,255,255,.85);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
   /* ── SHELL ── */
   .shell{display:flex;flex-direction:column;height:100vh;background:#000;max-width:100%;margin:0 auto;position:relative}
@@ -1160,7 +2447,7 @@ const CSS = `
   .section-banner{padding:22px 16px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
   .section-banner-dim{background:rgba(255,255,255,.015)}
   .section-banner-title{font-family:'Anton',sans-serif;font-size:32px;letter-spacing:2px;color:#fff;display:block;line-height:1;text-transform:uppercase}
-  .section-banner-sub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:5px;display:block}
+  .section-banner-sub{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.6);margin-top:5px;display:block}
   .card-stack{display:flex;flex-direction:column}
   .empty{text-align:center;color:rgba(255,255,255,.14);padding:56px 0;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;text-transform:uppercase}
 
@@ -1174,9 +2461,9 @@ const CSS = `
   /* ── MATCH CARD ── */
   .mcard{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;transition:background .15s}
   .mcard:hover{background:#060606}
-  .mcard-topstrip{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-wrap:wrap;gap:6px}
-  .mcard-group-pill{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.8);text-transform:uppercase}
-  .mcard-dt{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.55);font-weight:500}
+  .mcard-topstrip{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:10px 14px 0;gap:6px}
+  .mcard-group-pill{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.8);text-transform:uppercase;justify-self:start}
+  .mcard-dt{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);font-weight:500;text-align:center;justify-self:center}
   .lock-chip{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;color:rgba(251,191,36,.7);border:1px solid rgba(251,191,36,.2);padding:2px 8px}
   .mcard-scoreboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 14px 14px;gap:10px}
   .mteam-col{display:flex;flex-direction:column;align-items:center;gap:8px}
@@ -1194,9 +2481,9 @@ const CSS = `
   .score-label{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:3px;color:rgba(255,255,255,.25)}
   .score-label-green{color:rgba(34,197,94,.6)}
   .score-inputs-row{display:flex;align-items:center;gap:8px}
-  .sinput{width:52px;height:60px;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#fff;font-family:'Anton',sans-serif;font-size:30px;outline:none;transition:all .2s}
-  .sinput:focus{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.07)}
-  .sinput::placeholder{color:rgba(255,255,255,.1)}
+  .sinput{width:52px;height:60px;text-align:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);color:#fff;font-family:'Anton',sans-serif;font-size:30px;outline:none;transition:all .2s}
+  .sinput:focus{border-color:rgba(255,255,255,.7);background:rgba(255,255,255,.12)}
+  .sinput::placeholder{color:rgba(255,255,255,.25)}
   .ssep{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.2)}
   .mcard-foot{padding:0 14px 14px}
   .pred-cta{width:100%;padding:14px;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:3px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -1204,37 +2491,53 @@ const CSS = `
   .pred-cta:disabled{opacity:.15;cursor:not-allowed}
   .pred-cta-done{border-color:rgba(34,197,94,.4)!important;color:rgba(34,197,94,.8)!important}
   .mverdict{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
-  .mv-ok{color:#86efac}.mv-ng{color:rgba(255,255,255,.2)}.mv-locked{color:rgba(34,197,94,.7);display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
+  .mv-ok{color:#86efac}.mv-partial{color:#fbbf24}.mv-ng{color:rgba(255,255,255,.2)}.mv-locked{color:rgba(34,197,94,.7);display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
 
   /* ── LEADERBOARD ── */
-  .leader-hero{background:#fff;padding:36px 20px 30px;text-align:center}
-  .lh-crown-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
-  .lh-crown-ico{font-size:20px}
-  .lh-crown-lbl{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:5px;color:rgba(0,0,0,.3);text-transform:uppercase}
-  .lh-name{font-family:'Anton',sans-serif;font-size:36px;letter-spacing:1.5px;color:#000;line-height:1;text-transform:uppercase}
-  .lh-pts-row{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:12px}
-  .lh-pts{font-family:'Anton',sans-serif;font-size:72px;color:#000;line-height:.9}
-  .lh-pts-unit{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:4px;color:rgba(0,0,0,.3)}
-  .lboard{display:flex;flex-direction:column}
-  .lrow{display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,.055);padding:15px 16px;transition:background .15s;cursor:default}
-  .lrow:hover{background:#060606}
-  .lrow-me{background:#0c0c0c!important;border-left:2px solid rgba(255,255,255,.45)}
-  .lrank{font-size:22px;width:34px;text-align:center;flex-shrink:0;line-height:1}
-  .lrank-n{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.4);letter-spacing:1px}
-  .linfo{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
-  .lname{font-family:'Anton',sans-serif;font-size:15px;color:#fff;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+  /* ── LEADERBOARD REDESIGN ── */
+  .lb-root{display:flex;flex-direction:column;min-height:60vh}
+  .lb-title-bar{display:flex;align-items:center;justify-content:center;padding:28px 16px 22px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .lb-title{font-family:'Anton',sans-serif;font-size:42px;letter-spacing:4px;color:#fff;line-height:1;text-transform:uppercase;text-align:center}
+  .lb-podium{display:flex;align-items:flex-end;justify-content:center;gap:0;padding:32px 12px 0;background:linear-gradient(to bottom,rgba(255,255,255,.015) 0%,transparent 100%);border-bottom:1px solid rgba(255,255,255,.08)}
+  .lb-pod{display:flex;flex-direction:column;align-items:center;flex:1;max-width:200px;position:relative}
+  .lb-pod-crown{font-size:clamp(20px,4vw,30px);margin-bottom:4px;animation:crownBounce 2s ease-in-out infinite}
+  .lb-pod-medal{font-size:clamp(24px,5vw,36px);margin-bottom:8px;line-height:1}
+  .lb-pod-medal-1{font-size:clamp(30px,6vw,44px)}
+  .lb-pod-name{font-family:'Anton',sans-serif;font-size:clamp(11px,2.2vw,15px);letter-spacing:1px;color:#fff;text-transform:uppercase;text-align:center;word-break:break-word;line-height:1.2;margin-bottom:6px;padding:0 4px}
+  .lb-pod-name-1{font-size:clamp(14px,2.8vw,20px)}
+  .lb-pod-pts{font-family:'Anton',sans-serif;font-size:clamp(26px,5vw,42px);color:#fff;line-height:1;text-align:center;margin-bottom:12px}
+  .lb-pod-pts-1{font-size:clamp(34px,6.5vw,56px)}
+  .lb-pod-pts-u{font-family:'Anton',sans-serif;font-size:clamp(7px,1.2vw,11px);letter-spacing:2px;color:rgba(255,255,255,.4);margin-left:3px}
+  .lb-pod-you{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;background:#fff;color:#000;padding:2px 8px;margin-bottom:8px}
+  .lb-pod-plinth{width:100%;border-top:2px solid rgba(255,255,255,.15)}
+  .lb-pod-plinth-1{height:clamp(48px,9vw,80px);background:linear-gradient(to bottom,rgba(255,255,255,.1),rgba(255,255,255,.03))}
+  .lb-pod-plinth-2{height:clamp(32px,6vw,56px);background:linear-gradient(to bottom,rgba(255,255,255,.06),rgba(255,255,255,.01))}
+  .lb-pod-plinth-3{height:clamp(22px,4vw,40px);background:linear-gradient(to bottom,rgba(255,255,255,.04),transparent)}
+  .lb-table{display:flex;flex-direction:column}
+  .lb-table-header{display:grid;grid-template-columns:52px 1fr 80px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+  .lb-th-rank,.lb-th-name,.lb-th-pts{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.35)}
+  .lb-th-pts{text-align:right}
+  .lb-row{display:grid;grid-template-columns:52px 1fr 80px;align-items:center;padding:16px 16px;border-bottom:1px solid rgba(255,255,255,.06);transition:background .15s;animation:lbRowIn .35s ease both}
+  .lb-row:hover{background:rgba(255,255,255,.03)}
+  .lb-row-me{background:rgba(255,255,255,.05)!important;border-left:3px solid #fff}
+  .lb-row-rank{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.4);letter-spacing:1px}
+  .lb-row-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lb-row-pts{font-family:'Anton',sans-serif;font-size:22px;color:#fff;text-align:right;line-height:1}
+  .lb-row-pts-u{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1.5px;color:rgba(255,255,255,.4)}
+  .lb-you-tag{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;background:#fff;color:#000;padding:2px 7px;flex-shrink:0}
+  .lb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center}
+  @keyframes lbRowIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+  .lb-row:nth-child(1){animation-delay:.05s}.lb-row:nth-child(2){animation-delay:.10s}.lb-row:nth-child(3){animation-delay:.15s}.lb-row:nth-child(4){animation-delay:.20s}.lb-row:nth-child(5){animation-delay:.25s}.lb-row:nth-child(6){animation-delay:.30s}.lb-row:nth-child(7){animation-delay:.35s}
+  /* keep lrow/you-chip for TV leaderboard reuse */
   .you-chip{font-family:'Anton',sans-serif;font-size:6px;letter-spacing:2px;background:#fff;color:#000;padding:2px 8px;flex-shrink:0}
-  .lpts-wrap{display:flex;align-items:baseline;gap:4px;flex-shrink:0}
-  .lpts-n{font-family:'Anton',sans-serif;font-size:28px;color:#fff;line-height:1}
-  .lpts-u{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:1.5px;color:rgba(255,255,255,.4)}
 
   /* ── RULES ── */
   .rules-card{display:flex;gap:18px;border-bottom:1px solid rgba(255,255,255,.055);padding:22px 16px;transition:background .15s}
   .rules-card:hover{background:#060606}
-  .rules-num{font-family:'Anton',sans-serif;font-size:44px;color:rgba(255,255,255,.05);letter-spacing:1px;flex-shrink:0;min-width:44px;line-height:1;margin-top:-4px}
+  .rules-num{font-family:'Anton',sans-serif;font-size:44px;color:rgba(255,255,255,.28);letter-spacing:1px;flex-shrink:0;min-width:44px;line-height:1;margin-top:-4px}
   .rules-content{flex:1}
   .rules-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#fff;text-transform:uppercase;margin-bottom:9px}
-  .rules-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.55);line-height:1.76}
+  .rules-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.72);line-height:1.76}
   .rules-footer{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px 16px;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.16)}
 
   /* ── SPONSORS ── */
@@ -1249,7 +2552,7 @@ const CSS = `
   .sponsor-info{flex:1}
   .sponsor-name{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.5px;color:#fff;text-transform:uppercase}
   .sponsor-role{font-family:'Anton',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(255,255,255,.25);text-transform:uppercase;margin-bottom:4px}
-  .sponsor-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:3px}
+  .sponsor-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.6);margin-top:3px}
   .sponsor-cta-box{padding:24px 16px;border-top:1px solid rgba(255,255,255,.055)}
   .sponsor-cta-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;color:#fff;text-transform:uppercase;margin-bottom:8px}
   .sponsor-cta-body{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.25);line-height:1.7}
@@ -1259,7 +2562,7 @@ const CSS = `
   .prof-hero{background:#fff;padding:40px 24px 32px;text-align:center;width:100%}
   .prof-av{width:72px;height:72px;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:24px;letter-spacing:2px;margin:0 auto 20px}
   .prof-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:8px}
-  .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(0,0,0,.55);margin-bottom:3px}
+  .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(0,0,0,.65);margin-bottom:3px}
   .prof-leader-badge{margin-top:18px;display:inline-block;background:#000;color:#fff;padding:10px 24px;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;text-transform:uppercase}
   .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.08);width:100%}
   .scard{background:#111;padding:24px 20px}
@@ -1268,61 +2571,62 @@ const CSS = `
   .slbl{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);margin-top:8px;text-transform:uppercase;letter-spacing:.5px}
   .info-card{padding:24px 20px;border-top:1px solid rgba(255,255,255,.08);width:100%}
   .info-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#fff;margin-bottom:12px;text-transform:uppercase}
-  .info-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);line-height:1.78}
+  .info-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.78}
   .info-body strong{color:#fff;font-weight:700}
 
   /* ── ADMIN ── */
   .admin-subtabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07)}
-  .admin-subtab{padding:15px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.22);cursor:pointer;transition:all .2s;margin-bottom:-1px}
+  .admin-subtab{padding:15px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.55);cursor:pointer;transition:all .2s;margin-bottom:-1px}
   .ast-on{color:#fff;border-bottom-color:#fff}
   .admin-topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 14px 0;margin-bottom:4px;gap:12px}
   .admin-add-btn{flex-shrink:0;padding:10px 18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:2.5px;transition:opacity .15s;white-space:nowrap}
   .admin-add-btn:hover{opacity:.85}
-  .admin-section-lbl{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:8px;padding:18px 14px 10px}
-  .admin-count{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);padding:2px 8px}
-  .admin-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.055);padding:14px;gap:12px;flex-wrap:wrap;transition:background .15s}
-  .admin-row:hover{background:#060606}
-  .admin-row-left{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-  .admin-row-group{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;color:rgba(255,255,255,.45)}
-  .admin-row-teams{font-family:'Anton',sans-serif;font-size:14px;color:#fff;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
-  .admin-row-dt{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:2px;font-weight:500}
+  .admin-section-lbl{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:8px;padding:18px 14px 10px}
+  .admin-count{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);padding:3px 10px;font-size:11px;color:#fff}
+  .admin-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);padding:16px 14px;gap:12px;flex-wrap:wrap;transition:background .15s}
+  .admin-row:hover{background:#080808}
+  .admin-row-left{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+  .admin-row-group{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;color:rgba(255,255,255,.6)}
+  .admin-row-teams{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
+  .admin-row-dt{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);margin-top:2px;font-weight:500}
   .admin-row-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-  .admin-score-badge{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:3px}
-  .finished-tag{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:2px;color:rgba(34,197,94,.6);border:1px solid rgba(34,197,94,.15);padding:2px 8px}
-  .upcoming-tag{font-family:'Anton',sans-serif;font-size:6.5px;letter-spacing:2px;color:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.08);padding:2px 8px}
-  .admin-edit-btn{padding:7px 14px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.5);cursor:pointer;font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:2px;transition:all .15s}
-  .admin-edit-btn:hover{border-color:rgba(255,255,255,.45);color:#fff}
-  .admin-del-btn{width:30px;height:30px;background:transparent;border:1px solid rgba(239,68,68,.15);color:#f87171;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s}
-  .admin-del-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4)}
-  .admin-form-card{background:#050505;border:1px solid rgba(255,255,255,.1);padding:18px;margin:0 0 8px}
-  .admin-edit-card{border-color:rgba(255,255,255,.22)}
-  .admin-form-title{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.28);margin-bottom:16px;text-transform:uppercase}
+  .admin-score-badge{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:3px}
+  .finished-tag{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(34,197,94,.8);border:1px solid rgba(34,197,94,.25);padding:3px 8px}
+  .upcoming-tag{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.15);padding:3px 8px}
+  .admin-edit-btn{padding:8px 16px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;transition:all .15s}
+  .admin-edit-btn:hover{border-color:rgba(255,255,255,.55);color:#fff}
+  .admin-del-btn{width:32px;height:32px;background:transparent;border:1px solid rgba(239,68,68,.2);color:rgba(239,68,68,.6);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .admin-del-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.5);color:#f87171}
+  .admin-form-card{background:#050505;border:1px solid rgba(255,255,255,.12);padding:18px;margin:0 0 8px}
+  .admin-edit-card{border-color:rgba(255,255,255,.25)}
+  .admin-form-title{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,.55);margin-bottom:16px;text-transform:uppercase}
   .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:14px}
   .afield{display:flex;flex-direction:column;gap:6px}
-  .afield-lbl{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.5)}
-  .afield-inp{padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);color:#fff;font-family:'Outfit',sans-serif;font-size:14px;transition:all .2s;outline:none}
-  .afield-inp:focus{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.04)}
-  .afield-inp::placeholder{color:rgba(255,255,255,.13)}
+  .afield-lbl{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.7)}
+  .afield-inp{padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#fff;font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;transition:all .2s;outline:none}
+  .afield-inp:focus{border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.08)}
+  .afield-inp::placeholder{color:rgba(255,255,255,.3)}
   .afield-ta{resize:vertical;min-height:80px;font-family:'Outfit',sans-serif}
   .admin-score-row{margin-bottom:16px}
-  .admin-score-lbl{display:block;font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(255,255,255,.35);margin-bottom:10px}
+  .admin-score-lbl{display:block;font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;font-weight:500}
   .admin-score-inputs{display:flex;align-items:center;gap:10px}
-  .admin-sinput{width:56px;height:48px;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);color:#fff;font-family:'Anton',sans-serif;font-size:22px;transition:all .2s;outline:none}
-  .admin-sinput:focus{border-color:rgba(255,255,255,.4)}
-  .admin-sep{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.15)}
+  .admin-sinput{width:56px;height:52px;text-align:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#fff;font-family:'Anton',sans-serif;font-size:24px;transition:all .2s;outline:none}
+  .admin-sinput:focus{border-color:rgba(255,255,255,.5)}
+  .admin-sep{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.25)}
   .admin-form-actions{display:flex;gap:10px}
-  .admin-save-btn{flex:1;padding:13px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;transition:opacity .15s}
+  .admin-save-btn{flex:1;padding:14px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;transition:opacity .15s}
   .admin-save-btn:hover{opacity:.85}
-  .admin-cancel-btn{padding:13px 18px;background:transparent;border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.35);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s}
-  .admin-cancel-btn:hover{border-color:rgba(255,255,255,.3);color:#fff}
-  .admin-hint{border-top:1px solid rgba(255,255,255,.05);padding:14px 0;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.22);line-height:1.65;margin-bottom:24px}
+  .admin-cancel-btn{padding:14px 20px;background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.55);cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;transition:all .15s}
+  .admin-cancel-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
+  .admin-hint{border-top:1px solid rgba(255,255,255,.07);padding:14px 0;font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);line-height:1.65;margin-bottom:24px}
   .vpad{padding:0}
 
   /* ── MODAL ── */
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
-  .modal{background:#000;border:1px solid rgba(255,255,255,.2);padding:32px 24px;width:100%;max-width:340px}
-  .modal-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:1.5px;color:#fff;margin-bottom:12px;text-transform:uppercase}
-  .modal-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.35);line-height:1.7;margin-bottom:24px}
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+  .modal{background:#111;border:1px solid rgba(255,255,255,.25);padding:36px 28px;width:100%;max-width:360px;box-shadow:0 24px 80px rgba(0,0,0,.9);animation:modalPop .25s cubic-bezier(.16,1,.3,1) both}
+  @keyframes modalPop{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  .modal-title{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:1.5px;color:#fff;margin-bottom:14px;text-transform:uppercase}
+  .modal-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.6);line-height:1.7;margin-bottom:24px}
   .modal-actions{display:flex;gap:10px}
   .modal-del-btn{flex:1;padding:14px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;transition:opacity .15s}
   .modal-del-btn:hover{opacity:.85}
@@ -1334,12 +2638,172 @@ const CSS = `
   .sectitle{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;color:#fff;text-transform:uppercase}
   .secsub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:5px}
 
+  /* ── COUNTDOWN CHIP ── */
+  .countdown-chip{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;border:1px solid;padding:5px 12px;white-space:nowrap;transition:all .5s;justify-self:end}
+
+  /* ── ROOMS ── */
+  .room-empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:10px}
+  .room-empty-ico{font-size:48px;line-height:1}
+  .room-empty-title{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:2px;color:rgba(255,255,255,.5)}
+  .room-empty-sub{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.25);text-align:center}
+  .room-card{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);padding:18px 14px;transition:background .15s;gap:16px}
+  .room-card:hover{background:#080808}
+  .room-card-left{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+  .room-card-name{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:1px;color:#fff;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .room-card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .room-code-badge{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:4px;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:4px 12px}
+  .room-prize-badge{font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:rgba(255,200,50,.95);background:rgba(255,200,50,.08);border:1px solid rgba(255,200,50,.2);padding:4px 10px}
+  .room-owner-badge{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.15);padding:4px 10px}
+  .room-card-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+  .room-view-btn-pill{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:8px 16px;cursor:pointer;transition:all .15s}
+  .room-view-btn-pill:hover{background:rgba(255,255,255,.15)}
+  .room-join-btn{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:#000;background:#fff;border:none;padding:8px 18px;cursor:pointer;transition:opacity .15s}
+  .room-join-btn:hover{opacity:.85}
+  .room-card-del-btn{background:transparent;border:none;color:rgba(255,255,255,.25);cursor:pointer;font-size:14px;padding:4px 6px;transition:color .15s;line-height:1}
+  .room-card-del-btn:hover{color:rgba(239,68,68,.7)}
+  .room-lb-header{padding:16px 14px 10px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .room-back-btn{background:transparent;border:none;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;color:rgba(255,255,255,.55);cursor:pointer;padding:0;margin-bottom:10px;display:block;transition:color .15s}
+  .room-back-btn:hover{color:#fff}
+  .room-lb-title{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:2px;color:#fff;text-transform:uppercase;line-height:1;margin-bottom:6px}
+  .room-lb-prize{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,200,50,.8)}
+  .room-delete-btn{flex-shrink:0;padding:8px 16px;background:transparent;border:1px solid rgba(239,68,68,.25);color:rgba(239,68,68,.55);cursor:pointer;font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2.5px;transition:all .2s;white-space:nowrap;margin-top:6px}
+  .room-delete-btn:hover{border-color:rgba(239,68,68,.6);color:#f87171;background:rgba(239,68,68,.06)}
+  .room-leave-subtle-btn{background:transparent;border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.28);cursor:pointer;padding:4px 0;transition:color .2s;display:inline-block}
+  .room-leave-subtle-btn:hover{color:rgba(255,255,255,.6)}
+  .room-code-strip{display:flex;align-items:center;gap:16px;padding:16px 14px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+  .room-code-strip-lbl{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,.45)}
+  .room-code-strip-val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:8px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:8px 18px}
+  .room-code-strip-hint{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);font-weight:500}
+  .room-leave-btn{width:100%;padding:13px;background:transparent;border:1px solid rgba(239,68,68,.2);color:rgba(239,68,68,.5);cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:3px;transition:all .2s}
+  .room-leave-btn:hover{border-color:rgba(239,68,68,.5);color:#f87171}
+
+  /* Request rows */
+  .room-request-row{display:flex;align-items:center;justify-content:space-between;padding:16px 14px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px}
+  .room-request-rejected{opacity:.5}
+  .room-request-left{display:flex;flex-direction:column;gap:4px;flex:1}
+  .room-request-status{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2.5px;margin-bottom:2px}
+  .rrs-pending{color:rgba(251,191,36,.8)}
+  .rrs-rejected{color:rgba(239,68,68,.6)}
+  .room-request-info{display:flex;gap:10px;padding:12px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);margin-bottom:4px;align-items:flex-start}
+  .room-request-info-ico{font-size:16px;flex-shrink:0;margin-top:1px}
+  .room-request-info-text{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.5);line-height:1.6}
+
+  /* Toggle switch */
+  .room-toggle-row{display:flex;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .room-toggle{width:44px;height:24px;background:rgba(255,255,255,.1);border-radius:12px;position:relative;flex-shrink:0;transition:background .2s}
+  .room-toggle-on{background:rgba(34,197,94,.5)}
+  .room-toggle-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;transform:translateX(0)}
+  .room-toggle-on .room-toggle-knob{transform:translateX(20px)}
+
+  /* ── ROOM LEADER HERO ── */
+  .room-leader-hero{background:#fff;padding:32px 20px 28px;text-align:center;position:relative}
+  .room-leader-crown{font-size:32px;line-height:1;margin-bottom:8px;animation:crownBounce 1.5s ease-in-out infinite}
+  .room-leader-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:5px;color:rgba(0,0,0,.4);text-transform:uppercase;margin-bottom:12px}
+  .room-leader-name{font-family:'Anton',sans-serif;font-size:clamp(24px,5vw,40px);letter-spacing:1.5px;color:#000;line-height:1;text-transform:uppercase;margin-bottom:10px}
+  .room-leader-pts-row{display:flex;align-items:baseline;justify-content:center;gap:8px}
+  .room-leader-pts{font-family:'Anton',sans-serif;font-size:60px;color:#000;line-height:.9}
+  .room-leader-pts-unit{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:4px;color:rgba(0,0,0,.3)}
+  .room-prize-banner{display:flex;align-items:center;gap:14px;padding:16px 14px;background:linear-gradient(135deg,rgba(255,200,50,.08),rgba(255,160,20,.04));border-bottom:1px solid rgba(255,200,50,.15)}
+  .room-prize-banner-ico{font-size:32px;flex-shrink:0;line-height:1}
+  .room-prize-banner-text{display:flex;flex-direction:column;gap:3px}
+  .room-prize-banner-label{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,200,50,.5);text-transform:uppercase}
+  .room-prize-banner-val{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:1px;color:rgba(255,200,50,.95);text-transform:uppercase}
+
+  /* ── ACTIVITY FEED ── */
+  .feed-row{display:flex;align-items:flex-start;gap:12px;padding:14px;border-bottom:1px solid rgba(255,255,255,.055);transition:background .15s}
+  .feed-row:hover{background:#060606}
+  .feed-row-ok{border-left:3px solid rgba(34,197,94,.4)}
+  .feed-row-partial{border-left:3px solid rgba(251,191,36,.4)}
+  .feed-row-ng{border-left:3px solid rgba(255,255,255,.06)}
+  .feed-ico{font-size:18px;flex-shrink:0;margin-top:2px}
+  .feed-body{display:flex;flex-direction:column;gap:3px;flex:1}
+  .feed-name{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:.5px;color:#fff;text-transform:uppercase}
+  .feed-match{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);font-weight:500}
+  .feed-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.55);line-height:1.5}
+  .feed-detail strong{color:#fff}
+  .feed-pts{color:#86efac;font-weight:700}
+
+  /* ── CHAT ── */
+  .chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 280px);min-height:320px}
+  .chat-messages{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  .chat-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px 0}
+  .chat-msg{display:flex;flex-direction:column;gap:3px;max-width:82%}
+  .chat-msg-me{align-self:flex-end}
+  .chat-msg-header{display:flex;align-items:center;gap:8px}
+  .chat-msg-name{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.35);text-transform:uppercase}
+  .chat-msg-time{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.2)}
+  .chat-msg-bubble{font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.09);padding:10px 14px;line-height:1.5;word-break:break-word}
+  .chat-msg-me .chat-msg-bubble{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.2)}
+  .chat-msg-me .chat-msg-header{flex-direction:row-reverse}
+  .chat-input-row{display:flex;gap:0;border-top:1px solid rgba(255,255,255,.08);flex-shrink:0}
+  .chat-input{flex:1;padding:14px 16px;background:rgba(255,255,255,.03);border:none;color:#fff;font-family:'Outfit',sans-serif;font-size:15px;font-weight:500;outline:none}
+  .chat-input::placeholder{color:rgba(255,255,255,.25)}
+  .chat-input:focus{background:rgba(255,255,255,.06)}
+  .chat-send-btn{width:56px;background:rgba(255,255,255,.08);border:none;border-left:1px solid rgba(255,255,255,.08);color:#fff;font-family:'Anton',sans-serif;font-size:18px;cursor:pointer;transition:all .15s;flex-shrink:0}
+  .chat-send-btn:hover:not(:disabled){background:rgba(255,255,255,.18)}
+  .chat-send-btn:disabled{opacity:.25;cursor:not-allowed}
+
+  /* ── TV LEADERBOARD BUTTON ── */
+  .tv-lb-btn{display:flex;align-items:center;gap:14px;width:100%;max-width:440px;margin-top:16px;padding:16px 20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:all .2s;text-align:left}
+  .tv-lb-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3)}
+  .tv-lb-btn-ico{font-size:26px;flex-shrink:0;line-height:1}
+  .tv-lb-btn-inner{display:flex;flex-direction:column;gap:3px}
+  .tv-lb-btn-text{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:#fff}
+  .tv-lb-btn-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);font-weight:500}
+
+  /* ── TV LEADERBOARD SCREEN ── */
+  .tv-root{min-height:100vh;background:#000;display:flex;flex-direction:column;align-items:center;padding:24px 20px 40px;position:relative;overflow:hidden}
+  .tv-scanlines{position:fixed;inset:0;pointer-events:none;z-index:1;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px)}
+  .tv-back-btn{position:absolute;top:18px;left:20px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:2.5px;padding:8px 14px;cursor:pointer;transition:all .2s;z-index:10}
+  .tv-back-btn:hover{color:#fff;border-color:rgba(255,255,255,.4)}
+  .tv-header{display:flex;align-items:center;gap:20px;margin-bottom:12px;margin-top:10px}
+  .tv-header-text{display:flex;flex-direction:column;gap:4px}
+  .tv-title{font-family:'Anton',sans-serif;font-size:clamp(28px,6vw,56px);letter-spacing:4px;color:#fff;line-height:1;text-transform:uppercase;text-shadow:0 0 20px rgba(255,255,255,.3)}
+  .tv-subtitle{font-family:'Anton',sans-serif;font-size:clamp(10px,2vw,16px);letter-spacing:6px;color:rgba(255,255,255,.4);text-transform:uppercase}
+  .tv-mode-dots{display:flex;gap:8px;margin-bottom:24px}
+  .tv-mode-fade{animation:tvModeFade 0.9s cubic-bezier(.4,0,.2,1) both}
+  @keyframes tvModeFade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .tv-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15);transition:background .4s}
+  .tv-dot-on{background:#fff;box-shadow:0 0 8px #fff}
+  .tv-section-label{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:5px;color:rgba(255,255,255,.3);text-align:center;margin-bottom:20px;text-transform:uppercase}
+  .tv-empty{font-family:'Outfit',sans-serif;font-size:16px;color:rgba(255,255,255,.25);text-align:center;padding:40px 0}
+  .tv-scroll-wrap{width:100%;max-width:680px;z-index:2}
+  .tv-row{display:flex;align-items:center;gap:16px;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.06);transition:background .4s,border-color .4s;position:relative}
+  .tv-row-lit{background:rgba(255,255,255,.07);border-bottom-color:rgba(255,255,255,.2);box-shadow:0 0 30px rgba(255,255,255,.04)}
+  .tv-row-ball{position:absolute;right:80px;font-size:clamp(16px,2.5vw,24px);animation:rowBallBounce .6s ease-in-out infinite alternate}
+  @keyframes rowBallBounce{from{transform:translateY(0) rotate(0deg)}to{transform:translateY(-6px) rotate(180deg)}}
+  .tv-rank{width:52px;flex-shrink:0;text-align:center}
+  .tv-medal{font-size:clamp(22px,4vw,34px);line-height:1}
+  .tv-rank-n{font-family:'Anton',sans-serif;font-size:clamp(18px,3vw,26px);color:rgba(255,255,255,.35);letter-spacing:1px}
+  .tv-name{flex:1;font-family:'Anton',sans-serif;font-size:clamp(20px,4vw,38px);color:#fff;letter-spacing:1px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tv-pts-wrap{display:flex;align-items:baseline;gap:6px;flex-shrink:0}
+  .tv-pts{font-family:'Anton',sans-serif;font-size:clamp(28px,5vw,52px);color:#fff;line-height:1}
+  .tv-pts-u{font-family:'Anton',sans-serif;font-size:clamp(9px,1.5vw,14px);letter-spacing:2px;color:rgba(255,255,255,.35)}
+  .tv-podium-wrap{width:100%;max-width:760px;z-index:2}
+  .tv-podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:0 10px;margin-top:20px}
+  .tv-pod{display:flex;flex-direction:column;align-items:center;flex:1;max-width:220px}
+  .tv-pod-crown{font-size:clamp(24px,4vw,42px);line-height:1;margin-bottom:4px;animation:crownBounce 1.5s ease-in-out infinite}
+  .tv-pod-medal{font-size:clamp(28px,5vw,50px);line-height:1;margin-bottom:10px}
+  .tv-pod-name{font-family:'Anton',sans-serif;font-size:clamp(13px,2.5vw,22px);letter-spacing:1px;color:#fff;text-transform:uppercase;text-align:center;margin-bottom:6px;line-height:1.2;word-break:break-word}
+  .tv-pod-name-1{font-size:clamp(16px,3vw,28px)}
+  .tv-pod-pts{font-family:'Anton',sans-serif;font-size:clamp(22px,4vw,44px);color:#fff;line-height:1;text-align:center;margin-bottom:12px}
+  .tv-pod-pts-1{font-size:clamp(30px,5.5vw,58px)}
+  .tv-pod-pts-u{font-family:'Anton',sans-serif;font-size:clamp(8px,1.2vw,13px);letter-spacing:2px;color:rgba(255,255,255,.4);margin-left:4px}
+  .tv-pod-block{width:100%;border-top:2px solid rgba(255,255,255,.2)}
+  .tv-pod-block-1{height:clamp(60px,10vw,100px);background:rgba(255,255,255,.12)}
+  .tv-pod-block-2{height:clamp(44px,7vw,72px);background:rgba(255,255,255,.06)}
+  .tv-pod-block-3{height:clamp(32px,5vw,52px);background:rgba(255,255,255,.04)}
+  .tv-footer{margin-top:auto;padding-top:32px;font-family:'Outfit',sans-serif;font-size:clamp(11px,1.8vw,14px);color:rgba(255,255,255,.25);text-align:center;letter-spacing:.5px;z-index:2}
+  @keyframes crownBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
   /* ══════════════════════════════════════
      SPLASH — BALL + ROPE SIGN + NEON
   ══════════════════════════════════════ */
   .splash{position:relative;display:flex;align-items:center;justify-content:center;height:100vh;background:#000;overflow:hidden}
   .splash-shake{animation:screenShake 0.8s cubic-bezier(.36,.07,.19,.97) both}
   .sp-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,.92) 100%);pointer-events:none;z-index:1}
+  .sp-tap-hint{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.25);z-index:15;animation:tapHintPulse 1.8s ease-in-out infinite;pointer-events:none;white-space:nowrap}
+  @keyframes tapHintPulse{0%,100%{opacity:.25}50%{opacity:.6}}
   .sp-flash{position:absolute;inset:0;background:#fff;z-index:20;animation:flashOut 0.5s ease forwards;pointer-events:none}
   .sp-cracks{position:absolute;top:50%;left:50%;z-index:3;pointer-events:none}
   .sp-crack{position:absolute;top:0;left:0;width:1px;height:0;background:linear-gradient(to bottom,rgba(255,255,255,.9),transparent);transform-origin:top center;animation:crackGrow 1.2s ease forwards}
@@ -1357,11 +2821,11 @@ const CSS = `
   .sp-neon-main{font-family:'Anton',sans-serif;font-size:clamp(46px,10vw,82px);letter-spacing:8px;color:rgba(255,255,255,.18);line-height:1;text-transform:uppercase}
   .sp-sign-divider{height:1px;background:rgba(255,255,255,.18);margin:14px 0 10px;width:100%}
   .sp-neon-sub2{font-family:'Anton',sans-serif;font-size:clamp(9px,2vw,13px);letter-spacing:5px;color:rgba(255,255,255,.18);text-transform:uppercase;margin-bottom:16px}
-  .sp-sign-sep{height:1px;background:rgba(255,200,50,.2);margin:0 0 14px;width:80%}
+  .sp-sign-sep{height:1px;background:rgba(255,200,50,.2);margin:0 0 14px;width:100%}
   .sp-neon-gold{font-family:'Anton',sans-serif;font-size:clamp(11px,2.4vw,17px);letter-spacing:10px;color:rgba(255,200,50,.18);text-transform:uppercase}
 
   /* ── ANIMATIONS ── */
-  .page-anim{animation:pageIn 0.3s cubic-bezier(.4,0,.2,1) both}
+  .page-anim{animation:pageIn 0.25s ease both}
   .bnav-btn{transition:color .2s,transform .12s}
   .bnav-btn:active{transform:scale(.85)}
   .bnav-ico{transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
@@ -1399,11 +2863,10 @@ const CSS = `
   @keyframes subWhiteOn{from{color:rgba(255,255,255,.18)}to{color:rgba(255,255,255,.5)}}
   @keyframes dividerOn{from{opacity:0}to{opacity:1}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pageIn{from{opacity:0}to{opacity:1}}
   @keyframes cardIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
   @keyframes heroReveal{from{opacity:0;transform:scaleY(.96)}to{opacity:1;transform:scaleY(1)}}
   @keyframes digitPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
-  @keyframes toastBounce{from{opacity:0;transform:translateX(-50%) translateY(-120%) scale(.85)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
   @keyframes expandW{from{transform:scaleX(0)}to{transform:scaleX(1)}}
   @keyframes fillBar{from{width:0}to{width:100%}}
 `;
