@@ -156,7 +156,7 @@ export default function App() {
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
         if (profile) {
           setUser({ ...session.user, ...profile });
           const { data: predRows } = await supabase.from("predictions").select("*").eq("user_id", session.user.id);
@@ -174,7 +174,7 @@ export default function App() {
           // load menu & orders
           const { data: menuRows } = await supabase.from("menu_items").select("*").order("sort_order");
           if (menuRows) setMenuItems(menuRows);
-          const { data: credRow } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).single();
+          const { data: credRow } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).maybeSingle();
           if (credRow) setMyCredits(credRow.balance || 0);
           const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
           if (orderRows) setMyOrders(orderRows);
@@ -186,7 +186,7 @@ export default function App() {
               const { amount, userId } = JSON.parse(pendingTopup);
               if (userId === session.user.id && amount > 0) {
                 sessionStorage.removeItem("pending_topup");
-                const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).single();
+                const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
                 const newBal = +((cur?.balance || 0) + amount).toFixed(2);
                 await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
                 await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "stripe" });
@@ -296,7 +296,7 @@ export default function App() {
     // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
     const fallback = setInterval(async () => {
       const { data: cred } = await supabase.from("user_credits")
-        .select("balance").eq("user_id", uid).single();
+        .select("balance").eq("user_id", uid).maybeSingle();
       if (cred) setMyCredits(cred.balance || 0);
 
       const { data: ords } = await supabase.from("orders")
@@ -339,7 +339,7 @@ export default function App() {
     if (!form.email || !form.password) return setFormErr("Please fill in all fields.");
     const { data, error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password });
     if (error) return setFormErr("Incorrect email or password.");
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
     setUser({ ...data.user, ...profile });
     const { data: predRows } = await supabase.from("predictions").select("*").eq("user_id", data.user.id);
     if (predRows) {
@@ -474,7 +474,7 @@ export default function App() {
   };
 
   const adminAddCredits = async (userId, amount, userName) => {
-    const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).single();
+    const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
     const newBal = +((cur?.balance || 0) + amount).toFixed(2);
     await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
@@ -487,8 +487,9 @@ export default function App() {
   };
 
   const deleteOrder = async (orderId) => {
-    await supabase.from("orders").delete().eq("id", orderId);
-    setAllOrders(o => o.filter(x => x.id !== orderId));
+    // Mark as "completed" — stays in history but off the floor plan
+    await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
+    setAllOrders(o => o.map(x => x.id === orderId ? { ...x, status: "completed" } : x));
   };
 
   const loadAllOrders = async () => {
@@ -1911,8 +1912,15 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
   const [tableErr,  setTableErr]  = useState("");
   const [topupAmt,  setTopupAmt]  = useState("");
 
-  const categories = [...new Set(menuItems.map(i => i.category))];
   const available  = menuItems.filter(i => i.available);
+  const [openCats, setOpenCats] = useState({});
+  const toggleCat = id => setOpenCats(s => ({ ...s, [id]: !s[id] }));
+  // Group available items by category in defined order
+  const menuSections = MENU_SECTIONS.map(s => ({
+    ...s,
+    cats: s.cats.map(c => ({ ...c, items: available.filter(i => i.category === c.id) }))
+               .filter(c => c.items.length > 0),
+  })).filter(s => s.cats.length > 0);
 
   const addToCart      = id => setCart(c => ({ ...c, [id]: (c[id]||0)+1 }));
   const removeFromCart = id => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
@@ -1983,30 +1991,61 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
 
       {/* ── MENU TAB ── */}
       {tab === "menu" && (
-        <div>
-          {categories.map(cat => (
-            <div key={cat}>
-              <div className="menu-cat-header">{cat}</div>
-              {available.filter(i => i.category===cat).map(item => (
-                <div key={item.id} className="menu-item-row">
-                  <div className="menu-item-info">
-                    <div className="menu-item-name">{item.name}</div>
-                    {item.description && <div className="menu-item-desc">{item.description}</div>}
-                    <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
+        <div style={{paddingBottom: cartCount > 0 ? 80 : 20}}>
+          {menuSections.map(sec => (
+            <div key={sec.section}>
+              {/* Section divider */}
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 16px 10px"}}>
+                <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"rgba(255,255,255,.25)"}}>{sec.section}</span>
+                <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
+              </div>
+              {sec.cats.map(cat => {
+                const isOpen = openCats[cat.id] !== false; // default open
+                return (
+                  <div key={cat.id} style={{marginBottom:2}}>
+                    {/* Category header — tap to collapse */}
+                    <button onClick={()=>toggleCat(cat.id)}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"rgba(255,255,255,.03)",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",cursor:"pointer",textAlign:"left"}}>
+                      <span style={{fontSize:18,lineHeight:1}}>{cat.icon}</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"#fff",flex:1}}>{cat.label.toUpperCase()}</span>
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{cat.items.length}</span>
+                      <span style={{fontSize:10,color:"rgba(255,255,255,.3)",transform:isOpen?"rotate(0)":"rotate(-90deg)",transition:"transform .2s",marginLeft:4}}>▼</span>
+                    </button>
+                    {/* Items */}
+                    {isOpen && cat.items.map(item => {
+                      const isBucket = /bucket/i.test(item.name + (item.description||""));
+                      const isGlass  = /glass/i.test(item.name + (item.description||""));
+                      const isBottle = /bottle/i.test(item.name + (item.description||""));
+                      return (
+                        <div key={item.id} className="menu-item-row" style={{paddingLeft:22}}>
+                          <div className="menu-item-info">
+                            <div style={{display:"flex",alignItems:"center",gap:7}}>
+                              <div className="menu-item-name">{item.name}</div>
+                              {isBucket && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(251,191,36,.12)",color:"#fbbf24",border:"1px solid rgba(251,191,36,.3)",padding:"2px 6px"}}>🪣 BUCKET</span>}
+                              {isGlass  && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(147,197,253,.1)",color:"#93c5fd",border:"1px solid rgba(147,197,253,.25)",padding:"2px 6px"}}>🍷 GLASS</span>}
+                              {isBottle && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(147,197,253,.1)",color:"#93c5fd",border:"1px solid rgba(147,197,253,.25)",padding:"2px 6px"}}>🍾 BOTTLE</span>}
+                            </div>
+                            {item.description && <div className="menu-item-desc">{item.description}</div>}
+                            <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
+                          </div>
+                          <div className="menu-item-actions">
+                            {cart[item.id] ? (
+                              <div className="menu-qty-ctrl">
+                                <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
+                                <span className="menu-qty-val">{cart[item.id]}</span>
+                                <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                              </div>
+                            ) : (
+                              <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>ADD</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="menu-item-actions">
-                    {cart[item.id] ? (
-                      <div className="menu-qty-ctrl">
-                        <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
-                        <span className="menu-qty-val">{cart[item.id]}</span>
-                        <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
-                      </div>
-                    ) : (
-                      <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>ADD</button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))}
           {available.length === 0 && <div className="empty">Menu not available right now</div>}
@@ -2197,11 +2236,43 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
   );
 }
 
+/* ── Menu category definitions ─────────────────────────────────────────────── */
+const MENU_SECTIONS = [
+  { section:"DRINKS", cats:[
+    { id:"Coffee",        icon:"☕", label:"Coffee"         },
+    { id:"Special Coffee",icon:"✨", label:"Special Coffee" },
+    { id:"Beer",          icon:"🍺", label:"Beer"           },
+    { id:"Cocktails",     icon:"🍹", label:"Cocktails"      },
+    { id:"Gin & Tonics",  icon:"🫧", label:"Gin & Tonics"   },
+    { id:"Vodka",         icon:"🥃", label:"Vodka"          },
+    { id:"Whiskey",       icon:"🥃", label:"Whiskey"        },
+    { id:"Rum",           icon:"🍹", label:"Rum"            },
+    { id:"Liqueurs",      icon:"🍶", label:"Liqueurs"       },
+    { id:"Tequila",       icon:"🌵", label:"Tequila"        },
+    { id:"House Wines",   icon:"🍷", label:"House Wines"    },
+    { id:"Sparkling",     icon:"🥂", label:"Sparkling"      },
+  ]},
+  { section:"FOOD", cats:[
+    { id:"Appetizers",    icon:"🥗", label:"Appetizers"     },
+    { id:"Burgers",       icon:"🍔", label:"Burgers"        },
+    { id:"Meat & Fish",   icon:"🥩", label:"Meat & Fish"    },
+    { id:"Stoba",         icon:"🍲", label:"Stoba"          },
+    { id:"Fajitas",       icon:"🌮", label:"Fajitas"        },
+    { id:"Quesadillas",   icon:"🫓", label:"Quesadillas"    },
+    { id:"Pasta",         icon:"🍝", label:"Pasta"          },
+    { id:"Kids Menu",     icon:"⭐", label:"Kids Menu"       },
+    { id:"Desserts",      icon:"🍮", label:"Desserts"       },
+  ]},
+];
+const ALL_MENU_CATS = MENU_SECTIONS.flatMap(s => s.cats.map(c => c.id));
+const catMeta = id => MENU_SECTIONS.flatMap(s=>s.cats).find(c=>c.id===id) || { icon:"🍽", label:id };
+
 /* ── Admin: Menu management ── */
 function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
-  const [editItem, setEditItem] = useState(null);
-  const [addMode,  setAddMode]  = useState(false);
-  const blank = { name:"", description:"", price:"", category:"Drinks", available:true, sort_order:0 };
+  const [editItem,   setEditItem]   = useState(null);
+  const [addMode,    setAddMode]    = useState(false);
+  const [filterCat,  setFilterCat]  = useState("all");
+  const blank = { name:"", description:"", price:"", category:"Beer", available:true, sort_order:0 };
 
   const Form = ({ item, onClose }) => {
     const [f, setF] = useState(item);
@@ -2211,12 +2282,16 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
         <div className="admin-form-title">{f.id ? "EDIT ITEM" : "NEW ITEM"}</div>
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
           <AField label="Name" val={f.name} on={set("name")} ph="e.g. Caribe Beer" />
-          <AField label="Description" val={f.description||""} on={set("description")} ph="Optional short description" />
+          <AField label="Description" val={f.description||""} on={set("description")} ph="e.g. Bucket available · Glass / Bottle prices" />
           <AField label="Price ($)" val={f.price} on={set("price")} ph="e.g. 3.50" />
           <div className="afield">
             <label className="afield-lbl">CATEGORY</label>
             <select className="afield-inp" value={f.category} onChange={set("category")}>
-              {["Drinks","Food","Snacks","Desserts","Other"].map(c=><option key={c}>{c}</option>)}
+              {MENU_SECTIONS.map(s => (
+                <optgroup key={s.section} label={`── ${s.section} ──`}>
+                  {s.cats.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                </optgroup>
+              ))}
             </select>
           </div>
           <AField label="Sort Order" val={f.sort_order} on={set("sort_order")} ph="0" />
@@ -2229,30 +2304,77 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
     );
   };
 
+  // Get all categories that actually have items
+  const activeCats = ALL_MENU_CATS.filter(c => menuItems.some(i => i.category === c));
+  const displayed  = filterCat === "all" ? menuItems : menuItems.filter(i => i.category === filterCat);
+
+  // Group displayed items by category (in defined order)
+  const grouped = activeCats
+    .filter(c => filterCat === "all" || c === filterCat)
+    .map(c => ({ cat:c, items: displayed.filter(i => i.category === c) }))
+    .filter(g => g.items.length > 0);
+
   return (
     <div>
-      <div style={{padding:"14px 14px 0",display:"flex",justifyContent:"flex-end"}}>
+      {/* Toolbar */}
+      <div style={{padding:"14px 14px 0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <select value={filterCat} onChange={e=>setFilterCat(e.target.value)}
+          style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.7)",padding:"7px 12px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}>
+          <option value="all">ALL CATEGORIES</option>
+          {MENU_SECTIONS.map(s=>(
+            <optgroup key={s.section} label={`── ${s.section} ──`}>
+              {s.cats.filter(c=>menuItems.some(i=>i.category===c.id)).map(c=>(
+                <option key={c.id} value={c.id}>{c.icon} {c.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
         <button className="admin-save-btn" style={{padding:"8px 18px",fontSize:9,letterSpacing:2}} onClick={()=>{setAddMode(true);setEditItem(null);}}>+ ADD ITEM</button>
       </div>
+
       {addMode && <Form item={blank} onClose={()=>setAddMode(false)} />}
-      {menuItems.map(item => (
-        <div key={item.id}>
-          {editItem===item.id && <Form item={item} onClose={()=>setEditItem(null)} />}
-          <div className="admin-row" style={{opacity:item.available?1:.45}}>
-            <div style={{flex:1}}>
-              <div className="admin-row-teams">{item.name}</div>
-              <div className="admin-row-dt">${(+item.price).toFixed(2)} · {item.category} {!item.available&&<span style={{color:"rgba(239,68,68,.7)"}}>· UNAVAILABLE</span>}</div>
+
+      {/* Grouped list */}
+      {grouped.map(({ cat, items }) => {
+        const meta = catMeta(cat);
+        return (
+          <div key={cat}>
+            <div style={{padding:"10px 14px 4px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(255,255,255,.06)"}}>
+              <span style={{fontSize:14}}>{meta.icon}</span>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)"}}>{meta.label.toUpperCase()}</span>
+              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.2)",fontWeight:600}}>{items.length} item{items.length!==1?"s":""}</span>
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>onToggleAvail(item.id,!item.available)}>
-                {item.available?"HIDE":"SHOW"}
-              </button>
-              <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>setEditItem(item.id)}>EDIT</button>
-              <button className="admin-del-btn" onClick={()=>onDelete(item.id)}>✕</button>
-            </div>
+            {items.map(item => (
+              <div key={item.id}>
+                {editItem===item.id && <Form item={item} onClose={()=>setEditItem(null)} />}
+                <div className="admin-row" style={{opacity:item.available?1:.4}}>
+                  <div style={{flex:1}}>
+                    <div className="admin-row-teams">{item.name}</div>
+                    <div className="admin-row-dt">
+                      ${(+item.price).toFixed(2)}
+                      {item.description && <span style={{color:"rgba(255,255,255,.3)"}}> · {item.description}</span>}
+                      {!item.available && <span style={{color:"rgba(239,68,68,.65)"}}> · HIDDEN</span>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>onToggleAvail(item.id,!item.available)}>
+                      {item.available?"HIDE":"SHOW"}
+                    </button>
+                    <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>setEditItem(item.id)}>EDIT</button>
+                    <button className="admin-del-btn" onClick={()=>onDelete(item.id)}>✕</button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
+        );
+      })}
+
+      {menuItems.length === 0 && (
+        <div style={{padding:"40px 20px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>
+          No items yet — add your first item above
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -2284,9 +2406,9 @@ function AdminOrders({ allOrders, onLoad, onUpdateStatus }) {
   const nextStatus = s => s==="pending"?"confirmed":s==="confirmed"?"ready":s==="ready"?"delivered":null;
   const nextLabel  = s => s==="pending"?"✓ CONFIRM":s==="confirmed"?"🔔 MARK READY":s==="ready"?"✓ CLEAR TABLE":null;
 
-  // Live = pending + confirmed + ready (not delivered)
+  // Live = pending + confirmed + ready (not delivered, not completed)
   const liveOrders = allOrders
-    .filter(o => o.status !== "delivered")
+    .filter(o => o.status !== "delivered" && o.status !== "completed")
     .sort((a,b) => new Date(a.created_at) - new Date(b.created_at)); // oldest first
 
   // History = all orders, searchable
@@ -2619,6 +2741,92 @@ function AdminCredits({ users, onAddCredits }) {
   );
 }
 
+/* ═══ PRINT RECEIPT ══════════════════════════════════════════════════════════ */
+function printReceipt(ord) {
+  const date = new Date(ord.created_at);
+  const dateStr = date.toLocaleDateString("en-US",{weekday:"short",year:"numeric",month:"long",day:"numeric"});
+  const timeStr = date.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  const items = (ord.items || []).map(it => `
+    <tr>
+      <td style="padding:5px 0;font-size:13px;">${it.qty}× ${it.name}</td>
+      <td style="padding:5px 0;font-size:13px;text-align:right;">$${(it.price*it.qty).toFixed(2)}</td>
+    </tr>`).join("");
+  const payLabel = ord.payment_method === "credits" ? "Credits" : ord.payment_method === "card" ? "Card" : "Cash";
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Receipt #${ord.order_number||ord.id}</title>
+  <style>
+    @page { size: A4; margin: 20mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; color: #000; background: #fff; }
+    .wrap { max-width: 72mm; margin: 0 auto; }
+    .logo-block { text-align: center; padding-bottom: 14px; border-bottom: 2px solid #000; margin-bottom: 14px; }
+    .logo-block .brand { font-size: 24px; font-weight: 900; letter-spacing: 4px; line-height: 1.1; }
+    .logo-block .sub   { font-size: 9px; letter-spacing: 3px; margin-top: 2px; }
+    .logo-block .sub2  { font-size: 8px; letter-spacing: 2px; color: #555; margin-top: 2px; }
+    .meta { font-size: 11px; line-height: 1.7; margin-bottom: 12px; }
+    .meta .row { display: flex; justify-content: space-between; }
+    .meta .lbl { color: #555; }
+    .divider { border: none; border-top: 1px dashed #aaa; margin: 12px 0; }
+    .divider-solid { border: none; border-top: 2px solid #000; margin: 12px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    .total-row td { font-size: 16px; font-weight: 900; letter-spacing: 1px; padding-top: 10px; }
+    .payment-row { font-size: 11px; color: #444; margin-top: 6px; }
+    .footer { text-align: center; margin-top: 18px; padding-top: 14px; border-top: 2px solid #000; }
+    .footer .thanks { font-size: 13px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
+    .footer .url    { font-size: 9px; letter-spacing: 2px; color: #666; }
+    .footer .wc     { font-size: 10px; letter-spacing: 3px; margin-top: 8px; color: #333; }
+    @media print { body { -webkit-print-color-adjust: exact; } }
+  </style></head>
+  <body><div class="wrap">
+    <div class="logo-block">
+      <div class="brand">EL MUNDO</div>
+      <div class="sub">BAR · REST · EST. 2009</div>
+      <div class="sub2">BONAIRE, ABC ISLANDS</div>
+    </div>
+    <div class="meta">
+      <div class="row"><span class="lbl">Date</span><span>${dateStr}</span></div>
+      <div class="row"><span class="lbl">Time</span><span>${timeStr}</span></div>
+      <div class="row"><span class="lbl">Table</span><span><b>${ord.table_number}</b></span></div>
+      ${ord.order_number ? `<div class="row"><span class="lbl">Order #</span><span><b>${ord.order_number}</b></span></div>` : ""}
+      <div class="row"><span class="lbl">Customer</span><span>${ord.user_name||"Guest"}</span></div>
+    </div>
+    <hr class="divider"/>
+    <table>
+      <tbody>${items}</tbody>
+    </table>
+    <hr class="divider-solid"/>
+    <table>
+      <tbody>
+        <tr class="total-row">
+          <td>TOTAL</td>
+          <td style="text-align:right;">$${(+ord.total).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="payment-row">Payment: ${payLabel}</div>
+    <div class="footer">
+      <div class="thanks">THANK YOU!</div>
+      <div class="url">www.elmundobonaire.com</div>
+      <div class="wc">⚽ WORLD CUP 2026 ⚽</div>
+    </div>
+  </div>
+  </body></html>`;
+
+  // Use hidden iframe — no popup, no tab switch, print dialog appears directly
+  const existing = document.getElementById("__receipt_frame");
+  if (existing) existing.remove();
+  const iframe = document.createElement("iframe");
+  iframe.id = "__receipt_frame";
+  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;opacity:0;";
+  document.body.appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
+  iframe.contentWindow.onafterprint = () => iframe.remove();
+  setTimeout(() => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e) {} }, 300);
+}
+
 /* ═══ ADMIN: ORDER HISTORY ═══════════════════════════════════════════════════ */
 function AdminHistory({ allOrders }) {
   const [search, setSearch] = useState("");
@@ -2665,7 +2873,13 @@ function AdminHistory({ allOrders }) {
                   <div className="history-order-items-inline">{ord.items.map(it=>`${it.qty}x ${it.name}`).join(" · ")}</div>
                   <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
-                <div className="history-order-amount">${(+ord.total).toFixed(2)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div className="history-order-amount">${(+ord.total).toFixed(2)}</div>
+                  <button onClick={()=>printReceipt(ord)} title="Print Receipt"
+                    style={{background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.45)",padding:"5px 9px",cursor:"pointer",fontSize:12,borderRadius:2,transition:"all .15s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.4)";e.currentTarget.style.color="#fff";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.15)";e.currentTarget.style.color="rgba(255,255,255,.45)";}}>🖨</button>
+                </div>
               </div>
             ))}
           </div>
@@ -2680,7 +2894,13 @@ function AdminHistory({ allOrders }) {
               </div>
               <div className="order-card-date">{ord.user_name} · {new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
             </div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fff"}}>${(+ord.total).toFixed(2)}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fff"}}>${(+ord.total).toFixed(2)}</div>
+              <button onClick={()=>printReceipt(ord)} title="Print Receipt"
+                style={{background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.45)",padding:"5px 9px",cursor:"pointer",fontSize:12,borderRadius:2,transition:"all .15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.4)";e.currentTarget.style.color="#fff";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.15)";e.currentTarget.style.color="rgba(255,255,255,.45)";}}>🖨</button>
+            </div>
           </div>
         </div>
       ))}
@@ -2847,8 +3067,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
     return () => { clearInterval(iv); clearInterval(clock); };
   }, []);
 
-  // Get active (non-delivered) orders grouped by table
-  const activeOrders = allOrders.filter(o => o.status !== "delivered");
+  // Get active (non-completed) orders grouped by table
+  const activeOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
   const byTable = activeOrders.reduce((acc, o) => {
     const t = String(o.table_number);
     if (!acc[t]) acc[t] = [];
@@ -3144,16 +3364,22 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                     <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff"}}>
                       ${(+ord.total).toFixed(2)}
                     </span>
-                    {(nextStatus(ord.status) || ord.status === "ready") && (
-                      <button
-                        style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
-                        onClick={()=>{
-                          if (ord.status === "ready") { onDeleteOrder(ord.id); onLoad(); }
-                          else { onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad(); }
-                        }}>
-                        {nextLabel(ord.status)}
-                      </button>
-                    )}
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      {(nextStatus(ord.status) || ord.status === "ready") && (
+                        <button
+                          style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
+                          onClick={()=>{
+                            if (ord.status === "ready") {
+                              onDeleteOrder(ord.id); onLoad();
+                            } else {
+                              if (ord.status === "pending") printReceipt({...ord, table_number: selectedTable});
+                              onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad();
+                            }
+                          }}>
+                          {nextLabel(ord.status)}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
