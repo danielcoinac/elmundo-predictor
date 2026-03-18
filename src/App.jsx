@@ -979,8 +979,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
-
-  const switchTab = (id) => { setAnimKey(id); setAppTab(id); };
+  const slideDirRef = useRef(1);
 
   const tabs = [
     { id:"matches",     label:"Matches",  ico:<SoccerIco /> },
@@ -991,6 +990,13 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     { id:"profile",     label:"Profile",  ico:<PersonIco /> },
     ...(isAdmin ? [{ id:"admin", label:"Admin", ico:<AdminIco /> }] : []),
   ];
+
+  const switchTab = (id) => {
+    const fromIdx = tabs.findIndex(t => t.id === appTab);
+    const toIdx   = tabs.findIndex(t => t.id === id);
+    slideDirRef.current = toIdx >= fromIdx ? 1 : -1;
+    setAnimKey(id); setAppTab(id);
+  };
 
   return (
     <div className="shell">
@@ -1025,7 +1031,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         </div>
       </header>
       <main className="body">
-        <div className="body-inner page-anim" key={animKey}>
+        <div className={`body-inner ${slideDirRef.current >= 0 ? "page-slide-fwd" : "page-slide-bwd"}`} key={animKey}>
           {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} />}
           {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
           {appTab === "rooms" && <RoomsView user={user} rooms={rooms} myRooms={myRooms} users={users} preds={preds} matches={matches} pts={pts} requestRoom={requestRoom} joinRoom={joinRoom} leaveRoom={leaveRoom} deleteRoom={deleteRoom} updateRoomSettings={updateRoomSettings} isAdmin={isAdmin} />}
@@ -1138,6 +1144,25 @@ function useCountdown(m) {
   return { minsLeft: totalMins, label, urgency };
 }
 
+function ScoreInput({ val, onChange }) {
+  const n = val === "" ? null : +val;
+  const dec = () => { if (n === null) return; onChange(Math.max(0, n - 1)); };
+  const inc = () => { onChange(n === null ? 0 : Math.min(20, n + 1)); };
+  return (
+    <div className="stepper">
+      <button className="stepper-btn" onClick={dec} type="button">−</button>
+      <input
+        className="stepper-inp"
+        type="number" min="0" max="20"
+        value={val}
+        onChange={e => onChange(e.target.value === "" ? "" : +e.target.value)}
+        placeholder="–"
+      />
+      <button className="stepper-btn stepper-btn-plus" onClick={inc} type="button">+</button>
+    </div>
+  );
+}
+
 function MatchCard({ m, pred, onSave }) {
   const [h, setH] = useState(pred?.h ?? "");
   const [a, setA] = useState(pred?.a ?? "");
@@ -1175,7 +1200,7 @@ function MatchCard({ m, pred, onSave }) {
         <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} BON</span>
         {!fin && countdownLabel && (
-          <span className="countdown-chip" style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
+          <span className={`countdown-chip${urgency === "red" ? " countdown-pulse" : ""}`} style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
             {urgency === "locked" ? "🔒 LOCKED" : countdownLabel}
           </span>
         )}
@@ -1211,9 +1236,9 @@ function MatchCard({ m, pred, onSave }) {
             </div>
           ) : (
             <div className="score-inputs-row">
-              <input className="sinput" type="number" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
+              <ScoreInput val={h} onChange={setH} />
               <span className="ssep">:</span>
-              <input className="sinput" type="number" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
+              <ScoreInput val={a} onChange={setA} />
             </div>
           )}
         </div>
@@ -1405,12 +1430,32 @@ function SponsorsView({ sponsors }) {
 }
 
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!target) { setVal(0); return; }
+    let start = null;
+    const step = (ts) => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      const eased = p < 1 ? p * p * (3 - 2 * p) : 1;
+      setVal(Math.round(eased * target));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [target]);
+  return val;
+}
+
 function ProfileView({ user, myPts, myRank, preds, matches }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
   const initials = user.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  const animPts  = useCountUp(myPts);
+  const animCorr = useCountUp(corr);
+  const animAcc  = useCountUp(acc);
   return (
     <div className="prof-wrap">
       <div className="prof-hero">
@@ -1422,10 +1467,10 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
       </div>
       <div className="stats-grid">
         {[
-          {v:myPts,                      u:"PTS", l:"Total Points"},
+          {v:animPts,                    u:"PTS", l:"Total Points"},
           {v:myRank>0?`#${myRank}`:"—", u:"",    l:"Your Rank"},
-          {v:corr,                       u:`/${sub}`,l:"Correct"},
-          {v:acc,                        u:"%",   l:"Accuracy"},
+          {v:`${animCorr}/${sub}`,       u:"",    l:"Correct"},
+          {v:animAcc,                    u:"%",   l:"Accuracy"},
         ].map(s => (
           <div key={s.l} className="scard">
             <div className="sval">{s.v}<span className="sunit">{s.u}</span></div>
@@ -2869,4 +2914,58 @@ const CSS = `
   @keyframes digitPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
   @keyframes expandW{from{transform:scaleX(0)}to{transform:scaleX(1)}}
   @keyframes fillBar{from{width:0}to{width:100%}}
+
+  /* ── STEPPER SCORE INPUTS ── */
+  .stepper{display:flex;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);transition:border-color .2s}
+  .stepper:focus-within{border-color:rgba(255,255,255,.65);background:rgba(255,255,255,.1)}
+  .stepper-btn{width:44px;height:60px;background:transparent;border:none;color:rgba(255,255,255,.45);font-size:22px;cursor:pointer;transition:all .13s;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;line-height:1}
+  .stepper-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+  .stepper-btn:active{transform:scale(.82);background:rgba(255,255,255,.18)}
+  .stepper-inp{width:50px;height:60px;text-align:center;background:transparent;border:none;border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);color:#fff;font-family:'Anton',sans-serif;font-size:30px;outline:none}
+  .stepper-inp::placeholder{color:rgba(255,255,255,.25)}
+
+  /* ── PAGE SLIDE TRANSITIONS ── */
+  .page-slide-fwd{animation:pageSlideIn .22s cubic-bezier(.4,0,.2,1) both}
+  .page-slide-bwd{animation:pageSlideInRev .22s cubic-bezier(.4,0,.2,1) both}
+  @keyframes pageSlideIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes pageSlideInRev{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}
+
+  /* ── NAV ACTIVE DOT ── */
+  .bnav-indicator{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:5px;height:5px;background:#fff;border-radius:50%;box-shadow:0 0 8px #fff,0 0 16px rgba(255,255,255,.4)}
+
+  /* ── COUNTDOWN PULSE ── */
+  @keyframes urgentPulse{0%,100%{opacity:1}50%{opacity:.55}}
+  .countdown-pulse{animation:urgentPulse .78s ease-in-out infinite}
+
+  /* ── MATCH CARD RESULT TINTS ── */
+  .mcard-ok{background:rgba(34,197,94,.018)!important}
+  .mcard-partial{background:rgba(251,191,36,.014)!important}
+
+  /* ── PREDICT CTA GLOW ON HOVER ── */
+  .pred-cta:hover:not(:disabled){border-color:#fff;color:#fff;background:rgba(255,255,255,.04);box-shadow:0 0 18px rgba(255,255,255,.06)}
+
+  /* ── ROOM LEADERBOARD ── */
+  .lboard{display:flex;flex-direction:column}
+  .lrow{display:grid;grid-template-columns:44px 1fr auto;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);transition:background .15s;animation:cardIn .32s ease both}
+  .lrow:hover{background:rgba(255,255,255,.03)}
+  .lrow-me{background:rgba(255,255,255,.05)!important;border-left:3px solid #fff}
+  .lrank{font-size:20px;line-height:1;text-align:center;flex-shrink:0}
+  .lrank-n{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.4)}
+  .linfo{display:flex;align-items:center;gap:8px;overflow:hidden}
+  .lname{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:.5px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lpts-wrap{display:flex;align-items:baseline;gap:3px;flex-shrink:0}
+  .lpts-n{font-family:'Anton',sans-serif;font-size:20px;color:#fff;line-height:1}
+  .lpts-u{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:1.5px;color:rgba(255,255,255,.4)}
+  .lrow:nth-child(1){animation-delay:.05s}.lrow:nth-child(2){animation-delay:.10s}.lrow:nth-child(3){animation-delay:.15s}.lrow:nth-child(4){animation-delay:.20s}.lrow:nth-child(5){animation-delay:.25s}
+
+  /* ── SECTION BANNER ACCENT ── */
+  .section-banner{border-left:3px solid rgba(255,255,255,.1)}
+  .section-banner-dim{border-left-color:rgba(255,255,255,.04)}
+
+  /* ── SMOOTH INPUT FOCUS RINGS ── */
+  .ffield-inp:focus{border-color:rgba(255,255,255,.65);background:rgba(255,255,255,.1);box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+  .afield-inp:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.09);box-shadow:0 0 0 1px rgba(255,255,255,.1)}
+
+  /* ── BOTTOM NAV ACTIVE SCALE BOOST ── */
+  .bnav-on .bnav-ico{transform:scale(1.3) translateY(-3px)}
 `;
