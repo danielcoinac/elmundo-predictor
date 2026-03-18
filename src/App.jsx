@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from '@supabase/supabase-js';
 
 /* ─── Supabase ──────────────────────────────────────────────────────────────── */
@@ -100,9 +100,12 @@ export default function App() {
   const [toast,    setToast]    = useState(null);
   const [form,     setForm]     = useState({ name:"", email:"", phone:"", password:"" });
   const [formErr,  setFormErr]  = useState("");
-  const [rooms,    setRooms]    = useState([]);
-  const [myRooms,  setMyRooms]  = useState([]); // room_ids the user belongs to
   const [publicBoard, setPublicBoard] = useState([]);
+  const [menuItems,   setMenuItems]   = useState([]);
+  const [myCredits,   setMyCredits]   = useState(0);
+  const [myOrders,    setMyOrders]    = useState([]);
+  const [allOrders,   setAllOrders]   = useState([]);
+  const [matchesLoaded, setMatchesLoaded] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -110,6 +113,17 @@ export default function App() {
       const sp = await sget("em_sponsors");
       if (rl) setRules(rl);
       if (sp) setSponsors(sp);
+
+      // Handle Stripe success redirect — process AFTER session is confirmed
+      const params = new URLSearchParams(window.location.search);
+      const topupStatus = params.get("topup");
+      const topupAmount = parseFloat(params.get("amount") || "0");
+      const topupUserId = params.get("user_id");
+      // Store in sessionStorage to process after login
+      if (topupStatus === "success" && topupAmount > 0 && topupUserId) {
+        sessionStorage.setItem("pending_topup", JSON.stringify({ amount: topupAmount, userId: topupUserId }));
+        window.history.replaceState({}, "", window.location.pathname);
+      }
 
       const { data: mRows } = await supabase.from("matches").select("*");
       if (mRows) {
@@ -120,6 +134,7 @@ export default function App() {
           hs: r.home_score, as: r.away_score
         })));
       }
+      setMatchesLoaded(true);
 
       // Load public leaderboard (available before login, for TV screen)
       const { data: pubProfiles } = await supabase.from("profiles").select("*");
@@ -156,11 +171,31 @@ export default function App() {
             allProfiles.filter(p => p.is_admin !== true && p.is_admin !== 1 && p.is_admin !== "true").forEach(p => { usersMap[p.id] = p; });
             setUsers(usersMap);
           }
-          // load rooms
-          const { data: rpRows } = await supabase.from("room_participants").select("room_id").eq("user_id", session.user.id);
-          if (rpRows) setMyRooms(rpRows.map(r => r.room_id));
-          const { data: roomRows } = await supabase.from("rooms").select("*");
-          if (roomRows) setRooms(roomRows);
+          // load menu & orders
+          const { data: menuRows } = await supabase.from("menu_items").select("*").order("sort_order");
+          if (menuRows) setMenuItems(menuRows);
+          const { data: credRow } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).single();
+          if (credRow) setMyCredits(credRow.balance || 0);
+          const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+          if (orderRows) setMyOrders(orderRows);
+
+          // Process pending Stripe top-up if any
+          const pendingTopup = sessionStorage.getItem("pending_topup");
+          if (pendingTopup) {
+            try {
+              const { amount, userId } = JSON.parse(pendingTopup);
+              if (userId === session.user.id && amount > 0) {
+                sessionStorage.removeItem("pending_topup");
+                const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).single();
+                const newBal = +((cur?.balance || 0) + amount).toFixed(2);
+                await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
+                await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "stripe" });
+                setMyCredits(newBal);
+                setTimeout(() => setToast({ msg: `$${amount.toFixed(2)} credits added! 🎉`, ok: true }), 4000);
+                setTimeout(() => setToast(null), 7500);
+              }
+            } catch(e) { sessionStorage.removeItem("pending_topup"); }
+          }
 
           // Show splash briefly (ball smash moment ~3.5s), then go to app
           setTimeout(() => setPage("app"), 3500);
@@ -172,76 +207,113 @@ export default function App() {
     })();
   }, []);
 
+
+  // ─── REALTIME SUBSCRIPTIONS (replaces most polling) ────────────────────────
+  // Strategy:
+  //   • matches, rooms, menu_items, profiles → Realtime (push, zero extra queries)
+  //   • predictions, credits, orders → user-scoped, lightweight poll every 30s
+  //   • room auto-join check → only when rooms change, not on a timer
   useEffect(() => {
     if (page !== "app") return;
-    const id = setInterval(async () => {
-      const { data: mRows } = await supabase.from("matches").select("*");
-      if (mRows) {
-        setMatches(mRows.map(r => ({
-          id: r.id, home: r.home, away: r.away,
-          group: r.match_group, date: r.match_date,
-          time: r.match_time, status: r.status,
-          hs: r.home_score, as: r.away_score
-        })));
-      }
-      const { data: allProfiles } = await supabase.from("profiles").select("*");
-      if (allProfiles) {
-        const usersMap = {};
-        allProfiles.filter(p => !p.is_admin).forEach(p => { usersMap[p.id] = p; });
-        setUsers(usersMap);
-        // also refresh public TV board
-        const { data: allPreds2 } = await supabase.from("predictions").select("*");
-        if (allPreds2 && mRows) {
-          const pm = {};
-          allPreds2.forEach(p => { pm[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
-          const fin = mRows.filter(r => r.status === "finished");
-          const pb = allProfiles.filter(u => !u.is_admin).map(u => ({
-            ...u,
-            pts: fin.reduce((acc, m) => {
-              const p = pm[`${u.id}__${m.id}`];
-              return acc + calcPts(p, m.home_score, m.away_score);
-            }, 0)
-          })).sort((a,b) => b.pts - a.pts).slice(0, 10);
-          setPublicBoard(pb);
+
+    const uid = user?.id;
+    if (!uid) return;
+
+    // ── 1. MATCHES — Realtime ────────────────────────────────────────────────
+    const matchSub = supabase.channel("rt-matches")
+      .on("postgres_changes", { event:"*", schema:"public", table:"matches" }, payload => {
+        const r = payload.new || payload.old;
+        if (payload.eventType === "DELETE") {
+          setMatches(m => m.filter(x => x.id !== r.id));
+        } else {
+          const mapped = { id:r.id, home:r.home, away:r.away, group:r.match_group,
+            date:r.match_date, time:r.match_time, status:r.status,
+            hs:r.home_score, as:r.away_score };
+          setMatches(m => {
+            const idx = m.findIndex(x => x.id === r.id);
+            return idx >= 0 ? m.map((x,i) => i===idx ? mapped : x) : [...m, mapped];
+          });
         }
-      }
-      const { data: allPreds } = await supabase.from("predictions").select("*");
-      if (allPreds) {
-        const predMap = {};
-        allPreds.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
-        setPreds(predMap);
-      }
-      const { data: roomRows } = await supabase.from("rooms").select("*");
-      if (roomRows) {
-        setRooms(roomRows);
-        // Auto self-join: if the current user created a room that just got approved
-        // and they're not yet a participant — insert themselves
-        const { data: rpRefresh } = await supabase.auth.getSession();
-        if (rpRefresh?.session) {
-          const uid = rpRefresh.session.user.id;
-          const { data: myRoomRows } = await supabase.from("room_participants").select("room_id").eq("user_id", uid);
-          if (myRoomRows) {
-            const myRoomIds = myRoomRows.map(r => r.room_id);
-            setMyRooms(myRoomIds);
-            // Find rooms I created that are now approved but I'm not yet in
-            const needsJoin = roomRows.filter(r =>
-              r.created_by === uid &&
-              r.status === "approved" &&
-              !myRoomIds.includes(r.id)
-            );
-            for (const r of needsJoin) {
-              await supabase.from("room_participants").upsert(
-                { room_id: r.id, user_id: uid },
-                { onConflict: "room_id,user_id" }
-              );
-              setMyRooms(prev => prev.includes(r.id) ? prev : [...prev, r.id]);
-            }
-          }
+      }).subscribe();
+
+    // ── 3. MENU ITEMS — Realtime ─────────────────────────────────────────────
+    const menuSub = supabase.channel("rt-menu")
+      .on("postgres_changes", { event:"*", schema:"public", table:"menu_items" }, payload => {
+        const r = payload.new || payload.old;
+        if (payload.eventType === "DELETE") {
+          setMenuItems(m => m.filter(x => x.id !== r.id));
+        } else {
+          setMenuItems(m => {
+            const idx = m.findIndex(x => x.id === r.id);
+            return idx >= 0 ? m.map((x,i) => i===idx ? r : x) : [...m, r].sort((a,b)=>a.sort_order-b.sort_order);
+          });
         }
-      }
-    }, 5000);
-    return () => clearInterval(id);
-  }, [page]);
+      }).subscribe();
+
+    // ── 4. PROFILES — Realtime (for leaderboard updates) ────────────────────
+    const profileSub = supabase.channel("rt-profiles")
+      .on("postgres_changes", { event:"*", schema:"public", table:"profiles" }, payload => {
+        const r = payload.new;
+        if (!r || r.is_admin) return;
+        setUsers(u => ({ ...u, [r.id]: r }));
+      }).subscribe();
+
+    // ── 5. MY PREDICTIONS — Realtime (only this user's rows) ─────────────────
+    const predSub = supabase.channel("rt-preds")
+      .on("postgres_changes", {
+        event:"*", schema:"public", table:"predictions",
+        filter:`user_id=eq.${uid}`
+      }, payload => {
+        const r = payload.new;
+        if (!r) return;
+        setPreds(p => ({ ...p, [`${r.user_id}__${r.match_id}`]: { h: r.home_pred, a: r.away_pred } }));
+      }).subscribe();
+
+    // ── 6. MY CREDITS — Realtime ─────────────────────────────────────────────
+    const creditSub = supabase.channel("rt-credits")
+      .on("postgres_changes", {
+        event:"*", schema:"public", table:"user_credits",
+        filter:`user_id=eq.${uid}`
+      }, payload => {
+        if (payload.new) setMyCredits(payload.new.balance || 0);
+      }).subscribe();
+
+    // ── 7. MY ORDERS — Realtime ──────────────────────────────────────────────
+    const orderSub = supabase.channel("rt-orders")
+      .on("postgres_changes", {
+        event:"*", schema:"public", table:"orders",
+        filter:`user_id=eq.${uid}`
+      }, payload => {
+        if (payload.eventType === "INSERT") {
+          setMyOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
+        } else if (payload.eventType === "UPDATE") {
+          setMyOrders(o => o.map(x => x.id === payload.new.id ? payload.new : x));
+        }
+      }).subscribe();
+
+    // ── 8. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
+    // Only fetches the user's own lightweight data — failsafe if Realtime misses anything
+    // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
+    const fallback = setInterval(async () => {
+      const { data: cred } = await supabase.from("user_credits")
+        .select("balance").eq("user_id", uid).single();
+      if (cred) setMyCredits(cred.balance || 0);
+
+      const { data: ords } = await supabase.from("orders")
+        .select("*").eq("user_id", uid).order("created_at", { ascending:false });
+      if (ords) setMyOrders(ords);
+    }, 60000);
+
+    return () => {
+      supabase.removeChannel(matchSub);
+      supabase.removeChannel(menuSub);
+      supabase.removeChannel(profileSub);
+      supabase.removeChannel(predSub);
+      supabase.removeChannel(creditSub);
+      supabase.removeChannel(orderSub);
+      clearInterval(fallback);
+    };
+  }, [page, user?.id]);
 
   const toast$ = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3200); };
 
@@ -253,8 +325,11 @@ export default function App() {
     if (form.password.length < 6)          return setFormErr("Password must be at least 6 characters.");
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
-    await supabase.from("profiles").upsert({ id: data.user.id, name: form.name, phone: form.phone });
-    setUser({ ...data.user, name: form.name, phone: form.phone, is_admin: false });
+    // Auto-assign next player number
+    const { count } = await supabase.from("profiles").select("*", { count:"exact", head:true });
+    const playerNumber = (count || 0) + 1;
+    await supabase.from("profiles").upsert({ id: data.user.id, name: form.name, phone: form.phone, player_number: playerNumber });
+    setUser({ ...data.user, name: form.name, phone: form.phone, is_admin: false, player_number: playerNumber });
     setPage("app");
     toast$(`Welcome, ${form.name}! ⚽`);
   };
@@ -278,10 +353,6 @@ export default function App() {
       allProfiles.filter(p => p.is_admin !== true && p.is_admin !== 1 && p.is_admin !== "true").forEach(p => { usersMap[p.id] = p; });
       setUsers(usersMap);
     }
-    const { data: rpRows2 } = await supabase.from("room_participants").select("room_id").eq("user_id", data.user.id);
-    if (rpRows2) setMyRooms(rpRows2.map(r => r.room_id));
-    const { data: roomRows2 } = await supabase.from("rooms").select("*");
-    if (roomRows2) setRooms(roomRows2);
     setPage("app");
     toast$(`Welcome back, ${profile.name}!`);
   };
@@ -290,7 +361,7 @@ export default function App() {
     await supabase.auth.signOut();
     setUser(null); setPage("auth");
     setForm({ name:"", email:"", phone:"", password:"" });
-    setPreds({}); setUsers({}); setRooms([]); setMyRooms([]);
+    setPreds({}); setUsers({});
   };
 
   const getPred = id => preds[`${user?.id}__${id}`] || null;
@@ -340,89 +411,6 @@ export default function App() {
   };
 
   /* ── Rooms ── */
-  const requestRoom = async ({ name, prize, description, max_members, enable_chat, enable_leaderboard, enable_feed }) => {
-    const { data, error } = await supabase.from("rooms").insert({
-      room_name: name,
-      prize: prize || null,
-      description: description || null,
-      max_members: max_members || 50,
-      enable_chat: enable_chat !== false,
-      enable_leaderboard: enable_leaderboard !== false,
-      enable_feed: enable_feed !== false,
-      created_by: user.id,
-      requested_by_name: user.name,
-      status: "pending",
-      room_code: "PENDING",   // placeholder — overwritten on approval
-    }).select().single();
-    if (error) {
-      console.error("requestRoom error:", error);
-      toast$(`Error: ${error.message}`, false);
-      return;
-    }
-    setRooms(r => [...r, data]);
-    toast$("Room request submitted! Waiting for admin approval ⏳");
-    return data;
-  };
-
-  const approveRoom = async (roomId) => {
-    const code = Math.random().toString(36).substring(2,6).toUpperCase();
-    const { error } = await supabase.from("rooms").update({ status: "approved", room_code: code }).eq("id", roomId);
-    if (error) { toast$("Error approving room", false); return; }
-
-    // Get the room to find its creator
-    const room = rooms.find(r => r.id === roomId);
-    if (room?.created_by) {
-      // Add creator as participant — upsert so it won't fail if already exists
-      await supabase.from("room_participants").upsert(
-        { room_id: roomId, user_id: room.created_by },
-        { onConflict: "room_id,user_id" }
-      );
-    }
-
-    setRooms(r => r.map(x => x.id === roomId ? { ...x, status: "approved", room_code: code } : x));
-    toast$(`Room approved! Code: ${code} ✓`);
-  };
-
-  const rejectRoom = async (roomId) => {
-    const { error } = await supabase.from("rooms").update({ status: "rejected" }).eq("id", roomId);
-    if (error) { toast$("Error rejecting room", false); return; }
-    setRooms(r => r.map(x => x.id === roomId ? { ...x, status: "rejected" } : x));
-    toast$("Room rejected");
-  };
-
-  const updateRoomSettings = async (roomId, settings) => {
-    const { error } = await supabase.from("rooms").update(settings).eq("id", roomId);
-    if (error) { toast$("Error saving settings", false); return; }
-    setRooms(r => r.map(x => x.id === roomId ? { ...x, ...settings } : x));
-    toast$("Settings saved ✓");
-  };
-
-  const joinRoom = async (code) => {
-    const room = rooms.find(r => r.room_code === code.toUpperCase() && r.status === "approved" && r.room_code !== "PENDING");
-    if (!room) { toast$("Room not found or not yet approved — check the code", false); return; }
-    if (myRooms.includes(room.id)) { toast$("You're already in this room!", false); return; }
-    if (room.max_members) {
-      const { count } = await supabase.from("room_participants").select("*", { count:"exact", head:true }).eq("room_id", room.id);
-      if (count >= room.max_members) { toast$("This room is full!", false); return; }
-    }
-    const { error } = await supabase.from("room_participants").insert({ room_id: room.id, user_id: user.id });
-    if (error) { toast$("Error joining room", false); return; }
-    setMyRooms(r => [...r, room.id]);
-    toast$(`Joined "${room.room_name}" 🎉`);
-  };
-
-  const leaveRoom = async (roomId) => {
-    await supabase.from("room_participants").delete().eq("room_id", roomId).eq("user_id", user.id);
-    setMyRooms(r => r.filter(id => id !== roomId));
-    toast$("Left room");
-  };
-
-  const deleteRoom = async (roomId) => {
-    await supabase.from("rooms").delete().eq("id", roomId);
-    setRooms(r => r.filter(x => x.id !== roomId));
-    setMyRooms(r => r.filter(id => id !== roomId));
-    toast$("Room deleted ✓");
-  };
 
   const pts = useCallback((uid) =>
     matches.filter(m => m.status === "finished").reduce((acc, m) => {
@@ -436,6 +424,77 @@ export default function App() {
     .sort((a, b) => b.pts - a.pts).slice(0, 10);
 
   const isAdmin = user?.is_admin === true;
+
+  // ── MENU HANDLERS ──────────────────────────────────────────────────────────
+  const saveMenuItem = async (item) => {
+    if (item.id) {
+      const { error } = await supabase.from("menu_items").update(item).eq("id", item.id);
+      if (error) { toast$("Error saving item", false); return; }
+      setMenuItems(m => m.map(x => x.id === item.id ? { ...x, ...item } : x));
+    } else {
+      const { data, error } = await supabase.from("menu_items").insert(item).select().single();
+      if (error) { toast$("Error adding item", false); return; }
+      setMenuItems(m => [...m, data]);
+    }
+    toast$("Menu item saved ✓");
+  };
+
+  const deleteMenuItem = async (id) => {
+    await supabase.from("menu_items").delete().eq("id", id);
+    setMenuItems(m => m.filter(x => x.id !== id));
+    toast$("Item removed ✓");
+  };
+
+  const toggleMenuItemAvail = async (id, available) => {
+    await supabase.from("menu_items").update({ available }).eq("id", id);
+    setMenuItems(m => m.map(x => x.id === id ? { ...x, available } : x));
+  };
+
+  const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
+    if (paymentMethod === "credits") {
+      if (myCredits < total) { toast$("Not enough credits", false); return false; }
+      // Deduct credits
+      const newBal = +(myCredits - total).toFixed(2);
+      await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+      setMyCredits(newBal);
+    }
+    const { data, error } = await supabase.from("orders").insert({
+      user_id: user.id,
+      user_name: user.name,
+      table_number: tableNumber,
+      items,
+      total,
+      payment_method: paymentMethod,
+      status: "pending",
+    }).select().single();
+    if (error) { toast$("Error placing order", false); return false; }
+    // Don't manually add to myOrders — Realtime subscription will add it
+    toast$("Order placed! 🍺 The bar will prepare it shortly.");
+    return true;
+  };
+
+  const adminAddCredits = async (userId, amount, userName) => {
+    const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).single();
+    const newBal = +((cur?.balance || 0) + amount).toFixed(2);
+    await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
+    await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
+    toast$(`${amount} credits added to ${userName} ✓`);
+  };
+
+  const updateOrderStatus = async (orderId, status) => {
+    await supabase.from("orders").update({ status }).eq("id", orderId);
+    setAllOrders(o => o.map(x => x.id === orderId ? { ...x, status } : x));
+  };
+
+  const deleteOrder = async (orderId) => {
+    await supabase.from("orders").delete().eq("id", orderId);
+    setAllOrders(o => o.filter(x => x.id !== orderId));
+  };
+
+  const loadAllOrders = async () => {
+    const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+    if (data) setAllOrders(data);
+  };
 
   return (
     <div style={{ fontFamily:"'Outfit',sans-serif", background:"#000", minHeight:"100vh", color:"#fff" }}>
@@ -461,14 +520,22 @@ export default function App() {
           rules={rules} sponsors={sponsors}
           getPred={getPred} savePred={savePred} pts={pts}
           onLogout={doLogout}
-          rooms={rooms} myRooms={myRooms} users={users}
-          requestRoom={requestRoom} joinRoom={joinRoom} leaveRoom={leaveRoom} deleteRoom={deleteRoom} updateRoomSettings={updateRoomSettings}
-          approveRoom={approveRoom} rejectRoom={rejectRoom}
+          users={users}
           adminUpdateMatch={adminUpdateMatch}
           adminAddMatch={adminAddMatch}
           adminDeleteMatch={adminDeleteMatch}
           adminSaveRules={adminSaveRules}
           adminSaveSponsors={adminSaveSponsors}
+          menuItems={menuItems} myCredits={myCredits} myOrders={myOrders}
+          placeOrder={placeOrder}
+          saveMenuItem={saveMenuItem} deleteMenuItem={deleteMenuItem}
+          toggleMenuItemAvail={toggleMenuItemAvail}
+          adminAddCredits={adminAddCredits}
+          updateOrderStatus={updateOrderStatus}
+          deleteOrder={deleteOrder}
+          loadAllOrders={loadAllOrders}
+          allOrders={allOrders}
+          matchesLoaded={matchesLoaded}
         />
       )}
     </div>
@@ -477,48 +544,62 @@ export default function App() {
 
 /* ═══ SPLASH ════════════════════════════════════════════════════════════════ */
 function Splash({ onSkip }) {
-  const mainRef  = useRef(null);
-  const goldRef  = useRef(null);
-  const sub2Ref  = useRef(null);
-  const divRef   = useRef(null);
-  const sepRef   = useRef(null);
-  const signRef  = useRef(null);
-  const ballRef  = useRef(null);
+  const mainRef    = useRef(null);
+  const goldRef    = useRef(null);
+  const sub2Ref    = useRef(null);
+  const divRef     = useRef(null);
+  const sepRef     = useRef(null);
+  const tagRef     = useRef(null);
+  const signRef    = useRef(null);
+  const ballRef    = useRef(null);
+  const glowRef    = useRef(null);
 
-  const [showBall, setShowBall] = useState(true);
-  const [ballHit,  setBallHit]  = useState(false);
-  const [showSign, setShowSign] = useState(false);
-  const [shake,    setShake]    = useState(false);
-  const [flash,    setFlash]    = useState(false);
-  const [cracks,   setCracks]   = useState(false);
-  const [falling,  setFalling]  = useState(false);
-  const [tapHint,  setTapHint]  = useState(false);
+  const [showBall,    setShowBall]    = useState(true);
+  const [ballHit,     setBallHit]     = useState(false);
+  const [showSign,    setShowSign]    = useState(false);
+  const [shake,       setShake]       = useState(false);
+  const [flash,       setFlash]       = useState(false);
+  const [cracks,      setCracks]      = useState(false);
+  const [sparks,      setSparks]      = useState(false);
+  const [falling,     setFalling]     = useState(false);
+  const [tapHint,     setTapHint]     = useState(false);
+  const [progress,    setProgress]    = useState(0);
 
   useEffect(() => {
     const T = [];
     const at = (ms, fn) => T.push(setTimeout(fn, ms));
 
-    // Show tap hint after ball appears
-    at(800, () => setTapHint(true));
+    // Progress bar ticks: 0→100 over ~20s
+    let prog = 0;
+    const progInt = setInterval(() => {
+      prog = Math.min(100, prog + 0.6);
+      setProgress(prog);
+    }, 120);
+    T.push(progInt); // store interval handle (clearTimeout works for intervals too — using explicit var)
+
+    at(600, () => setTapHint(true));
 
     at(3000, () => {
       setBallHit(true);
-      setShake(true); setFlash(true); setCracks(true);
+      setShake(true); setFlash(true); setCracks(true); setSparks(true);
       setTimeout(() => setShake(false), 850);
       setTimeout(() => setFlash(false), 500);
       setTimeout(() => setCracks(false), 1200);
+      setTimeout(() => setSparks(false), 1400);
+      if (glowRef.current) glowRef.current.style.animation = 'glowBurst 1.8s ease forwards';
     });
     at(3700, () => { setShowBall(false); setShowSign(true); setTapHint(false); });
-    at(5800, () => {
-      if (mainRef.current) mainRef.current.style.animation = 'neonWhiteOn 3.5s ease forwards';
-      if (sub2Ref.current) sub2Ref.current.style.animation = 'subWhiteOn 1.2s ease 2s forwards';
-      if (divRef.current)  divRef.current.style.animation  = 'dividerOn 0.6s ease 2.2s forwards';
+    at(5200, () => {
+      if (mainRef.current) mainRef.current.style.animation = 'neonWhiteOn 3s ease forwards';
+      if (sub2Ref.current) sub2Ref.current.style.animation = 'subWhiteOn 1s ease 1.8s forwards';
+      if (divRef.current)  divRef.current.style.animation  = 'dividerOn 0.5s ease 2s forwards';
     });
-    at(9800, () => {
-      if (goldRef.current) goldRef.current.style.animation = 'neonGoldOn 3.5s ease forwards';
+    at(8500, () => {
+      if (goldRef.current) goldRef.current.style.animation = 'neonGoldOn 3s ease forwards';
       if (sepRef.current)  sepRef.current.style.animation  = 'dividerOn 0.5s ease 0.3s forwards';
+      if (tagRef.current)  tagRef.current.style.animation  = 'subWhiteOn 1s ease 0.8s forwards';
     });
-    at(13500, () => {
+    at(11800, () => {
       if (mainRef.current) {
         mainRef.current.style.color = '#fff';
         mainRef.current.style.textShadow = '0 0 5px #fff,0 0 12px #fff,0 0 22px #fff,0 0 45px rgba(200,220,255,.9),0 0 85px rgba(180,200,255,.5)';
@@ -530,19 +611,43 @@ function Splash({ onSkip }) {
         goldRef.current.style.animation = 'neonGoldBreathe 3s ease-in-out infinite';
       }
     });
-    at(16500, () => setFalling(true));
-    return () => T.forEach(clearTimeout);
+    at(16000, () => setFalling(true));
+    return () => { T.forEach(id => { clearTimeout(id); clearInterval(id); }); };
   }, []);
+
+  const sparkAngles = [0,25,50,75,100,130,155,180,205,230,260,285,310,335];
 
   return (
     <div className={`splash${shake ? ' splash-shake' : ''}`} onClick={onSkip}>
       <div className="sp-vignette" />
+      {/* Ambient background glow */}
+      <div ref={glowRef} className="sp-glow-bg" />
       {flash  && <div className="sp-flash" />}
       {tapHint && <div className="sp-tap-hint">TAP TO SKIP</div>}
+      {/* Progress bar */}
+      <div className="sp-progress-track">
+        <div className="sp-progress-fill" style={{width:`${progress}%`}} />
+      </div>
       {cracks && (
         <div className="sp-cracks">
           {[0,30,60,90,120,150,180,210,240,270,300,330].map(deg => (
             <div key={deg} className="sp-crack" style={{transform:`rotate(${deg}deg)`}} />
+          ))}
+        </div>
+      )}
+      {sparks && (
+        <div className="sp-sparks">
+          {sparkAngles.map((deg,i) => (
+            <div key={i} className="sp-spark" style={{
+              transform:`rotate(${deg}deg)`,
+              animationDelay:`${i*0.04}s`,
+              height:0,
+              position:"absolute",top:0,left:0,
+              width:`${1+Math.random()}px`,
+              background:`linear-gradient(to bottom,rgba(255,${180+Math.floor(Math.random()*60)},30,1),rgba(255,100,20,.5),transparent)`,
+              transformOrigin:"top center",
+              animation:`sparkShoot ${0.7+Math.random()*0.4}s cubic-bezier(.2,0,.8,1) ${i*0.04}s forwards`
+            }}/>
           ))}
         </div>
       )}
@@ -562,6 +667,7 @@ function Splash({ onSkip }) {
             <div ref={sub2Ref} className="sp-neon-sub2">BAR · REST · BONAIRE</div>
             <div ref={sepRef}  className="sp-sign-sep"  style={{opacity:0}} />
             <div ref={goldRef} className="sp-neon-gold">WORLD CUP 2026</div>
+            <div ref={tagRef}  className="sp-neon-tag" style={{opacity:0}}>⚽ PREDICTION GAME ⚽</div>
           </div>
         </div>
       )}
@@ -971,11 +1077,12 @@ function TVLeaderboard({ board, onBack }) {
 /* ═══ MAIN SHELL ════════════════════════════════════════════════════════════ */
 function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, sponsors,
                 getPred, savePred, pts, onLogout,
-                rooms, myRooms, users,
-                requestRoom, joinRoom, leaveRoom, deleteRoom, updateRoomSettings,
-                approveRoom, rejectRoom,
+                users,
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
-                adminSaveRules, adminSaveSponsors }) {
+                adminSaveRules, adminSaveSponsors,
+                menuItems, myCredits, myOrders, placeOrder,
+                saveMenuItem, deleteMenuItem, toggleMenuItemAvail,
+                adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded }) {
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
@@ -985,9 +1092,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const tabs = [
     { id:"matches",     label:"Matches",  ico:<SoccerIco /> },
     { id:"leaderboard", label:"Ranking",  ico:<TrophyIco /> },
-    { id:"rooms",       label:"Rooms",    ico:<RoomsIco />  },
+    { id:"menu",        label:"Menu",     ico:<MenuIco />   },
     { id:"rules",       label:"Rules",    ico:<RulesIco />  },
-    { id:"sponsors",    label:"Sponsors", ico:<StarIco />   },
     { id:"profile",     label:"Profile",  ico:<PersonIco /> },
     ...(isAdmin ? [{ id:"admin", label:"Admin", ico:<AdminIco /> }] : []),
   ];
@@ -1026,18 +1132,21 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       </header>
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
-          {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} />}
+          {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} />}
           {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
-          {appTab === "rooms" && <RoomsView user={user} rooms={rooms} myRooms={myRooms} users={users} preds={preds} matches={matches} pts={pts} requestRoom={requestRoom} joinRoom={joinRoom} leaveRoom={leaveRoom} deleteRoom={deleteRoom} updateRoomSettings={updateRoomSettings} isAdmin={isAdmin} />}
+          {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder} />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
-          {appTab === "sponsors"    && <SponsorsView sponsors={sponsors} />}
-          {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} />}
+          {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} />}
           {appTab === "admin" && isAdmin && (
             <AdminView
-              matches={matches} rules={rules} sponsors={sponsors} rooms={rooms}
+              matches={matches} rules={rules} sponsors={sponsors}
               onUpdate={adminUpdateMatch} onAdd={adminAddMatch} onDelete={adminDeleteMatch}
               onSaveRules={adminSaveRules} onSaveSponsors={adminSaveSponsors}
-              onDeleteRoom={deleteRoom} onApproveRoom={approveRoom} onRejectRoom={rejectRoom}
+              menuItems={menuItems} users={users}
+              onSaveMenuItem={saveMenuItem} onDeleteMenuItem={deleteMenuItem}
+              onToggleAvail={toggleMenuItemAvail} onAddCredits={adminAddCredits}
+              onUpdateOrderStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onLoadAllOrders={loadAllOrders}
+              allOrders={allOrders}
             />
           )}
         </div>
@@ -1058,7 +1167,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 }
 
 /* ═══ MATCHES ═══════════════════════════════════════════════════════════════ */
-function MatchesView({ matches, getPred, savePred }) {
+function MatchesView({ matches, getPred, savePred, loaded }) {
   const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
 
@@ -1069,6 +1178,17 @@ function MatchesView({ matches, getPred, savePred }) {
   const filterByDate = arr => selDate === "all" ? arr : arr.filter(m => m.date === selDate);
   const visUpcoming = filterByDate(upcoming);
   const visFinished = filterByDate(finished);
+
+  if (!loaded) return (
+    <div>
+      <div className="section-banner">
+        <span className="section-banner-title">UPCOMING</span>
+      </div>
+      <div className="card-stack">
+        {[1,2,3].map(i => <div key={i} className="mcard-skeleton" />)}
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -1175,7 +1295,7 @@ function MatchCard({ m, pred, onSave }) {
         <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} BON</span>
         {!fin && countdownLabel && (
-          <span className="countdown-chip" style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
+          <span className={`countdown-chip${urgency==="red"?" countdown-chip-urgent":""}`} style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
             {urgency === "locked" ? "🔒 LOCKED" : countdownLabel}
           </span>
         )}
@@ -1211,9 +1331,9 @@ function MatchCard({ m, pred, onSave }) {
             </div>
           ) : (
             <div className="score-inputs-row">
-              <input className="sinput" type="number" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
+              <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
               <span className="ssep">:</span>
-              <input className="sinput" type="number" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
+              <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
             </div>
           )}
         </div>
@@ -1233,7 +1353,7 @@ function MatchCard({ m, pred, onSave }) {
         <div className="mverdict mv-locked"><IcoCheck /> Locked in · {pred.h}:{pred.a}</div>
       )}
       {!fin && locked && !submitted && (
-        <div className="mverdict mv-ng"><IcoX /> No prediction — predictions closed</div>
+        <div className="mverdict mv-missed"><IcoDash /> Missed — predictions closed for this match</div>
       )}
       {fin && (
         <div className={`mverdict ${correct?"mv-ok": partialCorrect?"mv-partial":"mv-ng"}`}>
@@ -1248,6 +1368,38 @@ function MatchCard({ m, pred, onSave }) {
 }
 
 /* ═══ LEADERBOARD ═══════════════════════════════════════════════════════════ */
+/* ═══ SHARED COMPONENTS ════════════════════════════════════════════════════ */
+function SecHead({ title, sub }) {
+  return (
+    <div className="section-banner">
+      <span className="section-banner-title">{title}</span>
+      {sub && <span className="section-banner-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function AField({ label, val, on, ph, type="text" }) {
+  return (
+    <div className="afield">
+      <label className="afield-lbl">{label}</label>
+      <input className="afield-inp" type={type} value={val} onChange={on} placeholder={ph} />
+    </div>
+  );
+}
+
+/* ═══ ICONS ══════════════════════════════════════════════════════════════════ */
+const SoccerIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>;
+const TrophyIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 2 12 2 12 16"/><path d="M5 6H3a2 2 0 0 0-2 2v1a6 6 0 0 0 6 6h2"/><path d="M19 6h2a2 2 0 0 1 2 2v1a6 6 0 0 1-6 6h-2"/><rect x="8" y="16" width="8" height="2" rx="1"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="12" y1="18" x2="12" y2="22"/></svg>;
+const MenuIco   = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>;
+const RulesIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
+const StarIco   = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+const PersonIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+const AdminIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+const LogoutIco = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const IcoCheck = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const IcoX     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+const IcoDash  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+
 function LeaderView({ board, user }) {
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
   const top3 = filtered.slice(0, 3);
@@ -1264,7 +1416,7 @@ function LeaderView({ board, user }) {
       </div>
 
       {/* ── TOP 3 PODIUM ── */}
-      {top3.length > 0 && (
+      {top3.length >= 3 && (
         <div className="lb-podium">
           {/* 2nd */}
           {top3[1] ? (
@@ -1405,7 +1557,7 @@ function SponsorsView({ sponsors }) {
 }
 
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, preds, matches }) {
+function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
@@ -1420,6 +1572,15 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
         <div className="prof-detail">{user.phone}</div>
         {myRank===1 && <div className="prof-leader-badge">👑 LEADING THE TOURNAMENT</div>}
       </div>
+
+      {/* Player number — prominent card */}
+      {user.player_number && (
+        <div className="player-num-card">
+          <div className="player-num-label">YOUR PLAYER NUMBER</div>
+          <div className="player-num-value">#{user.player_number}</div>
+          <div className="player-num-hint">💵 Paying cash at the bar? Give this number to the staff and they'll top up your credits instantly.</div>
+        </div>
+      )}
       <div className="stats-grid">
         {[
           {v:myPts,                      u:"PTS", l:"Total Points"},
@@ -1437,33 +1598,78 @@ function ProfileView({ user, myPts, myRank, preds, matches }) {
         <div className="info-title">⚽ HOW POINTS WORK</div>
         <p className="info-body">Predict the exact final score for each match. A correct prediction earns <strong>5 points</strong>. Predict the right winner or draw (wrong score) earns <strong>1 point</strong>. Most points at tournament end wins.</p>
       </div>
+
+      {/* ── SPONSORS SECTION ── */}
+      {sponsors?.length > 0 && (
+        <div style={{marginTop:8}}>
+          <div className="prof-section-divider">
+            <span className="prof-section-label">OUR SPONSORS</span>
+          </div>
+          <div className="prof-sponsor-sub">Thank you for making this event possible</div>
+          {sponsors[0] && (
+            <div className="sponsor-hero">
+              <div className="sponsor-hero-emoji">
+                {sponsors[0].logo
+                  ? <img src={sponsors[0].logo} alt={sponsors[0].name} style={{width:80,height:80,objectFit:"contain"}} />
+                  : sponsors[0].emoji}
+              </div>
+              <div className="sponsor-hero-role">{sponsors[0].role}</div>
+              <div className="sponsor-hero-name">{sponsors[0].name}</div>
+              <div className="sponsor-hero-detail">{sponsors[0].detail}</div>
+            </div>
+          )}
+          <div className="card-stack">
+            {sponsors.slice(1).map(s => (
+              <div key={s.id} className="sponsor-card">
+                <div className="sponsor-emoji">
+                  {s.logo
+                    ? <img src={s.logo} alt={s.name} style={{width:48,height:48,objectFit:"contain"}} />
+                    : s.emoji}
+                </div>
+                <div className="sponsor-info">
+                  <div className="sponsor-role">{s.role}</div>
+                  <div className="sponsor-name">{s.name}</div>
+                  {s.detail && <div className="sponsor-detail">{s.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="sponsor-cta-box">
+            <div className="sponsor-cta-title">Become a Sponsor</div>
+            <div className="sponsor-cta-body">Contact El Mundo Bar-Rest to learn about sponsorship opportunities for the World Cup event.</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, rooms, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, onDeleteRoom, onApproveRoom, onRejectRoom }) {
-  const [section, setSection] = useState("matches");
-  const pendingCount = rooms.filter(r => r.status === "pending").length;
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders }) {
+  const [section, setSection] = useState("floorplan");
   return (
-    <div className="vpad">
-      <SecHead title="Admin Panel" sub="Manage all content from here" />
-      <div className="admin-subtabs">
+    <div className={section === "floorplan" ? "" : "vpad"}>
+      {section !== "floorplan" && <SecHead title="Admin Panel" sub="Manage all content from here" />}
+      <div className="admin-subtabs" style={{flexWrap:"wrap"}}>
         {[
+          { id:"floorplan", label:"🗺 Floor Plan" },
           { id:"matches",  label:"⚽ Matches"  },
           { id:"rules",    label:"📋 Rules"    },
           { id:"sponsors", label:"⭐ Sponsors" },
-          { id:"rooms",    label: pendingCount > 0 ? `🏠 Rooms · ${pendingCount} pending` : "🏠 Rooms" },
+          { id:"menu",     label:"🍽 Menu"     },
+          { id:"credits",  label:"💳 Credits"  },
         ].map(t => (
           <button key={t.id} className={`admin-subtab ${section===t.id?"ast-on":""}`} onClick={()=>setSection(t.id)}>
             {t.label}
           </button>
         ))}
       </div>
+      {section === "floorplan" && <FloorPlan allOrders={allOrders} onLoad={onLoadAllOrders} onUpdateStatus={onUpdateOrderStatus} onDeleteOrder={onDeleteOrder} />}
       {section === "matches"  && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
       {section === "rules"    && <AdminRules    rules={rules}       onSave={onSaveRules} />}
       {section === "sponsors" && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
-      {section === "rooms"    && <AdminRooms    rooms={rooms}       onDelete={onDeleteRoom} onApprove={onApproveRoom} onReject={onRejectRoom} />}
+      {section === "menu"     && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} />}
+      {section === "credits"  && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
     </div>
   );
 }
@@ -1695,686 +1901,1414 @@ function AdminSponsors({ sponsors, onSave }) {
 }
 
 /* ── Admin: Rooms ── */
-function AdminRooms({ rooms, onDelete, onApprove, onReject }) {
-  const [confirm, setConfirm] = useState(null);
-  const pending  = rooms.filter(r => r.status === "pending");
-  const approved = rooms.filter(r => r.status === "approved");
-  const rejected = rooms.filter(r => r.status === "rejected");
+
+function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
+  const [cart,      setCart]      = useState({});
+  const [tab,       setTab]       = useState("menu");
+  const [table,     setTable]     = useState("");
+  const [payMethod, setPayMethod] = useState("credits");
+  const [placing,   setPlacing]   = useState(false);
+  const [tableErr,  setTableErr]  = useState("");
+  const [topupAmt,  setTopupAmt]  = useState("");
+
+  const categories = [...new Set(menuItems.map(i => i.category))];
+  const available  = menuItems.filter(i => i.available);
+
+  const addToCart      = id => setCart(c => ({ ...c, [id]: (c[id]||0)+1 }));
+  const removeFromCart = id => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
+  const clearCart      = () => setCart({});
+
+  const cartItems = Object.entries(cart).map(([id, qty]) => {
+    const item = menuItems.find(i => i.id === id);
+    return { ...item, qty };
+  }).filter(i => i.name);
+
+  const cartTotal = cartItems.reduce((s,i) => s + i.price * i.qty, 0);
+  const cartCount = cartItems.reduce((s,i) => s + i.qty, 0);
+
+  // All valid table numbers in the bar
+  const VALID_TABLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
+  const placingRef = useRef(false); // ref guard prevents double submit
+
+  const handleOrder = async () => {
+    if (!table.trim()) { setTableErr("Please select your table"); return; }
+    const tableNum = parseInt(table.trim());
+    if (!VALID_TABLES.includes(tableNum)) {
+      setTableErr(`Table ${table} doesn't exist. Valid tables: 1–27`); return;
+    }
+    setTableErr("");
+    // Double-submit guard — ref is synchronous unlike state
+    if (placingRef.current) return;
+    placingRef.current = true;
+    setPlacing(true);
+    const ok = await onPlaceOrder({
+      tableNumber: String(tableNum),
+      items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty })),
+      total: +cartTotal.toFixed(2),
+      paymentMethod: payMethod,
+    });
+    if (ok) { clearCart(); setTab("orders"); }
+    placingRef.current = false;
+    setPlacing(false);
+  };
+
+  const statusColor = s => s==="pending"?"rgba(251,191,36,.9)":s==="confirmed"?"rgba(74,222,128,.8)":s==="ready"?"#fff":"rgba(255,255,255,.4)";
+  const statusLabel = s => s==="pending"?"⏳ Pending":s==="confirmed"?"✓ Confirmed":s==="ready"?"🔔 Ready! Pick up":"—";
 
   return (
     <div>
+      {/* ── WALLET HEADER ── */}
+      <div className="wallet-header">
+        <div className="wallet-left">
+          <div className="wallet-label">CREDIT BALANCE</div>
+          <div className="wallet-balance">${(+myCredits).toFixed(2)}</div>
+          <div className="wallet-sub">Use credits to pay for orders</div>
+        </div>
+        <button className="wallet-topup-btn" onClick={()=>setTab("wallet")}>
+          + TOP UP
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="admin-subtabs">
+        {[
+          {id:"menu",   label:"🍽 Menu"},
+          {id:"cart",   label:`🛒 Cart${cartCount>0?` · ${cartCount}`:""}`},
+          {id:"orders", label:"📦 Orders"},
+          {id:"wallet", label:"💳 Wallet"},
+        ].map(t=>(
+          <button key={t.id} className={`admin-subtab ${tab===t.id?"ast-on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* ── MENU TAB ── */}
+      {tab === "menu" && (
+        <div>
+          {categories.map(cat => (
+            <div key={cat}>
+              <div className="menu-cat-header">{cat}</div>
+              {available.filter(i => i.category===cat).map(item => (
+                <div key={item.id} className="menu-item-row">
+                  <div className="menu-item-info">
+                    <div className="menu-item-name">{item.name}</div>
+                    {item.description && <div className="menu-item-desc">{item.description}</div>}
+                    <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
+                  </div>
+                  <div className="menu-item-actions">
+                    {cart[item.id] ? (
+                      <div className="menu-qty-ctrl">
+                        <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
+                        <span className="menu-qty-val">{cart[item.id]}</span>
+                        <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                      </div>
+                    ) : (
+                      <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>ADD</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          {available.length === 0 && <div className="empty">Menu not available right now</div>}
+          {cartCount > 0 && (
+            <div className="cart-fab" onClick={()=>setTab("cart")}>
+              View Cart · {cartCount} item{cartCount>1?"s":""} · ${cartTotal.toFixed(2)} →
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CART TAB ── */}
+      {tab === "cart" && (
+        <div style={{paddingBottom:32}}>
+          {cartItems.length === 0 ? (
+            <div className="empty" style={{padding:"60px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+              <div style={{fontSize:40}}>🛒</div>
+              <div>Your cart is empty</div>
+              <button className="menu-add-btn" style={{padding:"10px 24px",marginTop:8}} onClick={()=>setTab("menu")}>BROWSE MENU</button>
+            </div>
+          ) : (
+            <>
+              {cartItems.map(item => (
+                <div key={item.id} className="cart-row">
+                  <div className="cart-row-name">{item.name}</div>
+                  <div className="menu-qty-ctrl">
+                    <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
+                    <span className="menu-qty-val">{item.qty}</span>
+                    <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                  </div>
+                  <div className="cart-row-price">${(item.price*item.qty).toFixed(2)}</div>
+                </div>
+              ))}
+              <div className="cart-total-row">
+                <span className="cart-total-label">TOTAL</span>
+                <span className="cart-total-val">${cartTotal.toFixed(2)}</span>
+              </div>
+              <div style={{padding:"0 16px"}}>
+                <div className="afield" style={{marginBottom:14}}>
+                  <label className="afield-lbl">SELECT YOUR TABLE</label>
+                  <div className="table-picker-grid">
+                    {VALID_TABLES.map(n => (
+                      <button key={n}
+                        className={`table-picker-btn ${table===String(n)?"table-picker-on":""}`}
+                        onClick={()=>{setTable(String(n));setTableErr("");}}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{tableErr}</div>}
+                  {table && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginTop:8,fontWeight:600}}>Selected: Table {table}</div>}
+                </div>
+                <div className="afield" style={{marginBottom:20}}>
+                  <label className="afield-lbl">PAYMENT</label>
+                  <div style={{display:"flex",gap:8,marginTop:8}}>
+                    <button className={`menu-pay-btn ${payMethod==="credits"?"menu-pay-btn-on":""}`} onClick={()=>setPayMethod("credits")}>
+                      <div style={{fontSize:13,fontWeight:700}}>💳 Credits</div>
+                      <div style={{fontSize:11,opacity:.7,marginTop:2}}>Balance: ${(+myCredits).toFixed(2)}</div>
+                    </button>
+                    <button className={`menu-pay-btn ${payMethod==="stripe"?"menu-pay-btn-on":""}`} onClick={()=>setPayMethod("stripe")}>
+                      <div style={{fontSize:13,fontWeight:700}}>💳 Card</div>
+                      <div style={{fontSize:11,opacity:.7,marginTop:2}}>Pay via Stripe</div>
+                    </button>
+                  </div>
+                  {payMethod==="credits" && cartTotal > myCredits && (
+                    <div className="wallet-warning">
+                      ⚠ Not enough credits · need ${cartTotal.toFixed(2)}, have ${(+myCredits).toFixed(2)}
+                      <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
+                    </div>
+                  )}
+                </div>
+                <button className="order-place-btn"
+                  disabled={placing||(payMethod==="credits"&&cartTotal>myCredits)}
+                  onClick={handleOrder}>
+                  {placing ? "PLACING ORDER..." : `PLACE ORDER · $${cartTotal.toFixed(2)}`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── ORDERS TAB ── */}
+      {tab === "orders" && (
+        <div>
+          {myOrders.length === 0 && (
+            <div className="empty" style={{padding:"60px 0"}}>No orders yet</div>
+          )}
+          {myOrders.map(ord => (
+            <div key={ord.id} className="order-card">
+              <div className="order-card-top">
+                <div>
+                  <div className="order-card-table">Table {ord.table_number}</div>
+                  <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5}}>
+                  <div className="order-card-status" style={{color:statusColor(ord.status)}}>{statusLabel(ord.status)}</div>
+                  {ord.order_number && <div className="order-id-chip">#{ord.order_number}</div>}
+                </div>
+              </div>
+              <div className="order-card-items">
+                {ord.items.map((it,i) => (
+                  <div key={i} className="order-item-line">{it.qty}× {it.name}<span>${(it.price*it.qty).toFixed(2)}</span></div>
+                ))}
+              </div>
+              <div className="order-card-total">Total ${(+ord.total).toFixed(2)} · {ord.payment_method==="credits"?"Credits":"Card"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── WALLET TAB ── */}
+      {tab === "wallet" && (
+        <div style={{padding:"0 16px 32px"}}>
+          {/* Balance card */}
+          <div className="wallet-card">
+            <div className="wallet-card-label">AVAILABLE BALANCE</div>
+            <div className="wallet-card-amount">${(+myCredits).toFixed(2)}</div>
+            <div className="wallet-card-name">{user.name}</div>
+          </div>
+
+          {/* Top up via Stripe */}
+          <div className="wallet-section-title">TOP UP WITH CARD</div>
+          <div className="wallet-topup-amounts">
+            {[5,10,20,50].map(amt => (
+              <button key={amt}
+                className={`wallet-amt-btn ${topupAmt===String(amt)?"wallet-amt-on":""}`}
+                onClick={()=>setTopupAmt(String(amt))}>
+                ${amt}
+              </button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>$</span>
+            <input className="afield-inp" type="number" min="1" placeholder="Custom amount"
+              value={topupAmt} onChange={e=>setTopupAmt(e.target.value)}
+              style={{flex:1,fontSize:18,letterSpacing:2}} />
+          </div>
+          <button className="order-place-btn" disabled={!topupAmt||+topupAmt<=0}
+            onClick={async () => {
+              if (!topupAmt || +topupAmt <= 0) return;
+              try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch(
+                  "https://sibvflsmhihmkjdggwzn.supabase.co/functions/v1/create-checkout",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({
+                      amount: +topupAmt,
+                      userId: session.user.id,
+                      userEmail: session.user.email,
+                      successUrl: window.location.origin + "?topup=success",
+                      cancelUrl: window.location.origin + "?topup=cancel",
+                    }),
+                  }
+                );
+                const data = await res.json();
+                if (data.url) {
+                  window.location.href = data.url;
+                } else {
+                  alert("Error: " + (data.error || "Could not create checkout session"));
+                }
+              } catch (err) {
+                alert("Error: " + err.message);
+              }
+            }}>
+            PAY ${topupAmt||"0.00"} WITH CARD →
+          </button>
+
+          {/* Cash top-up info */}
+          <div className="wallet-cash-box">
+            <div className="wallet-cash-title">💵 Pay cash at the bar</div>
+            <div className="wallet-cash-body">Hand your cash to a staff member and they will top up your balance instantly from the admin panel.</div>
+          </div>
+
+          {/* How credits work */}
+          <div className="wallet-info-box">
+            <div className="wallet-info-title">How credits work</div>
+            <div className="wallet-info-body">Credits are stored in your account. Use them to pay for food and drinks directly from the app. The bar receives your order instantly after payment.</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Admin: Menu management ── */
+function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
+  const [editItem, setEditItem] = useState(null);
+  const [addMode,  setAddMode]  = useState(false);
+  const blank = { name:"", description:"", price:"", category:"Drinks", available:true, sort_order:0 };
+
+  const Form = ({ item, onClose }) => {
+    const [f, setF] = useState(item);
+    const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
+    return (
+      <div className="admin-form-card" style={{margin:"0 14px 16px"}}>
+        <div className="admin-form-title">{f.id ? "EDIT ITEM" : "NEW ITEM"}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+          <AField label="Name" val={f.name} on={set("name")} ph="e.g. Caribe Beer" />
+          <AField label="Description" val={f.description||""} on={set("description")} ph="Optional short description" />
+          <AField label="Price ($)" val={f.price} on={set("price")} ph="e.g. 3.50" />
+          <div className="afield">
+            <label className="afield-lbl">CATEGORY</label>
+            <select className="afield-inp" value={f.category} onChange={set("category")}>
+              {["Drinks","Food","Snacks","Desserts","Other"].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <AField label="Sort Order" val={f.sort_order} on={set("sort_order")} ph="0" />
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="admin-save-btn" style={{flex:1}} onClick={()=>{onSave({...f,price:+f.price,sort_order:+f.sort_order});onClose();}}>Save ✓</button>
+          <button className="modal-cancel-btn" style={{flex:1}} onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{padding:"14px 14px 0",display:"flex",justifyContent:"flex-end"}}>
+        <button className="admin-save-btn" style={{padding:"8px 18px",fontSize:9,letterSpacing:2}} onClick={()=>{setAddMode(true);setEditItem(null);}}>+ ADD ITEM</button>
+      </div>
+      {addMode && <Form item={blank} onClose={()=>setAddMode(false)} />}
+      {menuItems.map(item => (
+        <div key={item.id}>
+          {editItem===item.id && <Form item={item} onClose={()=>setEditItem(null)} />}
+          <div className="admin-row" style={{opacity:item.available?1:.45}}>
+            <div style={{flex:1}}>
+              <div className="admin-row-teams">{item.name}</div>
+              <div className="admin-row-dt">${(+item.price).toFixed(2)} · {item.category} {!item.available&&<span style={{color:"rgba(239,68,68,.7)"}}>· UNAVAILABLE</span>}</div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>onToggleAvail(item.id,!item.available)}>
+                {item.available?"HIDE":"SHOW"}
+              </button>
+              <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>setEditItem(item.id)}>EDIT</button>
+              <button className="admin-del-btn" onClick={()=>onDelete(item.id)}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Admin: Orders dashboard ── */
+function AdminOrders({ allOrders, onLoad, onUpdateStatus }) {
+  const [loaded,  setLoaded]  = useState(false);
+  const [page,    setPage]    = useState("live"); // "live" | "history"
+  const [search,  setSearch]  = useState("");
+
+  // Auto-refresh every 8s when on live page
+  useEffect(() => {
+    onLoad(); setLoaded(true);
+    const iv = setInterval(() => { if (page === "live") onLoad(); }, 8000);
+    return () => clearInterval(iv);
+  }, [page]);
+
+  const statusColor = s =>
+    s==="pending"   ? "#f59e0b" :
+    s==="confirmed" ? "#22c55e" :
+    s==="ready"     ? "#fff"    :
+    s==="delivered" ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.4)";
+
+  const statusBg = s =>
+    s==="pending"   ? "rgba(245,158,11,.12)"  :
+    s==="confirmed" ? "rgba(34,197,94,.1)"    :
+    s==="ready"     ? "rgba(255,255,255,.1)"  : "transparent";
+
+  const nextStatus = s => s==="pending"?"confirmed":s==="confirmed"?"ready":s==="ready"?"delivered":null;
+  const nextLabel  = s => s==="pending"?"✓ CONFIRM":s==="confirmed"?"🔔 MARK READY":s==="ready"?"✓ CLEAR TABLE":null;
+
+  // Live = pending + confirmed + ready (not delivered)
+  const liveOrders = allOrders
+    .filter(o => o.status !== "delivered")
+    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at)); // oldest first
+
+  // History = all orders, searchable
+  const historyOrders = allOrders
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); // newest first
+
+  const filterHistory = arr => {
+    if (!search.trim()) return arr;
+    const s = search.toLowerCase();
+    return arr.filter(o =>
+      String(o.order_number||"").includes(s) ||
+      o.user_name?.toLowerCase().includes(s) ||
+      String(o.table_number||"").includes(s)
+    );
+  };
+
+  const pendingCount    = liveOrders.filter(o=>o.status==="pending").length;
+  const confirmedCount  = liveOrders.filter(o=>o.status==="confirmed").length;
+  const readyCount      = liveOrders.filter(o=>o.status==="ready").length;
+
+  const LiveCard = ({ ord }) => (
+    <div className="live-order-card" style={{borderLeft:`4px solid ${statusColor(ord.status)}`}}>
+      {/* Status badge */}
+      <div className="live-order-status-row" style={{background:statusBg(ord.status)}}>
+        <span className="live-order-status-dot" style={{background:statusColor(ord.status)}} />
+        <span className="live-order-status-txt" style={{color:statusColor(ord.status)}}>
+          {ord.status.toUpperCase()}
+        </span>
+        <span className="live-order-time">
+          {new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+        </span>
+        {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
+      </div>
+      {/* Table + customer */}
+      <div className="live-order-hero">
+        <div>
+          <div className="live-order-table">TABLE {ord.table_number}</div>
+          <div className="live-order-name">{ord.user_name}</div>
+        </div>
+        <div className="live-order-total">${(+ord.total).toFixed(2)}</div>
+      </div>
+      {/* Items */}
+      <div className="live-order-items">
+        {ord.items.map((it,i) => (
+          <div key={i} className="live-order-item">
+            <span className="live-order-qty">{it.qty}×</span>
+            <span className="live-order-item-name">{it.name}</span>
+          </div>
+        ))}
+      </div>
+      {/* Action button */}
+      {nextStatus(ord.status) && (
+        <button className="live-order-action-btn"
+          style={{borderColor:statusColor(nextStatus(ord.status)),color:statusColor(nextStatus(ord.status))}}
+          onClick={()=>onUpdateStatus(ord.id, nextStatus(ord.status))}>
+          {nextLabel(ord.status)}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Page selector */}
+      <div className="orders-page-tabs">
+        <button className={`orders-page-tab ${page==="live"?"orders-page-tab-on":""}`} onClick={()=>setPage("live")}>
+          <span className="orders-page-tab-label">🔴 LIVE ORDERS</span>
+          {liveOrders.length > 0 && <span className="orders-live-badge">{liveOrders.length}</span>}
+        </button>
+        <button className={`orders-page-tab ${page==="history"?"orders-page-tab-on":""}`} onClick={()=>setPage("history")}>
+          <span className="orders-page-tab-label">📋 HISTORY</span>
+        </button>
+      </div>
+
+      {/* ── LIVE PAGE ── */}
+      {page === "live" && (
+        <div>
+          {/* Stats bar */}
+          <div className="live-stats-bar">
+            <div className="live-stat">
+              <span className="live-stat-val" style={{color:"#f59e0b"}}>{pendingCount}</span>
+              <span className="live-stat-lbl">PENDING</span>
+            </div>
+            <div className="live-stat-divider"/>
+            <div className="live-stat">
+              <span className="live-stat-val" style={{color:"#22c55e"}}>{confirmedCount}</span>
+              <span className="live-stat-lbl">CONFIRMED</span>
+            </div>
+            <div className="live-stat-divider"/>
+            <div className="live-stat">
+              <span className="live-stat-val" style={{color:"#fff"}}>{readyCount}</span>
+              <span className="live-stat-lbl">READY</span>
+            </div>
+            <div className="live-stat-divider"/>
+            <div className="live-stat">
+              <span className="live-stat-val">{liveOrders.length}</span>
+              <span className="live-stat-lbl">TOTAL</span>
+            </div>
+          </div>
+
+          {liveOrders.length === 0 ? (
+            <div className="empty" style={{padding:"80px 0"}}>
+              <div style={{fontSize:40,marginBottom:12}}>✓</div>
+              <div>No active orders right now</div>
+            </div>
+          ) : (
+            <div className="live-orders-grid">
+              {/* Pending first */}
+              {liveOrders.filter(o=>o.status==="pending").map(o => <LiveCard key={o.id} ord={o} />)}
+              {/* Then confirmed */}
+              {liveOrders.filter(o=>o.status==="confirmed").map(o => <LiveCard key={o.id} ord={o} />)}
+              {/* Then ready to pick up */}
+              {liveOrders.filter(o=>o.status==="ready").map(o => <LiveCard key={o.id} ord={o} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── HISTORY PAGE ── */}
+      {page === "history" && (
+        <div>
+          <div style={{padding:"12px 14px 4px"}}>
+            <input className="afield-inp" placeholder="Search by name, #order or table..."
+              value={search} onChange={e=>setSearch(e.target.value)}
+              style={{width:"100%",boxSizing:"border-box"}} />
+          </div>
+
+          {(() => {
+            const results = filterHistory(historyOrders);
+            if (results.length === 0) return (
+              <div className="empty" style={{padding:"60px 0"}}>{search ? "No orders found" : "No delivered orders yet"}</div>
+            );
+
+            // When searching by name — group by person
+            const isNameSearch = search.trim().length > 0 &&
+              !search.trim().startsWith("#") &&
+              isNaN(search.trim());
+
+            if (isNameSearch) {
+              // Group results by user_name
+              const grouped = results.reduce((acc, o) => {
+                const key = o.user_name || "Unknown";
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(o);
+                return acc;
+              }, {});
+
+              return Object.entries(grouped).map(([name, orders]) => {
+                const totalSpent = orders.reduce((s,o) => s + (+o.total), 0);
+                const orderCount = orders.length;
+                return (
+                  <div key={name} style={{marginBottom:20}}>
+                    {/* Person header */}
+                    <div className="history-person-header">
+                      <div>
+                        <div className="history-person-name">{name}</div>
+                        <div className="history-person-meta">{orderCount} order{orderCount>1?"s":""} · Total spent: <strong>${totalSpent.toFixed(2)}</strong></div>
+                      </div>
+                    </div>
+                    {/* Their orders */}
+                    {orders.map(ord => (
+                      <div key={ord.id} className="history-order-row">
+                        <div className="history-order-row-left">
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
+                            <span className="history-order-table">Table {ord.table_number}</span>
+                          </div>
+                          <div className="history-order-items-inline">
+                            {ord.items.map((it,i) => `${it.qty}× ${it.name}`).join(" · ")}
+                          </div>
+                          <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                        </div>
+                        <div className="history-order-amount">${(+ord.total).toFixed(2)}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              });
+            }
+
+            // Default flat list (searching by # or table)
+            return (
+              <>
+                <div className="admin-section-lbl">
+                  {search ? "RESULTS" : "ORDER HISTORY"}
+                  <span className="admin-count">{results.length}</span>
+                </div>
+                {results.map(ord => (
+                  <div key={ord.id} className="order-card" style={{margin:"0 14px 8px",borderLeft:"3px solid rgba(255,255,255,.1)"}}>
+                    <div className="order-card-top">
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div className="order-card-table">Table {ord.table_number}</div>
+                          {ord.order_number && <div className="order-id-chip">#{ord.order_number}</div>}
+                        </div>
+                        <div className="order-card-date">{ord.user_name} · {new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                      <div className="order-card-total" style={{marginBottom:0,borderTop:"none",paddingTop:0,fontSize:16,color:"rgba(255,255,255,.6)"}}>${(+ord.total).toFixed(2)}</div>
+                    </div>
+                    <div className="order-card-items">
+                      {ord.items.map((it,i) => (
+                        <div key={i} className="order-item-line">{it.qty}× {it.name}<span>${(it.price*it.qty).toFixed(2)}</span></div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Admin: Credits management ── */
+function AdminCredits({ users, onAddCredits }) {
+  const [unlocked,  setUnlocked]  = useState(false);
+  const [pinInput,  setPinInput]  = useState("");
+  const [pinErr,    setPinErr]    = useState("");
+  const [search,    setSearch]    = useState("");
+  const [amounts,   setAmounts]   = useState({});
+  const [confirm,   setConfirm]   = useState(null); // {userId, amount, name}
+
+  // Admin re-auth via Supabase — confirm their own password before adding credits
+  const handleUnlock = async () => {
+    if (!pinInput.trim()) { setPinErr("Enter your admin password"); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.auth.signInWithPassword({ email: user.email, password: pinInput });
+    if (error) { setPinErr("Wrong password — try again"); setPinInput(""); return; }
+    setUnlocked(true);
+    setPinErr("");
+  };
+
+  // Sort users by player_number if available, else by name
+  const userList = Object.values(users)
+    .sort((a,b) => (a.player_number||9999) - (b.player_number||9999))
+    .filter(u => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return u.name?.toLowerCase().includes(s) ||
+             String(u.player_number||"").includes(s);
+    });
+
+  if (!unlocked) return (
+    <div style={{padding:"32px 16px",maxWidth:380,margin:"0 auto"}}>
+      <div className="admin-form-card">
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:36,marginBottom:12}}>🔐</div>
+          <div className="admin-form-title" style={{fontSize:14,letterSpacing:2}}>ADMIN VERIFICATION</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.45)",marginTop:8,lineHeight:1.5}}>
+            Confirm your admin password before managing player credits.
+          </div>
+        </div>
+        <div className="afield">
+          <label className="afield-lbl">ADMIN PASSWORD</label>
+          <input className="afield-inp" type="password" placeholder="Your password"
+            value={pinInput} onChange={e=>{setPinInput(e.target.value);setPinErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&handleUnlock()} autoComplete="current-password" />
+        </div>
+        {pinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{pinErr}</div>}
+        <button className="order-place-btn" style={{marginTop:16}}
+          onClick={handleUnlock}>
+          VERIFY & CONTINUE
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Confirm modal */}
       {confirm && (
         <div className="modal-overlay">
           <div className="modal">
-            <div className="modal-title">Delete this room?</div>
-            <p className="modal-body">All messages and participants will be removed. This cannot be undone.</p>
+            <div className="modal-title">Add Credits?</div>
+            <p className="modal-body">
+              Add <strong>${(+confirm.amount).toFixed(2)}</strong> credits to <strong>{confirm.name}</strong>{confirm.playerNumber ? ` (Player #${confirm.playerNumber})` : ""}?
+            </p>
             <div className="modal-actions">
-              <button className="modal-del-btn" onClick={()=>{ onDelete(confirm); setConfirm(null); }}>Yes, Delete</button>
+              <button className="modal-del-btn" onClick={()=>{ onAddCredits(confirm.userId, +confirm.amount, confirm.name); setAmounts(a=>({...a,[confirm.userId]:""})); setConfirm(null); }}>Yes, Add</button>
               <button className="modal-cancel-btn" onClick={()=>setConfirm(null)}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* PENDING */}
-      <div className="admin-section-lbl" style={{marginTop:16}}>
-        PENDING APPROVAL <span className="admin-count" style={{background: pending.length?"rgba(251,191,36,.15)":"", borderColor: pending.length?"rgba(251,191,36,.3)":""}}>{pending.length}</span>
+      <div className="admin-hint" style={{margin:"0 14px",padding:"12px 0 4px",borderTop:"none"}}>
+        ✓ Verified. Search by player number or name, enter amount and press ADD.
       </div>
-      {pending.length === 0 && <div className="empty" style={{padding:"28px 0"}}>No pending requests</div>}
-      {pending.map(r => (
-        <div key={r.id} className="admin-row" style={{borderLeft:"3px solid rgba(251,191,36,.4)"}}>
-          <div className="admin-row-left">
-            <span className="admin-row-group" style={{color:"rgba(251,191,36,.8)"}}>⏳ PENDING</span>
-            <span className="admin-row-teams">{r.room_name}</span>
-            <span className="admin-row-dt">Requested by: {r.requested_by_name}</span>
-            {r.prize && <span className="admin-row-dt">🏆 {r.prize}</span>}
-            {r.description && <span className="admin-row-dt" style={{color:"rgba(255,255,255,.4)"}}>"{r.description}"</span>}
-            <span className="admin-row-dt" style={{fontSize:10}}>
-              Chat: {r.enable_chat?"✓":"✗"} · Feed: {r.enable_feed?"✓":"✗"} · Leaderboard: {r.enable_leaderboard?"✓":"✗"} · Max: {r.max_members}
-            </span>
-          </div>
-          <div className="admin-row-right">
-            <button className="admin-save-btn" style={{padding:"8px 14px",fontSize:9,letterSpacing:2,background:"#22c55e",color:"#000"}} onClick={()=>onApprove(r.id)}>✓ APPROVE</button>
-            <button className="admin-cancel-btn" style={{padding:"8px 12px",fontSize:10}} onClick={()=>onReject(r.id)}>✕ REJECT</button>
-            <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>🗑</button>
-          </div>
-        </div>
-      ))}
-
-      {/* APPROVED */}
-      <div className="admin-section-lbl" style={{marginTop:20}}>
-        APPROVED <span className="admin-count">{approved.length}</span>
+      <div style={{padding:"0 14px 12px"}}>
+        <input className="afield-inp" placeholder="Search by # or name..." value={search}
+          onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box"}} />
       </div>
-      {approved.length === 0 && <div className="empty" style={{padding:"20px 0"}}>No approved rooms yet</div>}
-      {approved.map(r => (
-        <div key={r.id} className="admin-row" style={{borderLeft:"3px solid rgba(34,197,94,.3)"}}>
-          <div className="admin-row-left">
-            <span className="admin-row-group" style={{color:"rgba(34,197,94,.7)",letterSpacing:3}}>{r.room_code}</span>
-            <span className="admin-row-teams">{r.room_name}</span>
-            <span className="admin-row-dt">By: {r.requested_by_name}{r.prize ? ` · 🏆 ${r.prize}` : ""}</span>
+      {userList.map(u => (
+        <div key={u.id} className="admin-row">
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {u.player_number && (
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",flexShrink:0}}>
+                  #{u.player_number}
+                </span>
+              )}
+              <div className="admin-row-teams">{u.name}</div>
+            </div>
+            <div className="admin-row-dt">{u.phone||"No phone"}</div>
           </div>
-          <div className="admin-row-right">
-            <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>✕</button>
-          </div>
-        </div>
-      ))}
-
-      {/* REJECTED */}
-      {rejected.length > 0 && <>
-        <div className="admin-section-lbl" style={{marginTop:20}}>REJECTED <span className="admin-count">{rejected.length}</span></div>
-        {rejected.map(r => (
-          <div key={r.id} className="admin-row" style={{opacity:.45}}>
-            <div className="admin-row-left">
-              <span className="admin-row-group" style={{color:"rgba(239,68,68,.6)"}}>✕ REJECTED</span>
-              <span className="admin-row-teams">{r.room_name}</span>
-              <span className="admin-row-dt">By: {r.requested_by_name}</span>
-            </div>
-            <div className="admin-row-right">
-              <button className="admin-save-btn" style={{padding:"6px 12px",fontSize:8,letterSpacing:2}} onClick={()=>onApprove(r.id)}>RE-APPROVE</button>
-              <button className="admin-del-btn" onClick={()=>setConfirm(r.id)}>✕</button>
-            </div>
-          </div>
-        ))}
-      </>}
-
-      <div className="admin-hint">💡 Approving generates a unique code. The room creator sees it in their app to share.</div>
-    </div>
-  );
-}
-
-function AField({ label, val, on, ph }) {
-  return (
-    <div className="afield">
-      <label className="afield-lbl">{label}</label>
-      <input className="afield-inp" value={val} onChange={on} placeholder={ph} autoComplete="off" />
-    </div>
-  );
-}
-
-function SecHead({ title, sub }) {
-  return (
-    <div className="sechead">
-      <h2 className="sectitle">{title}</h2>
-      {sub && <p className="secsub">{sub}</p>}
-    </div>
-  );
-}
-
-/* Icons */
-const RoomsIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
-const SoccerIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20M12 2C8 6 8 18 12 22M12 2c4 4 4 16 0 20M2 12h20"/></svg>;
-const TrophyIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M6 2h12v7a6 6 0 0 1-12 0V2z"/></svg>;
-const PersonIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
-const AdminIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-const LogoutIco = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
-const RulesIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
-const StarIco   = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
-const IcoCheck  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",marginRight:5,verticalAlign:"middle"}}><polyline points="20 6 9 17 4 12"/></svg>;
-const IcoX      = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",marginRight:5,verticalAlign:"middle"}}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-const IcoDash   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",marginRight:5,verticalAlign:"middle"}}><line x1="5" y1="12" x2="19" y2="12"/></svg>;
-
-/* ═══ ROOMS VIEW ════════════════════════════════════════════════════════════ */
-function RoomsView({ user, rooms, myRooms, users, preds, matches, pts, requestRoom, joinRoom, leaveRoom, deleteRoom, updateRoomSettings, isAdmin }) {
-  const [subTab,     setSubTab]     = useState("mine");
-  const [joinCode,   setJoinCode]   = useState("");
-  const [activeRoom, setActiveRoom] = useState(null);
-  const [joining,    setJoining]    = useState(false);
-  const [requesting, setRequesting] = useState(false);
-  const [reqForm,    setReqForm]    = useState({
-    name:"", prize:"", description:"", max_members:50,
-    enable_chat:true, enable_leaderboard:true, enable_feed:true
-  });
-
-  // My rooms: approved ones I joined, plus my own pending/rejected requests
-  const myApprovedRooms = rooms.filter(r => r.status === "approved" && myRooms.includes(r.id));
-  const myRequests      = rooms.filter(r => r.created_by === user.id && r.status !== "approved");
-  const browseRooms     = rooms.filter(r => r.status === "approved" && !myRooms.includes(r.id));
-
-  const handleJoin = async () => {
-    if (!joinCode.trim()) return;
-    setJoining(true);
-    await joinRoom(joinCode.trim());
-    setJoinCode(""); setJoining(false); setSubTab("mine");
-  };
-
-  const handleRequest = async () => {
-    if (!reqForm.name.trim()) return;
-    setRequesting(true);
-    await requestRoom(reqForm);
-    setRequesting(false);
-    setReqForm({ name:"", prize:"", description:"", max_members:50, enable_chat:true, enable_leaderboard:true, enable_feed:true });
-    setSubTab("mine");
-  };
-
-  const currentActiveRoom = activeRoom ? rooms.find(r => r.id === activeRoom.id) || activeRoom : null;
-
-  if (currentActiveRoom && currentActiveRoom.status === "approved") {
-    return (
-      <RoomDetail
-        room={currentActiveRoom} user={user} users={users}
-        preds={preds} matches={matches} pts={pts}
-        isOwner={currentActiveRoom.created_by === user.id} isAdmin={isAdmin}
-        onBack={() => setActiveRoom(null)}
-        onLeave={async () => { await leaveRoom(currentActiveRoom.id); setActiveRoom(null); }}
-        onDelete={async () => { await deleteRoom(currentActiveRoom.id); setActiveRoom(null); }}
-        onSaveSettings={(s) => updateRoomSettings(currentActiveRoom.id, s)}
-      />
-    );
-  }
-
-  return (
-    <div>
-      <div className="section-banner">
-        <span className="section-banner-title">ROOMS</span>
-        <span className="section-banner-sub">Request a private room · Admin approves · Share code</span>
-      </div>
-      <div className="admin-subtabs">
-        {[{id:"mine",label:"My Rooms"},{id:"request",label:"+ Request Room"},{id:"join",label:"Join with Code"}].map(t => (
-          <button key={t.id} className={`admin-subtab ${subTab===t.id?"ast-on":""}`} onClick={()=>setSubTab(t.id)}>{t.label}</button>
-        ))}
-      </div>
-
-      {/* MY ROOMS */}
-      {subTab === "mine" && (
-        <div>
-          {/* Approved rooms I'm in */}
-          {myApprovedRooms.length === 0 && myRequests.length === 0 && (
-            <div className="room-empty-state">
-              <div className="room-empty-ico">🏠</div>
-              <div className="room-empty-title">No rooms yet</div>
-              <div className="room-empty-sub">Request a room or join one with a code</div>
-            </div>
-          )}
-          {myApprovedRooms.map(r => (
-            <RoomCard key={r.id} room={r} isOwner={r.created_by === user.id} isAdmin={isAdmin} myRooms={myRooms}
-              onView={() => setActiveRoom(r)}
-              onDelete={async (e) => { e.stopPropagation(); await deleteRoom(r.id); }}
-            />
-          ))}
-
-          {/* My pending/rejected requests */}
-          {myRequests.length > 0 && (
-            <div>
-              <div className="admin-section-lbl" style={{padding:"18px 14px 8px"}}>MY REQUESTS</div>
-              {myRequests.map(r => (
-                <div key={r.id} className={`room-request-row ${r.status === "rejected" ? "room-request-rejected" : ""}`}>
-                  <div className="room-request-left">
-                    <span className={`room-request-status ${r.status === "pending" ? "rrs-pending" : "rrs-rejected"}`}>
-                      {r.status === "pending" ? "⏳ PENDING APPROVAL" : "✕ REJECTED"}
-                    </span>
-                    <span className="room-card-name">{r.room_name}</span>
-                    {r.prize && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,200,50,.6)"}}>🏆 {r.prize}</span>}
-                    {r.status === "pending" && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>Waiting for admin to review</span>}
-                    {r.status === "rejected" && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(239,68,68,.4)"}}>Your request was not approved</span>}
-                  </div>
-                  <div className="admin-row-right">
-                    <button className="admin-del-btn" onClick={() => deleteRoom(r.id)} title="Cancel request">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* REQUEST ROOM */}
-      {subTab === "request" && (
-        <div style={{padding:"16px 14px"}}>
-          <div className="room-request-info">
-            <span className="room-request-info-ico">ℹ️</span>
-            <span className="room-request-info-text">Submit your room details below. Once the admin approves, a unique code will appear in your room so you can invite people.</span>
-          </div>
-          <div className="admin-form-card" style={{marginTop:12}}>
-            <div className="admin-form-title">ROOM REQUEST</div>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-              <AField label="Room Name *" val={reqForm.name} on={e=>setReqForm(f=>({...f,name:e.target.value}))} ph="e.g. Los Amigos FC" />
-              <AField label="Prize (optional)" val={reqForm.prize} on={e=>setReqForm(f=>({...f,prize:e.target.value}))} ph="e.g. Free round of drinks 🍺" />
-              <AField label="Description (optional)" val={reqForm.description} on={e=>setReqForm(f=>({...f,description:e.target.value}))} ph="e.g. Office World Cup group" />
-              <div className="afield">
-                <label className="afield-lbl">Max Members</label>
-                <input className="afield-inp" type="number" min="2" max="200" value={reqForm.max_members} onChange={e=>setReqForm(f=>({...f,max_members:+e.target.value}))} />
-              </div>
-            </div>
-
-            <div className="admin-section-lbl" style={{padding:"0 0 12px",fontSize:9}}>FEATURES TO ENABLE</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {[
-                {key:"enable_leaderboard", label:"🏅 Room Leaderboard", sub:"Members ranked by points"},
-                {key:"enable_feed",        label:"🔔 Activity Feed",    sub:"Who predicted what after matches"},
-                {key:"enable_chat",        label:"💬 Chat / Trash talk", sub:"Real-time messages between members"},
-              ].map(({key,label,sub}) => (
-                <div key={key} className="room-toggle-row" onClick={()=>setReqForm(f=>({...f,[key]:!f[key]}))} style={{cursor:"pointer"}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:.5}}>{label}</div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>{sub}</div>
-                  </div>
-                  <div className={`room-toggle ${reqForm[key]?"room-toggle-on":""}`}>
-                    <div className="room-toggle-knob"/>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button className="admin-save-btn" style={{width:"100%"}} disabled={!reqForm.name.trim()||requesting} onClick={handleRequest}>
-              {requesting ? "Submitting..." : "Submit Room Request →"}
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input className="afield-inp" type="number" min="1" step="1" placeholder="$"
+              style={{width:64,textAlign:"center",padding:"6px 8px",fontSize:14}}
+              value={amounts[u.id]||""}
+              onChange={e=>setAmounts(a=>({...a,[u.id]:e.target.value}))} />
+            <button className="admin-save-btn" style={{padding:"7px 14px",fontSize:9,letterSpacing:1}}
+              disabled={!amounts[u.id]||+amounts[u.id]<=0}
+              onClick={()=>setConfirm({userId:u.id, amount:amounts[u.id], name:u.name, playerNumber:u.player_number})}>
+              ADD
             </button>
           </div>
         </div>
-      )}
-
-      {/* JOIN */}
-      {subTab === "join" && (
-        <div style={{padding:"16px 14px"}}>
-          <div className="admin-form-card">
-            <div className="admin-form-title">JOIN A ROOM</div>
-            <div style={{marginBottom:16}}>
-              <AField label="Room Code (4 characters)" val={joinCode} on={e=>setJoinCode(e.target.value.toUpperCase())} ph="e.g. A1B2" />
-            </div>
-            <button className="admin-save-btn" style={{width:"100%"}} disabled={joinCode.length < 2 || joining} onClick={handleJoin}>
-              {joining ? "Joining..." : "Join Room →"}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RoomCard({ room, isOwner, isAdmin, myRooms, onView, onJoin, onDelete }) {
-  const joined = myRooms.includes(room.id);
-  const canDelete = isOwner || isAdmin;
-  return (
-    <div className="room-card" onClick={joined && onView ? onView : undefined} style={{cursor: joined && onView ? "pointer" : "default"}}>
-      <div className="room-card-left">
-        <div className="room-card-name">{room.room_name}</div>
-        <div className="room-card-meta">
-          <span className="room-code-badge">{room.room_code}</span>
-          {room.prize && <span className="room-prize-badge">🏆 {room.prize}</span>}
-          {isOwner && <span className="room-owner-badge">OWNER</span>}
-        </div>
-      </div>
-      <div className="room-card-right">
-        {joined && onView && (
-          <button className="room-view-btn-pill" onClick={onView}>VIEW →</button>
-        )}
-        {!joined && onJoin && (
-          <button className="room-join-btn" onClick={e=>{e.stopPropagation();onJoin();}}>JOIN</button>
-        )}
-        {canDelete && onDelete && (
-          <button className="room-card-del-btn" onClick={e=>{e.stopPropagation();onDelete();}} title="Delete room">✕</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RoomDetail({ room, user, users, preds, matches, pts, isOwner, isAdmin, onBack, onLeave, onDelete, onSaveSettings }) {
-  const [tab,       setTab]       = useState("board");
-  const [members,   setMembers]   = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [confirmLeave, setConfirmLeave] = useState(false);
-  const [settings,  setSettings]  = useState({
-    room_name:         room.room_name,
-    prize:             room.prize || "",
-    description:       room.description || "",
-    max_members:       room.max_members || 50,
-    enable_chat:       room.enable_chat !== false,
-    enable_leaderboard:room.enable_leaderboard !== false,
-    enable_feed:       room.enable_feed !== false,
-  });
-  const [savingSettings, setSavingSettings] = useState(false);
-  const M = ["🥇","🥈","🥉"];
-  // Only the room CREATOR can delete from inside the room — admin uses Admin panel
-  const canDelete = isOwner;
-
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from("room_participants").select("user_id").eq("room_id", room.id);
-      if (data) setMembers(data.map(r => r.user_id));
-      setLoading(false);
-    })();
-  }, [room.id]);
-
-  const board = members
-    .map(uid => ({ ...users[uid], id: uid, pts: pts(uid) }))
-    .filter(u => u.name && u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true")
-    .sort((a, b) => b.pts - a.pts);
-
-  const handleSaveSettings = async () => {
-    setSavingSettings(true);
-    await onSaveSettings({
-      room_name: settings.room_name,
-      prize: settings.prize || null,
-      description: settings.description || null,
-      max_members: settings.max_members,
-      enable_chat: settings.enable_chat,
-      enable_leaderboard: settings.enable_leaderboard,
-      enable_feed: settings.enable_feed,
-    });
-    setSavingSettings(false);
-  };
-
-  const tabs = [
-    ...(room.enable_leaderboard !== false ? [{id:"board",  label:"🏅 Ranking"}]   : []),
-    ...(room.enable_feed        !== false ? [{id:"feed",   label:"🔔 Activity"}]   : []),
-    ...(room.enable_chat        !== false ? [{id:"chat",   label:"💬 Chat"}]       : []),
-    ...(isOwner                           ? [{id:"settings",label:"⚙️ Settings"}]  : []),
-  ];
-
-  // Default to first available tab
-  const activeTab = tabs.find(t => t.id === tab) ? tab : tabs[0]?.id || "board";
-
-  return (
-    <div>
-      {/* Confirm delete */}
-      {confirmDel && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-title">Delete this room?</div>
-            <p className="modal-body">All messages and participants will be removed. This cannot be undone.</p>
-            <div className="modal-actions">
-              <button className="modal-del-btn" onClick={onDelete}>Yes, Delete</button>
-              <button className="modal-cancel-btn" onClick={()=>setConfirmDel(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Confirm leave */}
-      {confirmLeave && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-title">Leave this room?</div>
-            <p className="modal-body">You can rejoin later with the room code.</p>
-            <div className="modal-actions">
-              <button className="modal-del-btn" onClick={onLeave}>Yes, Leave</button>
-              <button className="modal-cancel-btn" onClick={()=>setConfirmLeave(false)}>Stay</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="room-lb-header">
-        <button className="room-back-btn" onClick={onBack}>← ROOMS</button>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
-          <div>
-            <div className="room-lb-title">{room.room_name}</div>
-            {room.prize && <div className="room-lb-prize">🏆 {room.prize}</div>}
-            {room.description && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",marginTop:4}}>{room.description}</div>}
-          </div>
-          {canDelete && (
-            <button className="room-delete-btn" onClick={()=>setConfirmDel(true)}>DELETE ROOM</button>
-          )}
-        </div>
-      </div>
-
-      {/* Code strip — only visible to owner */}
-      {isOwner && (
-        <div className="room-code-strip">
-          <span className="room-code-strip-lbl">YOUR CODE</span>
-          <span className="room-code-strip-val">{room.room_code}</span>
-          <span className="room-code-strip-hint">Share this with people you want to invite</span>
-        </div>
-      )}
-
-      {room.prize && (
-        <div className="room-prize-banner">
-          <span className="room-prize-banner-ico">🏆</span>
-          <div className="room-prize-banner-text">
-            <span className="room-prize-banner-label">PRIZE FOR THE WINNER</span>
-            <span className="room-prize-banner-val">{room.prize}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="admin-subtabs">
-        {tabs.map(t => (
-          <button key={t.id} className={`admin-subtab ${activeTab===t.id?"ast-on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
-        ))}
-      </div>
-
-      {activeTab === "board" && (
-        <div>
-          {!loading && board[0] && (
-            <div className="room-leader-hero">
-              <div className="room-leader-crown">👑</div>
-              <div className="room-leader-label">LEADING THIS ROOM</div>
-              <div className="room-leader-name">{board[0].name}</div>
-              <div className="room-leader-pts-row">
-                <span className="room-leader-pts">{board[0].pts}</span>
-                <span className="room-leader-pts-unit">PTS</span>
-              </div>
-            </div>
-          )}
-          <div className="lboard">
-            {board.map((u,i) => (
-              <div key={u.id} className={`lrow ${u.id===user.id?"lrow-me":""}`}>
-                <div className="lrank">{i<3?M[i]:<span className="lrank-n">#{i+1}</span>}</div>
-                <div className="linfo"><span className="lname">{u.name}</span>{u.id===user.id&&<span className="you-chip">YOU</span>}</div>
-                <div className="lpts-wrap"><span className="lpts-n">{u.pts}</span><span className="lpts-u">pts</span></div>
-              </div>
-            ))}
-            {!loading && board.length === 0 && <div className="empty" style={{padding:"40px 0"}}>No members yet — share your code!</div>}
-          </div>
-        </div>
-      )}
-
-      {activeTab === "feed" && <RoomFeed room={room} members={members} users={users} preds={preds} matches={matches} />}
-      {activeTab === "chat" && <RoomChat room={room} user={user} />}
-
-      {activeTab === "settings" && isOwner && (
-        <div style={{padding:"16px 14px"}}>
-          <div className="admin-form-card">
-            <div className="admin-form-title">ROOM SETTINGS</div>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-              <AField label="Room Name" val={settings.room_name} on={e=>setSettings(s=>({...s,room_name:e.target.value}))} ph="Room name" />
-              <AField label="Prize" val={settings.prize} on={e=>setSettings(s=>({...s,prize:e.target.value}))} ph="e.g. Free round of drinks 🍺" />
-              <AField label="Description" val={settings.description} on={e=>setSettings(s=>({...s,description:e.target.value}))} ph="A note for your members" />
-              <div className="afield">
-                <label className="afield-lbl">Max Members</label>
-                <input className="afield-inp" type="number" min="2" max="200" value={settings.max_members} onChange={e=>setSettings(s=>({...s,max_members:+e.target.value}))} />
-              </div>
-            </div>
-            <div className="admin-section-lbl" style={{padding:"0 0 12px",fontSize:9}}>FEATURES</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {[
-                {key:"enable_leaderboard", label:"🏅 Room Leaderboard"},
-                {key:"enable_feed",        label:"🔔 Activity Feed"},
-                {key:"enable_chat",        label:"💬 Chat"},
-              ].map(({key,label}) => (
-                <div key={key} className="room-toggle-row" onClick={()=>setSettings(s=>({...s,[key]:!s[key]}))} style={{cursor:"pointer"}}>
-                  <div style={{flex:1,fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:.5}}>{label}</div>
-                  <div className={`room-toggle ${settings[key]?"room-toggle-on":""}`}><div className="room-toggle-knob"/></div>
-                </div>
-              ))}
-            </div>
-            <button className="admin-save-btn" style={{width:"100%"}} disabled={savingSettings} onClick={handleSaveSettings}>
-              {savingSettings ? "Saving..." : "Save Settings ✓"}
-            </button>
-          </div>
-          <div style={{padding:"16px 0 8px"}}>
-            <button className="room-delete-btn" onClick={()=>setConfirmDel(true)}>Delete This Room</button>
-          </div>
-        </div>
-      )}
-
-      {!isOwner && (
-        <div style={{padding:"16px 14px 32px"}}>
-          <button className="room-leave-subtle-btn" onClick={()=>setConfirmLeave(true)}>
-            ← Leave this room
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Room Activity Feed ── */
-function RoomFeed({ room, members, users, preds, matches }) {
-  const finished = matches.filter(m => m.status === "finished");
-
-  // Build activity events from predictions on finished matches for members
-  const events = [];
-  finished.forEach(m => {
-    members.forEach(uid => {
-      const u = users[uid];
-      if (!u) return;
-      const p = preds[`${uid}__${m.id}`];
-      if (!p) return;
-      const exact = p.h === m.hs && p.a === m.as;
-      const pw = p.h > p.a ? "home" : p.h < p.a ? "away" : "draw";
-      const mw = m.hs > m.as ? "home" : m.hs < m.as ? "away" : "draw";
-      const partial = !exact && pw === mw;
-      const pts = exact ? 5 : partial ? 1 : 0;
-      events.push({
-        uid, name: u.name,
-        match: `${m.home} vs ${m.away}`,
-        pred: `${p.h}:${p.a}`,
-        result: `${m.hs}:${m.as}`,
-        correct: exact,
-        partial,
-        pts,
-        date: m.date,
-      });
-    });
-  });
-  events.sort((a,b) => b.pts - a.pts);
-
-  if (events.length === 0) return (
-    <div className="room-empty-state">
-      <div className="room-empty-ico">🔔</div>
-      <div className="room-empty-title">No activity yet</div>
-      <div className="room-empty-sub">Correct predictions will appear here once matches finish</div>
-    </div>
-  );
-
-  return (
-    <div>
-      <div className="admin-section-lbl" style={{padding:"14px 14px 8px"}}>PREDICTION RESULTS</div>
-      {events.map((e,i) => (
-        <div key={i} className={`feed-row ${e.correct?"feed-row-ok":e.partial?"feed-row-partial":"feed-row-ng"}`}>
-          <div className="feed-ico">{e.correct ? "✅" : e.partial ? "🟡" : "❌"}</div>
-          <div className="feed-body">
-            <span className="feed-name">{e.name}</span>
-            <span className="feed-match">{e.match} · {e.date}</span>
-            <span className="feed-detail">
-              Predicted <strong>{e.pred}</strong> · Result <strong>{e.result}</strong>
-              {e.correct && <span className="feed-pts"> +5 pts 🎯</span>}
-              {e.partial  && <span className="feed-pts" style={{color:"#fbbf24"}}> +1 pt ✓ winner</span>}
-            </span>
-          </div>
-        </div>
       ))}
-    </div>
-  );
-}
+      {userList.length === 0 && <div className="empty">No players found</div>}
 
-/* ── Room Chat ── */
-function RoomChat({ room, user }) {
-  const [messages,  setMessages]  = useState([]);
-  const [input,     setInput]     = useState("");
-  const [sending,   setSending]   = useState(false);
-  const [loading,   setLoading]   = useState(true);
-  const bottomRef   = useRef(null);
-  const lastIdRef   = useRef(null);
-
-  const fetchMessages = async () => {
-    const { data } = await supabase.from("room_messages").select("*")
-      .eq("room_id", room.id).order("created_at", { ascending: true }).limit(100);
-    if (data) {
-      setMessages(data);
-      if (data.length > 0) lastIdRef.current = data[data.length - 1].id;
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchMessages();
-
-    // Realtime subscription (works if Realtime is enabled in Supabase dashboard)
-    const channel = supabase.channel(`room-chat-${room.id}`)
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public",
-        table: "room_messages", filter: `room_id=eq.${room.id}`
-      }, payload => {
-        setMessages(m => {
-          if (m.find(x => x.id === payload.new.id)) return m;
-          return [...m, payload.new];
-        });
-      }).subscribe();
-
-    // Polling fallback every 3s — ensures messages show even without Realtime
-    const poll = setInterval(fetchMessages, 3000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(poll);
-    };
-  }, [room.id]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const send = async () => {
-    if (!input.trim() || sending) return;
-    setSending(true);
-    const optimistic = {
-      id: `tmp-${Date.now()}`, room_id: room.id,
-      user_id: user.id, user_name: user.name,
-      message: input.trim(), created_at: new Date().toISOString(),
-    };
-    setMessages(m => [...m, optimistic]);
-    setInput("");
-    await supabase.from("room_messages").insert({
-      room_id: room.id, user_id: user.id,
-      user_name: user.name, message: optimistic.message
-    });
-    setSending(false);
-  };
-
-  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-
-  return (
-    <div className="chat-wrap">
-      <div className="chat-messages">
-        {loading && <div className="empty" style={{padding:30}}>Loading...</div>}
-        {!loading && messages.length === 0 && (
-          <div className="chat-empty">
-            <div style={{fontSize:32,marginBottom:8}}>💬</div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>NO MESSAGES YET</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",marginTop:4}}>Be the first to say something!</div>
-          </div>
-        )}
-        {messages.map(msg => (
-          <div key={msg.id} className={`chat-msg ${msg.user_id === user.id ? "chat-msg-me" : ""}`}>
-            <div className="chat-msg-header">
-              <span className="chat-msg-name">{msg.user_id === user.id ? "You" : msg.user_name}</span>
-              <span className="chat-msg-time">{formatTime(msg.created_at)}</span>
-            </div>
-            <div className="chat-msg-bubble">{msg.message}</div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-      <div className="chat-input-row">
-        <input
-          className="chat-input"
-          value={input}
-          onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&send()}
-          placeholder="Say something... 🗣️"
-          maxLength={200}
-        />
-        <button className="chat-send-btn" onClick={send} disabled={!input.trim()||sending}>
-          {sending ? "..." : "→"}
+      <div style={{padding:"16px 14px 8px",borderTop:"1px solid rgba(255,255,255,.07)",marginTop:16}}>
+        <button style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",padding:0}}
+          onClick={()=>{setUnlocked(false);setPinInput("");}}>
+          🔒 Lock credits panel
         </button>
       </div>
     </div>
   );
 }
 
-/* ═══ CSS ════════════════════════════════════════════════════════════════════ */
+/* ═══ ADMIN: ORDER HISTORY ═══════════════════════════════════════════════════ */
+function AdminHistory({ allOrders }) {
+  const [search, setSearch] = useState("");
+
+  const results = [...allOrders]
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    .filter(o => {
+      if (!search.trim()) return true;
+      const s = search.toLowerCase();
+      return String(o.order_number||"").includes(s) ||
+        o.user_name?.toLowerCase().includes(s) ||
+        String(o.table_number||"").includes(s);
+    });
+
+  const isNameSearch = search.trim().length > 0 && isNaN(search.trim()) && !search.startsWith("#");
+
+  return (
+    <div style={{padding:"12px 14px 32px"}}>
+      <input className="afield-inp" placeholder="Search by #order, name or table…"
+        value={search} onChange={e=>setSearch(e.target.value)}
+        style={{width:"100%",boxSizing:"border-box",marginBottom:14}} />
+
+      <div className="admin-section-lbl">ORDER HISTORY<span className="admin-count">{results.length}</span></div>
+
+      {results.length === 0 && <div className="empty">No orders found</div>}
+
+      {isNameSearch ? (() => {
+        const grouped = results.reduce((acc,o) => { const k=o.user_name||"?"; if(!acc[k])acc[k]=[]; acc[k].push(o); return acc; },{});
+        return Object.entries(grouped).map(([name,orders]) => (
+          <div key={name} style={{marginBottom:16}}>
+            <div className="history-person-header">
+              <div>
+                <div className="history-person-name">{name}</div>
+                <div className="history-person-meta">{orders.length} orders · ${orders.reduce((s,o)=>s+(+o.total),0).toFixed(2)} total</div>
+              </div>
+            </div>
+            {orders.map(ord => (
+              <div key={ord.id} className="history-order-row">
+                <div className="history-order-row-left">
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
+                    <span className="history-order-table">Table {ord.table_number}</span>
+                  </div>
+                  <div className="history-order-items-inline">{ord.items.map(it=>`${it.qty}x ${it.name}`).join(" · ")}</div>
+                  <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+                <div className="history-order-amount">${(+ord.total).toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        ));
+      })() : results.map(ord => (
+        <div key={ord.id} className="order-card" style={{marginBottom:8,borderLeft:"3px solid rgba(255,255,255,.1)"}}>
+          <div className="order-card-top">
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div className="order-card-table">Table {ord.table_number}</div>
+                {ord.order_number && <div className="order-id-chip">#{ord.order_number}</div>}
+              </div>
+              <div className="order-card-date">{ord.user_name} · {new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+            </div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fff"}}>${(+ord.total).toFixed(2)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══ ADMIN: FINANCIAL REPORT ════════════════════════════════════════════════ */
+function AdminReport({ allOrders }) {
+  const [period, setPeriod] = useState("today");
+
+  const now = new Date();
+  const startOfDay  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+  const filtered = allOrders.filter(o => {
+    const d = new Date(o.created_at);
+    if (period === "today") return d >= startOfDay;
+    if (period === "week")  return d >= startOfWeek;
+    return true;
+  });
+
+  const totalRevenue = filtered.reduce((s,o) => s + (+o.total), 0);
+  const orderCount   = filtered.length;
+  const avgOrder     = orderCount > 0 ? totalRevenue / orderCount : 0;
+
+  // By customer
+  const byCustomer = {};
+  filtered.forEach(o => {
+    const name = o.user_name || "Unknown";
+    if (!byCustomer[name]) byCustomer[name] = { total:0, orders:0 };
+    byCustomer[name].total += (+o.total);
+    byCustomer[name].orders++;
+  });
+  const topCustomers = Object.entries(byCustomer).sort((a,b) => b[1].total - a[1].total).slice(0,10);
+
+  // By product
+  const byProduct = {};
+  filtered.forEach(o => {
+    (o.items||[]).forEach(it => {
+      if (!byProduct[it.name]) byProduct[it.name] = { qty:0, revenue:0 };
+      byProduct[it.name].qty     += it.qty;
+      byProduct[it.name].revenue += it.price * it.qty;
+    });
+  });
+  const topProducts = Object.entries(byProduct).sort((a,b) => b[1].qty - a[1].qty).slice(0,10);
+
+  const statCard = (label, value) => (
+    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"14px 12px",borderRadius:4,flex:1}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:6}}>{label}</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:"#fff",lineHeight:1}}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"12px 14px 32px"}}>
+      {/* Period selector */}
+      <div style={{display:"flex",gap:6,marginBottom:18}}>
+        {[["today","TODAY"],["week","THIS WEEK"],["all","ALL TIME"]].map(([v,l]) => (
+          <button key={v} onClick={()=>setPeriod(v)} style={{
+            flex:1, padding:"10px 0",
+            background: period===v ? "#fff" : "rgba(255,255,255,.05)",
+            color: period===v ? "#000" : "rgba(255,255,255,.5)",
+            border: period===v ? "none" : "1px solid rgba(255,255,255,.1)",
+            fontFamily:"'Anton',sans-serif", fontSize:10, letterSpacing:2, cursor:"pointer"
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {/* Revenue stats */}
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        {statCard("REVENUE", `$${totalRevenue.toFixed(2)}`)}
+        {statCard("ORDERS", orderCount)}
+        {statCard("AVG ORDER", `$${avgOrder.toFixed(2)}`)}
+      </div>
+
+      {/* Top customers */}
+      <div className="admin-section-lbl" style={{marginBottom:8}}>TOP CUSTOMERS</div>
+      {topCustomers.length === 0 && <div className="empty" style={{marginBottom:20}}>No data</div>}
+      {topCustomers.map(([name,d],i) => (
+        <div key={name} style={{display:"flex",alignItems:"center",padding:"11px 14px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",minWidth:28}}>#{i+1}</span>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{name}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>{d.orders} order{d.orders>1?"s":""}</div>
+          </div>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fff"}}>${d.total.toFixed(2)}</span>
+        </div>
+      ))}
+
+      {/* Top products */}
+      <div className="admin-section-lbl" style={{marginTop:24,marginBottom:8}}>TOP PRODUCTS</div>
+      {topProducts.length === 0 && <div className="empty">No data</div>}
+      {topProducts.map(([name,d],i) => (
+        <div key={name} style={{display:"flex",alignItems:"center",padding:"11px 14px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",minWidth:28}}>#{i+1}</span>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{name}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>{d.qty} sold</div>
+          </div>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:"rgba(255,255,255,.55)"}}>${d.revenue.toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══ FLOOR PLAN ════════════════════════════════════════════════════════════ */
+const FP_KEY     = 'fp-layout-v2';
+const FP_BAR_KEY = 'fp-bar-v2';
+const FP_BAR_DEF = { x:592, y:8, w:100, h:60 };
+const FP_DEFAULT = [
+  { id:1,  x:80,  y:20,  w:82, h:64, shape:"rect"  },
+  { id:2,  x:186, y:20,  w:82, h:64, shape:"rect"  },
+  { id:3,  x:292, y:20,  w:82, h:64, shape:"rect"  },
+  { id:4,  x:8,   y:116, w:88, h:68, shape:"rect"  },
+  { id:5,  x:220, y:116, w:82, h:72, shape:"rect"  },
+  { id:6,  x:316, y:116, w:82, h:72, shape:"rect"  },
+  { id:7,  x:490, y:116, w:82, h:68, shape:"rect"  },
+  { id:8,  x:590, y:116, w:82, h:68, shape:"rect"  },
+  { id:9,  x:8,   y:230, w:100,h:70, shape:"rect"  },
+  { id:10, x:210, y:230, w:84, h:66, shape:"rect"  },
+  { id:11, x:310, y:230, w:76, h:66, shape:"rect"  },
+  { id:12, x:466, y:230, w:100,h:70, shape:"rect"  },
+  { id:13, x:600, y:228, w:70, h:70, shape:"round" },
+  { id:14, x:8,   y:328, w:100,h:70, shape:"rect"  },
+  { id:15, x:210, y:328, w:80, h:70, shape:"rect"  },
+  { id:16, x:306, y:328, w:84, h:74, shape:"rect"  },
+  { id:17, x:466, y:328, w:80, h:66, shape:"rect"  },
+  { id:18, x:564, y:328, w:80, h:66, shape:"rect"  },
+  { id:19, x:8,   y:428, w:64, h:64, shape:"round" },
+  { id:20, x:88,  y:428, w:64, h:64, shape:"round" },
+  { id:21, x:230, y:430, w:74, h:66, shape:"rect"  },
+  { id:22, x:318, y:430, w:74, h:66, shape:"rect"  },
+  { id:23, x:406, y:430, w:74, h:66, shape:"rect"  },
+  { id:24, x:530, y:428, w:64, h:64, shape:"round" },
+  { id:25, x:614, y:428, w:64, h:64, shape:"round" },
+  { id:26, x:318, y:520, w:64, h:64, shape:"round" },
+];
+
+function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
+  const loadSaved = () => { try { const s = localStorage.getItem(FP_KEY); return s ? JSON.parse(s) : FP_DEFAULT; } catch { return FP_DEFAULT; } };
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [now,       setNow      ] = useState(Date.now());
+  const [editMode,  setEditMode ] = useState(false);
+  const [fpView,    setFpView   ] = useState("live"); // "live" | "history" | "report"
+  const [showFin,   setShowFin  ] = useState(false);  // hide financials by default
+  const [tables,    setTables   ] = useState(loadSaved);
+  const [savedTbls, setSavedTbls] = useState(loadSaved);
+  const [dragging,  setDragging ] = useState(null); // { id, ox, oy }
+  const [resizing,  setResizing ] = useState(null); // { id, sx, sy, sw, sh }
+  const [editSel,   setEditSel  ] = useState(null);
+  const [barPos,    setBarPos   ] = useState(() => { try { const s = localStorage.getItem(FP_BAR_KEY); return s ? JSON.parse(s) : FP_BAR_DEF; } catch { return FP_BAR_DEF; } });
+  const [savedBar,  setSavedBar ] = useState(() => { try { const s = localStorage.getItem(FP_BAR_KEY); return s ? JSON.parse(s) : FP_BAR_DEF; } catch { return FP_BAR_DEF; } });
+  const [barDrag,   setBarDrag  ] = useState(null); // { ox, oy }
+  const canvasRef = useRef(null);
+
+  // Auto-refresh orders + clock every 10s
+  useEffect(() => {
+    onLoad();
+    const iv = setInterval(() => { onLoad(); setNow(Date.now()); }, 10000);
+    const clock = setInterval(() => setNow(Date.now()), 30000);
+    return () => { clearInterval(iv); clearInterval(clock); };
+  }, []);
+
+  // Get active (non-delivered) orders grouped by table
+  const activeOrders = allOrders.filter(o => o.status !== "delivered");
+  const byTable = activeOrders.reduce((acc, o) => {
+    const t = String(o.table_number);
+    if (!acc[t]) acc[t] = [];
+    acc[t].push(o);
+    return acc;
+  }, {});
+
+  // Financial summary — today's numbers
+  const todayStr = new Date().toDateString();
+  const todayOrders = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
+  const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
+  const todayCount   = todayOrders.length;
+
+  // Table status based on oldest pending order age
+  // 5 clear states based on what's actually happening at the table
+  const tableStatus = (num) => {
+    const orders = byTable[String(num)] || [];
+    if (orders.length === 0) return "empty";
+    const hasPending  = orders.some(o => o.status === "pending");
+    const hasReady    = orders.some(o => o.status === "ready");
+    if (hasPending) {
+      const oldest = Math.min(...orders.filter(o=>o.status==="pending").map(o => new Date(o.created_at).getTime()));
+      const mins = (now - oldest) / 60000;
+      if (mins >= 15) return "urgent";   // red blink — nobody took the order 15+ min
+      if (mins >= 10) return "warning";  // yellow — waiting 10+ min
+      return "new";                      // green — fresh order just came in
+    }
+    if (hasReady) return "ready";        // white pulse — ready to be picked up
+    return "preparing";                  // blue — confirmed, being prepared
+  };
+
+  const statusStyle = (s) => ({
+    empty:     { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", dot:null,      blink:false },
+    new:       { bg:"rgba(34,197,94,.15)",   border:"rgba(34,197,94,.8)",     color:"#4ade80",               dot:"#4ade80", blink:false },
+    preparing: { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
+    ready:     { bg:"rgba(255,255,255,.12)", border:"rgba(255,255,255,.9)",   color:"#fff",                  dot:"#fff",    blink:false },
+    warning:   { bg:"rgba(251,191,36,.15)",  border:"rgba(251,191,36,.85)",   color:"#fbbf24",               dot:"#fbbf24", blink:false },
+    urgent:    { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               dot:"#f87171", blink:true  },
+  }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", dot:null, blink:false });
+
+  const nextStatus  = s => s==="pending"?"confirmed":s==="confirmed"?"ready":null;
+  const nextLabel   = s => s==="pending"?"✓ CONFIRM":s==="confirmed"?"🔔 READY":s==="ready"?"✓ CLEAR":null;
+  const statusColor = s => s==="pending"?"#f59e0b":s==="confirmed"?"#93c5fd":s==="ready"?"#fff":"rgba(255,255,255,.3)";
+  const statusLabel = s => s==="pending"?"NEW ORDER":s==="confirmed"?"PREPARING":s==="ready"?"READY ↑":"";
+
+  const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
+  const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
+
+  // ── Drag / Resize ──────────────────────────────────────────────────────────
+  const getPos = e => e.touches ? { x:e.touches[0].clientX, y:e.touches[0].clientY } : { x:e.clientX, y:e.clientY };
+
+  const startDrag = (e, id) => {
+    if (!editMode) return;
+    e.stopPropagation(); e.preventDefault();
+    const pos = getPos(e);
+    const rect = canvasRef.current.getBoundingClientRect();
+    const t = tables.find(t => t.id === id);
+    setDragging({ id, ox: pos.x - rect.left - t.x, oy: pos.y - rect.top - t.y });
+    setEditSel(id);
+  };
+
+  const startResize = (e, id) => {
+    e.stopPropagation(); e.preventDefault();
+    const pos = getPos(e);
+    const t = tables.find(t => t.id === id);
+    setResizing({ id, sx: pos.x, sy: pos.y, sw: t.w, sh: t.h });
+  };
+
+  const onMove = (e) => {
+    if (!dragging && !resizing && !barDrag) return;
+    const pos = getPos(e);
+    if (dragging) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width - 30, pos.x - rect.left - dragging.ox));
+      const y = Math.max(0, pos.y - rect.top - dragging.oy);
+      setTables(ts => ts.map(t => t.id === dragging.id ? { ...t, x, y } : t));
+    }
+    if (resizing) {
+      const dx = pos.x - resizing.sx;
+      const dy = pos.y - resizing.sy;
+      setTables(ts => ts.map(t => t.id === resizing.id ? {
+        ...t,
+        w: Math.max(50, resizing.sw + dx),
+        h: t.shape === "round" ? Math.max(50, resizing.sw + dx) : Math.max(40, resizing.sh + dy),
+      } : t));
+    }
+    if (barDrag) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      setBarPos(b => ({
+        ...b,
+        x: Math.max(0, Math.min(rect.width - b.w, pos.x - rect.left - barDrag.ox)),
+        y: Math.max(0, pos.y - rect.top - barDrag.oy),
+      }));
+    }
+  };
+
+  const onEnd = () => { setDragging(null); setResizing(null); setBarDrag(null); };
+
+  // ── Edit actions ───────────────────────────────────────────────────────────
+  const addTable = () => {
+    const maxId = tables.length > 0 ? Math.max(...tables.map(t => t.id)) : 0;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const cx = rect ? Math.max(10, (rect.width / 2) - 36) : 200;
+    const newT = { id: maxId + 1, x: cx, y: 80, w: 72, h: 56, shape: "rect" };
+    setTables(ts => [...ts, newT]);
+    setEditSel(maxId + 1);
+  };
+
+  const deleteTable = (id) => {
+    setTables(ts => ts.filter(t => t.id !== id));
+    if (editSel === id) setEditSel(null);
+  };
+
+  const toggleShape = (id) => {
+    setTables(ts => ts.map(t => t.id === id
+      ? { ...t, shape: t.shape === "rect" ? "round" : "rect" }
+      : t
+    ));
+  };
+
+  const saveLayout = () => {
+    localStorage.setItem(FP_KEY, JSON.stringify(tables));
+    localStorage.setItem(FP_BAR_KEY, JSON.stringify(barPos));
+    setSavedTbls(tables); setSavedBar(barPos);
+    setEditMode(false); setEditSel(null);
+  };
+
+  const cancelEdit = () => {
+    setTables(savedTbls); setBarPos(savedBar);
+    setEditMode(false); setEditSel(null);
+  };
+
+  const resetLayout = () => { setTables(FP_DEFAULT); setBarPos(FP_BAR_DEF); setEditSel(null); };
+
+  // ── Canvas height ──────────────────────────────────────────────────────────
+  const canvasH = Math.max(620, ...tables.map(t => t.y + t.h + 80));
+
+  // ── Table element ──────────────────────────────────────────────────────────
+  const TableEl = ({ tbl }) => {
+    const s  = editMode ? "empty" : tableStatus(tbl.id);
+    const st = statusStyle(s);
+    const orders = editMode ? [] : (byTable[String(tbl.id)] || []);
+    const pCount = orders.filter(o => o.status === "pending").length;
+    const pendingOrds = orders.filter(o => o.status === "pending");
+    const elapsedMins = pendingOrds.length > 0
+      ? Math.floor((now - Math.min(...pendingOrds.map(o => new Date(o.created_at).getTime()))) / 60000)
+      : null;
+    const firstInitial = orders.length > 0 ? (orders[0].user_name || "?").charAt(0).toUpperCase() : null;
+    const isSel = editSel === tbl.id;
+    const isDraggingThis = dragging?.id === tbl.id;
+
+    return (
+      <div
+        className={!editMode && st.blink ? "fp-blink" : ""}
+        style={{
+          position:"absolute", left:tbl.x, top:tbl.y, width:tbl.w, height:tbl.h,
+          background: editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg,
+          border: editMode
+            ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})`
+            : `2px solid ${st.border}`,
+          borderRadius: tbl.shape === "round" ? "50%" : 6,
+          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (s!=="empty"?"pointer":"default"),
+          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+          transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
+          boxShadow: editMode
+            ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
+            : (st.blink ? "0 0 18px rgba(239,68,68,.55)" : s==="ready" ? "0 0 14px rgba(255,255,255,.25)" : s==="new" ? "0 0 12px rgba(34,197,94,.3)" : "none"),
+          userSelect:"none", touchAction:"none",
+          zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
+        }}
+        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (s!=="empty" && setSelectedTable(String(tbl.id)))}
+        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (s!=="empty" && setSelectedTable(String(tbl.id)))}
+        onClick={e => editMode && (e.stopPropagation(), setEditSel(tbl.id))}
+      >
+        {/* Number */}
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
+
+        {/* Elapsed */}
+        {!editMode && elapsedMins !== null && (
+          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:st.color,opacity:.85,letterSpacing:.5,lineHeight:1,marginTop:2,fontWeight:700}}>
+            {elapsedMins < 1 ? "<1m" : `${elapsedMins}m`}
+          </span>
+        )}
+
+        {/* Status dots */}
+        {!editMode && orders.length > 0 && (
+          <div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap",justifyContent:"center",maxWidth:tbl.w-12}}>
+            {orders.map((o,i) => (
+              <div key={i} style={{width:7,height:7,borderRadius:"50%",background:statusColor(o.status),boxShadow:o.status==="pending"?`0 0 4px ${statusColor(o.status)}`:"none"}}/>
+            ))}
+          </div>
+        )}
+
+        {/* Pending badge */}
+        {!editMode && pCount > 0 && (
+          <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#f59e0b",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(245,158,11,.7)"}}>{pCount}</div>
+        )}
+
+        {/* Customer initial */}
+        {!editMode && firstInitial && s!=="empty" && (
+          <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{firstInitial}</div>
+        )}
+
+        {/* EDIT: shape toggle (top-left) */}
+        {editMode && (
+          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleShape(tbl.id);}}
+            style={{position:"absolute",top:-9,left:-9,width:18,height:18,borderRadius:"50%",background:"rgba(96,165,250,.25)",border:"1px solid rgba(96,165,250,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:9,color:"#93c5fd",fontFamily:"'Anton',sans-serif",zIndex:30}}
+            title="Toggle shape">
+            {tbl.shape==="round"?"□":"○"}
+          </div>
+        )}
+
+        {/* EDIT: delete (top-right) */}
+        {editMode && (
+          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();deleteTable(tbl.id);}}
+            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:13,color:"#f87171",lineHeight:1,zIndex:30}}>
+            ×
+          </div>
+        )}
+
+        {/* EDIT: resize handle (bottom-right) */}
+        {editMode && (
+          <div onMouseDown={e=>startResize(e,tbl.id)} onTouchStart={e=>startResize(e,tbl.id)}
+            style={{position:"absolute",bottom:-1,right:-1,width:13,height:13,background:"rgba(255,255,255,.55)",cursor:"se-resize",borderRadius:tbl.shape==="round"?"50%":"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // ── TABLE DETAIL PANEL — redesigned ──────────────────────────────────────
+  const TableDetail = () => {
+    const orders = (byTable[selectedTable]||[]);
+    return (
+      <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
+        <div style={{
+          background:"#111", border:"1px solid rgba(255,255,255,.15)",
+          width:"92%", maxWidth:480, maxHeight:"80vh",
+          display:"flex", flexDirection:"column", borderRadius:4,
+          overflow:"hidden",
+        }} onClick={e=>e.stopPropagation()}>
+
+          {/* Header */}
+          <div style={{padding:"18px 20px",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,.04)"}}>
+            <div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>TABLE {selectedTable}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4,fontWeight:600}}>
+                {orders.length} active order{orders.length!==1?"s":""}
+              </div>
+            </div>
+            <button onClick={(e)=>{ e.stopPropagation(); setSelectedTable(null); }}
+              style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              ✕
+            </button>
+          </div>
+
+          {/* Orders */}
+          <div style={{overflowY:"auto",flex:1,padding:"12px 16px",display:"flex",flexDirection:"column",gap:12}}>
+            {orders.length === 0 && (
+              <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.3)"}}>No active orders</div>
+            )}
+            {orders.map(ord => (
+              <div key={ord.id} style={{border:`1px solid ${statusColor(ord.status)}44`,borderRadius:4,overflow:"hidden"}}>
+
+                {/* Order status bar */}
+                <div style={{padding:"10px 14px",background:`${statusColor(ord.status)}18`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:statusColor(ord.status),boxShadow:`0 0 6px ${statusColor(ord.status)}`}}/>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:statusColor(ord.status)}}>{statusLabel(ord.status)}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",fontWeight:600}}>
+                      {new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer + items */}
+                <div style={{padding:"12px 14px"}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.45)",fontWeight:600,marginBottom:10}}>{ord.user_name}</div>
+                  {ord.items.map((it,i) => (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"rgba(255,255,255,.5)",minWidth:28}}>{it.qty}×</span>
+                        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#fff",fontWeight:700}}>{it.name}</span>
+                      </div>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>${(it.price*it.qty).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {/* Total + action */}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:10,borderTop:"1px solid rgba(255,255,255,.08)"}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff"}}>
+                      ${(+ord.total).toFixed(2)}
+                    </span>
+                    {(nextStatus(ord.status) || ord.status === "ready") && (
+                      <button
+                        style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
+                        onClick={()=>{
+                          if (ord.status === "ready") { onDeleteOrder(ord.id); onLoad(); }
+                          else { onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad(); }
+                        }}>
+                        {nextLabel(ord.status)}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{background:"#0a0a0a",minHeight:"70vh"}}>
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div style={{background:"#000",borderBottom:"1px solid rgba(255,255,255,.08)",padding:"16px 18px 14px"}}>
+
+        {/* Row 1: title + view toggle */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#fff",letterSpacing:3,lineHeight:1}}>FLOOR PLAN</span>
+            {fpView === "live" && (editMode ? (
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#fbbf24",background:"rgba(251,191,36,.08)",border:"1px solid rgba(251,191,36,.35)",padding:"3px 9px"}}>EDIT MODE</span>
+            ) : (
+              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.14)",color:"rgba(255,255,255,.55)",padding:"5px 11px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>✏ EDIT</button>
+            ))}
+          </div>
+          {/* View toggle pill */}
+          <div style={{display:"flex",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:2,overflow:"hidden"}}>
+            {[{id:"live",label:"⬛ LIVE"},{id:"history",label:"📋 HISTORY"},{id:"report",label:"📊 REPORT"}].map(v=>(
+              <button key={v.id} onClick={()=>{setFpView(v.id);if(v.id!=="live"){setEditMode(false);}}}
+                style={{padding:"8px 14px",background:fpView===v.id?"#fff":"transparent",color:fpView===v.id?"#000":"rgba(255,255,255,.45)",border:"none",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap"}}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: order stats + financial bar — only in LIVE mode */}
+        {fpView === "live" && (<>
+          <div style={{display:"flex",alignItems:"stretch",gap:0,marginBottom:14,borderTop:"1px solid rgba(255,255,255,.07)",borderBottom:"1px solid rgba(255,255,255,.07)",padding:"14px 0"}}>
+            {/* Order status counters */}
+            {[{val:urgentTables.length,color:"#f87171",lbl:"URGENT",glow:"rgba(248,113,113,.25)"},{val:pendingCount,color:"#fbbf24",lbl:"PENDING",glow:"rgba(251,191,36,.2)"},{val:activeOrders.length,color:"#4ade80",lbl:"ACTIVE",glow:"rgba(74,222,128,.18)"}].map(({val,color,lbl,glow},i,a)=>(
+              <React.Fragment key={lbl}>
+                <div style={{textAlign:"center",flex:1,padding:"0 10px"}}>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:42,color,lineHeight:1,textShadow:val>0?`0 0 18px ${glow},0 0 40px ${glow}`:"none",transition:"text-shadow .3s"}}>{val}</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.4)",marginTop:5}}>{lbl}</div>
+                </div>
+                {i<a.length-1 && <div style={{width:1,background:"rgba(255,255,255,.08)",alignSelf:"stretch"}}/>}
+              </React.Fragment>
+            ))}
+            {/* Divider before financials */}
+            <div style={{width:1,background:"rgba(255,255,255,.08)",alignSelf:"stretch",margin:"0 4px"}}/>
+            {/* Financial summary */}
+            <div style={{textAlign:"center",flex:1,padding:"0 10px",position:"relative"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:42,color:"rgba(255,255,255,.9)",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>
+                ${todayRevenue.toFixed(0)}
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginTop:5}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.4)"}}>TODAY REV</div>
+                <button onClick={()=>setShowFin(v=>!v)} title={showFin?"Hide":"Show"} style={{background:"none",border:"none",cursor:"pointer",padding:"2px 3px",lineHeight:1,opacity:.5,transition:"opacity .15s",fontSize:11}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.5}>
+                  {showFin ? "👁" : "🙈"}
+                </button>
+              </div>
+            </div>
+            <div style={{width:1,background:"rgba(255,255,255,.08)",alignSelf:"stretch"}}/>
+            <div style={{textAlign:"center",flex:1,padding:"0 10px"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:42,color:"rgba(255,255,255,.9)",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>
+                {todayCount}
+              </div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.4)",marginTop:5}}>ORDERS</div>
+            </div>
+          </div>
+
+          {/* Row 3: color legend */}
+          <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
+            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#93c5fd",label:"PREPARING"},{color:"#fff",label:"READY"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
+              <div key={label} style={{display:"flex",alignItems:"center",gap:7}}>
+                <div style={{width:9,height:9,borderRadius:"50%",background:color,boxShadow:`0 0 7px ${color}99`,flexShrink:0}}/>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,color:"rgba(255,255,255,.55)"}}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </>)}
+      </div>
+
+      {/* ── LIVE VIEW ───────────────────────────────────────────────────────── */}
+      {fpView === "live" && (<>
+        {/* Edit toolbar */}
+        {editMode && (
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(251,191,36,.05)",borderBottom:"1px solid rgba(251,191,36,.18)",flexWrap:"wrap"}}>
+            <button onClick={addTable} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>+ ADD TABLE</button>
+            <button onClick={resetLayout} style={{background:"transparent",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.45)",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>↺ RESET</button>
+            <div style={{flex:1,fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600}}>Drag · □/○ shape · × delete · ⊿ resize</div>
+            <button onClick={cancelEdit} style={{background:"transparent",border:"1px solid rgba(255,255,255,.18)",color:"rgba(255,255,255,.55)",padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>CANCEL</button>
+            <button onClick={saveLayout} style={{background:"#fff",border:"none",color:"#000",padding:"8px 20px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>✓ SAVE</button>
+          </div>
+        )}
+        {/* Canvas */}
+        <div style={{overflowX:"auto",overflowY:"visible",WebkitOverflowScrolling:"touch"}}>
+          <div
+            ref={canvasRef}
+            style={{
+              position:"relative", width:700, minWidth:700, height:canvasH,
+              background: editMode
+                ? "repeating-linear-gradient(rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 1px,transparent 40px),#0a0a0a"
+                : "#0a0a0a",
+              transition:"background .3s",
+            }}
+            onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
+            onTouchMove={onMove} onTouchEnd={onEnd}
+            onClick={()=>{ if(editMode) setEditSel(null); }}
+          >
+            {/* BAR */}
+            <div
+              style={{
+                position:"absolute", left:barPos.x, top:barPos.y, width:barPos.w, height:barPos.h,
+                background:"rgba(251,191,36,.12)",
+                border: editMode ? `2px dashed rgba(251,191,36,${barDrag?"1":".65"})` : "2px solid rgba(251,191,36,.45)",
+                borderRadius:4, display:"flex", flexDirection:"column",
+                alignItems:"center", justifyContent:"center", gap:3,
+                cursor: editMode ? (barDrag ? "grabbing" : "grab") : "default",
+                userSelect:"none", touchAction:"none",
+                boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.4)" : "none",
+                transition: barDrag ? "none" : "border .2s",
+                zIndex: barDrag ? 20 : 2,
+              }}
+              onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
+              onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
+            >
+              <span style={{fontSize:18}}>🍺</span>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"#fbbf24"}}>BAR</span>
+            </div>
+            {/* Stairs */}
+            <div style={{position:"absolute",left:0,right:0,top:207,height:16,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+              <div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/>
+              <span style={{padding:"0 14px",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:5,color:"rgba(255,255,255,.2)",whiteSpace:"nowrap"}}>▼  STAIRS  ▼</span>
+              <div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/>
+            </div>
+            {/* Tables */}
+            {tables.map(t => <TableEl key={t.id} tbl={t} />)}
+          </div>
+        </div>
+        {/* Table detail panel */}
+        {selectedTable && !editMode && <TableDetail />}
+      </>)}
+
+      {/* ── HISTORY VIEW ────────────────────────────────────────────────────── */}
+      {fpView === "history" && <AdminHistory allOrders={allOrders} />}
+
+      {/* ── REPORT VIEW ─────────────────────────────────────────────────────── */}
+      {fpView === "report" && <AdminReport allOrders={allOrders} />}
+    </div>
+  );
+}
+
 const CSS = `
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
@@ -2461,6 +3395,11 @@ const CSS = `
   /* ── MATCH CARD ── */
   .mcard{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;transition:background .15s}
   .mcard:hover{background:#060606}
+  .mcard-skeleton{height:140px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.6s infinite;border-bottom:1px solid rgba(255,255,255,.055)}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .mcard-ok{background:rgba(34,197,94,.04)!important}
+  .mcard-partial{background:rgba(245,158,11,.04)!important}
+  .mcard-ng{background:rgba(239,68,68,.03)!important}
   .mcard-topstrip{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:10px 14px 0;gap:6px}
   .mcard-group-pill{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.8);text-transform:uppercase;justify-self:start}
   .mcard-dt{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);font-weight:500;text-align:center;justify-self:center}
@@ -2491,7 +3430,7 @@ const CSS = `
   .pred-cta:disabled{opacity:.15;cursor:not-allowed}
   .pred-cta-done{border-color:rgba(34,197,94,.4)!important;color:rgba(34,197,94,.8)!important}
   .mverdict{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
-  .mv-ok{color:#86efac}.mv-partial{color:#fbbf24}.mv-ng{color:rgba(255,255,255,.2)}.mv-locked{color:rgba(34,197,94,.7);display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
+  .mv-ok{color:#86efac}.mv-partial{color:#fbbf24}.mv-ng{color:rgba(255,255,255,.2)}.mv-missed{color:rgba(255,255,255,.22)}.mv-locked{color:rgba(34,197,94,.7);display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid rgba(255,255,255,.04);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600}
 
   /* ── LEADERBOARD ── */
   /* ── LEADERBOARD REDESIGN ── */
@@ -2576,7 +3515,7 @@ const CSS = `
 
   /* ── ADMIN ── */
   .admin-subtabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07)}
-  .admin-subtab{padding:15px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.55);cursor:pointer;transition:all .2s;margin-bottom:-1px}
+  .admin-subtab{padding:16px 18px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.6);cursor:pointer;transition:all .2s;margin-bottom:-1px}
   .ast-on{color:#fff;border-bottom-color:#fff}
   .admin-topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 14px 0;margin-bottom:4px;gap:12px}
   .admin-add-btn{flex-shrink:0;padding:10px 18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:2.5px;transition:opacity .15s;white-space:nowrap}
@@ -2586,9 +3525,9 @@ const CSS = `
   .admin-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);padding:16px 14px;gap:12px;flex-wrap:wrap;transition:background .15s}
   .admin-row:hover{background:#080808}
   .admin-row-left{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
-  .admin-row-group{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;color:rgba(255,255,255,.6)}
-  .admin-row-teams{font-family:'Anton',sans-serif;font-size:16px;color:#fff;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
-  .admin-row-dt{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);margin-top:2px;font-weight:500}
+  .admin-row-group{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:2.5px;color:rgba(255,255,255,.65)}
+  .admin-row-teams{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
+  .admin-row-dt{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.7);margin-top:3px;font-weight:500}
   .admin-row-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
   .admin-score-badge{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:3px}
   .finished-tag{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(34,197,94,.8);border:1px solid rgba(34,197,94,.25);padding:3px 8px}
@@ -2599,10 +3538,10 @@ const CSS = `
   .admin-del-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.5);color:#f87171}
   .admin-form-card{background:#050505;border:1px solid rgba(255,255,255,.12);padding:18px;margin:0 0 8px}
   .admin-edit-card{border-color:rgba(255,255,255,.25)}
-  .admin-form-title{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,.55);margin-bottom:16px;text-transform:uppercase}
+  .admin-form-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.65);margin-bottom:18px;text-transform:uppercase}
   .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:14px}
   .afield{display:flex;flex-direction:column;gap:6px}
-  .afield-lbl{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.7)}
+  .afield-lbl{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.75)}
   .afield-inp{padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#fff;font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;transition:all .2s;outline:none}
   .afield-inp:focus{border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.08)}
   .afield-inp::placeholder{color:rgba(255,255,255,.3)}
@@ -2640,63 +3579,22 @@ const CSS = `
 
   /* ── COUNTDOWN CHIP ── */
   .countdown-chip{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;border:1px solid;padding:5px 12px;white-space:nowrap;transition:all .5s;justify-self:end}
+  .countdown-chip-urgent{animation:chipPulse 1.4s ease-in-out infinite}
+  @keyframes chipPulse{0%,100%{opacity:1}50%{opacity:.55}}
 
   /* ── ROOMS ── */
-  .room-empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:10px}
+
   .room-empty-ico{font-size:48px;line-height:1}
   .room-empty-title{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:2px;color:rgba(255,255,255,.5)}
   .room-empty-sub{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.25);text-align:center}
-  .room-card{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);padding:18px 14px;transition:background .15s;gap:16px}
-  .room-card:hover{background:#080808}
-  .room-card-left{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
-  .room-card-name{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:1px;color:#fff;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .room-card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .room-code-badge{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:4px;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:4px 12px}
-  .room-prize-badge{font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:rgba(255,200,50,.95);background:rgba(255,200,50,.08);border:1px solid rgba(255,200,50,.2);padding:4px 10px}
-  .room-owner-badge{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.15);padding:4px 10px}
-  .room-card-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
-  .room-view-btn-pill{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:8px 16px;cursor:pointer;transition:all .15s}
-  .room-view-btn-pill:hover{background:rgba(255,255,255,.15)}
-  .room-join-btn{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:#000;background:#fff;border:none;padding:8px 18px;cursor:pointer;transition:opacity .15s}
-  .room-join-btn:hover{opacity:.85}
-  .room-card-del-btn{background:transparent;border:none;color:rgba(255,255,255,.25);cursor:pointer;font-size:14px;padding:4px 6px;transition:color .15s;line-height:1}
-  .room-card-del-btn:hover{color:rgba(239,68,68,.7)}
-  .room-lb-header{padding:16px 14px 10px;border-bottom:1px solid rgba(255,255,255,.07)}
-  .room-back-btn{background:transparent;border:none;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;color:rgba(255,255,255,.55);cursor:pointer;padding:0;margin-bottom:10px;display:block;transition:color .15s}
-  .room-back-btn:hover{color:#fff}
-  .room-lb-title{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:2px;color:#fff;text-transform:uppercase;line-height:1;margin-bottom:6px}
-  .room-lb-prize{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,200,50,.8)}
-  .room-delete-btn{flex-shrink:0;padding:8px 16px;background:transparent;border:1px solid rgba(239,68,68,.25);color:rgba(239,68,68,.55);cursor:pointer;font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2.5px;transition:all .2s;white-space:nowrap;margin-top:6px}
-  .room-delete-btn:hover{border-color:rgba(239,68,68,.6);color:#f87171;background:rgba(239,68,68,.06)}
-  .room-leave-subtle-btn{background:transparent;border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.28);cursor:pointer;padding:4px 0;transition:color .2s;display:inline-block}
-  .room-leave-subtle-btn:hover{color:rgba(255,255,255,.6)}
-  .room-code-strip{display:flex;align-items:center;gap:16px;padding:16px 14px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
-  .room-code-strip-lbl{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,.45)}
-  .room-code-strip-val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:8px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:8px 18px}
-  .room-code-strip-hint{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);font-weight:500}
+
   .room-leave-btn{width:100%;padding:13px;background:transparent;border:1px solid rgba(239,68,68,.2);color:rgba(239,68,68,.5);cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:3px;transition:all .2s}
   .room-leave-btn:hover{border-color:rgba(239,68,68,.5);color:#f87171}
 
-  /* Request rows */
-  .room-request-row{display:flex;align-items:center;justify-content:space-between;padding:16px 14px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px}
-  .room-request-rejected{opacity:.5}
-  .room-request-left{display:flex;flex-direction:column;gap:4px;flex:1}
-  .room-request-status{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2.5px;margin-bottom:2px}
-  .rrs-pending{color:rgba(251,191,36,.8)}
-  .rrs-rejected{color:rgba(239,68,68,.6)}
-  .room-request-info{display:flex;gap:10px;padding:12px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);margin-bottom:4px;align-items:flex-start}
-  .room-request-info-ico{font-size:16px;flex-shrink:0;margin-top:1px}
-  .room-request-info-text{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.5);line-height:1.6}
 
-  /* Toggle switch */
-  .room-toggle-row{display:flex;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-  .room-toggle{width:44px;height:24px;background:rgba(255,255,255,.1);border-radius:12px;position:relative;flex-shrink:0;transition:background .2s}
-  .room-toggle-on{background:rgba(34,197,94,.5)}
-  .room-toggle-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;transform:translateX(0)}
-  .room-toggle-on .room-toggle-knob{transform:translateX(20px)}
 
   /* ── ROOM LEADER HERO ── */
-  .room-leader-hero{background:#fff;padding:32px 20px 28px;text-align:center;position:relative}
+
   .room-leader-crown{font-size:32px;line-height:1;margin-bottom:8px;animation:crownBounce 1.5s ease-in-out infinite}
   .room-leader-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:5px;color:rgba(0,0,0,.4);text-transform:uppercase;margin-bottom:12px}
   .room-leader-name{font-family:'Anton',sans-serif;font-size:clamp(24px,5vw,40px);letter-spacing:1.5px;color:#000;line-height:1;text-transform:uppercase;margin-bottom:10px}
@@ -2710,29 +3608,10 @@ const CSS = `
   .room-prize-banner-val{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:1px;color:rgba(255,200,50,.95);text-transform:uppercase}
 
   /* ── ACTIVITY FEED ── */
-  .feed-row{display:flex;align-items:flex-start;gap:12px;padding:14px;border-bottom:1px solid rgba(255,255,255,.055);transition:background .15s}
-  .feed-row:hover{background:#060606}
-  .feed-row-ok{border-left:3px solid rgba(34,197,94,.4)}
-  .feed-row-partial{border-left:3px solid rgba(251,191,36,.4)}
-  .feed-row-ng{border-left:3px solid rgba(255,255,255,.06)}
-  .feed-ico{font-size:18px;flex-shrink:0;margin-top:2px}
-  .feed-body{display:flex;flex-direction:column;gap:3px;flex:1}
-  .feed-name{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:.5px;color:#fff;text-transform:uppercase}
-  .feed-match{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);font-weight:500}
-  .feed-detail{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.55);line-height:1.5}
-  .feed-detail strong{color:#fff}
-  .feed-pts{color:#86efac;font-weight:700}
+
 
   /* ── CHAT ── */
-  .chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 280px);min-height:320px}
-  .chat-messages{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
-  .chat-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px 0}
-  .chat-msg{display:flex;flex-direction:column;gap:3px;max-width:82%}
-  .chat-msg-me{align-self:flex-end}
-  .chat-msg-header{display:flex;align-items:center;gap:8px}
-  .chat-msg-name{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.35);text-transform:uppercase}
-  .chat-msg-time{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.2)}
-  .chat-msg-bubble{font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.09);padding:10px 14px;line-height:1.5;word-break:break-word}
+
   .chat-msg-me .chat-msg-bubble{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.2)}
   .chat-msg-me .chat-msg-header{flex-direction:row-reverse}
   .chat-input-row{display:flex;gap:0;border-top:1px solid rgba(255,255,255,.08);flex-shrink:0}
@@ -2801,28 +3680,37 @@ const CSS = `
   ══════════════════════════════════════ */
   .splash{position:relative;display:flex;align-items:center;justify-content:center;height:100vh;background:#000;overflow:hidden}
   .splash-shake{animation:screenShake 0.8s cubic-bezier(.36,.07,.19,.97) both}
-  .sp-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,.92) 100%);pointer-events:none;z-index:1}
-  .sp-tap-hint{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.25);z-index:15;animation:tapHintPulse 1.8s ease-in-out infinite;pointer-events:none;white-space:nowrap}
-  @keyframes tapHintPulse{0%,100%{opacity:.25}50%{opacity:.6}}
+  .sp-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 25%,rgba(0,0,0,.88) 100%);pointer-events:none;z-index:1}
+  .sp-glow-bg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(255,200,50,.0) 0%,transparent 70%);pointer-events:none;z-index:0}
+  @keyframes glowBurst{0%{background:radial-gradient(circle,rgba(255,220,80,.55) 0%,transparent 60%);transform:translate(-50%,-50%) scale(.4)}30%{background:radial-gradient(circle,rgba(255,200,50,.35) 0%,transparent 65%);transform:translate(-50%,-50%) scale(1.3)}70%{background:radial-gradient(circle,rgba(255,180,30,.18) 0%,transparent 70%);transform:translate(-50%,-50%) scale(1.6)}100%{background:radial-gradient(circle,rgba(255,180,30,.06) 0%,transparent 70%);transform:translate(-50%,-50%) scale(2)}}
+  .sp-tap-hint{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:5px;color:rgba(255,255,255,.4);z-index:15;animation:tapHintPulse 1.6s ease-in-out infinite;pointer-events:none;white-space:nowrap;border:1px solid rgba(255,255,255,.12);padding:6px 16px}
+  @keyframes tapHintPulse{0%,100%{opacity:.3}50%{opacity:.75}}
+  .sp-progress-track{position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(255,255,255,.06);z-index:15;pointer-events:none}
+  .sp-progress-fill{height:100%;background:linear-gradient(to right,rgba(255,200,50,.5),rgba(255,200,50,.9));transition:width .12s linear}
   .sp-flash{position:absolute;inset:0;background:#fff;z-index:20;animation:flashOut 0.5s ease forwards;pointer-events:none}
   .sp-cracks{position:absolute;top:50%;left:50%;z-index:3;pointer-events:none}
   .sp-crack{position:absolute;top:0;left:0;width:1px;height:0;background:linear-gradient(to bottom,rgba(255,255,255,.9),transparent);transform-origin:top center;animation:crackGrow 1.2s ease forwards}
+  .sp-sparks{position:absolute;top:50%;left:50%;z-index:6;pointer-events:none}
+  .sp-spark{position:absolute;top:0;left:0;width:2px;height:0;background:linear-gradient(to bottom,rgba(255,220,80,1),rgba(255,120,20,.6),transparent);transform-origin:top center;animation:sparkShoot 0.9s cubic-bezier(.2,0,.8,1) forwards}
+  @keyframes sparkShoot{0%{height:0;opacity:1}40%{height:clamp(40px,8vw,80px);opacity:1}100%{height:clamp(60px,14vw,140px);opacity:0}}
   .sp-ball-fly{position:absolute;z-index:5;bottom:0;left:50%;transform:translateX(-50%) scale(0.06);animation:ballApproach 3s cubic-bezier(.25,0,.15,1) forwards}
   .sp-ball-smash{position:absolute;z-index:5;top:50%;left:50%;transform:translate(-50%,-50%) scale(4.5);animation:ballSmash 0.7s cubic-bezier(.1,0,.4,1) forwards}
   .sp-ball{font-size:72px;line-height:1;display:block;animation:ballSpin 3s linear forwards}
   .sp-ball-nospin{animation:none}
-  .sp-sign-wrap{position:absolute;z-index:10;left:50%;display:flex;flex-direction:column;align-items:center;width:min(500px,88vw)}
+  .sp-sign-wrap{position:absolute;z-index:10;left:50%;display:flex;flex-direction:column;align-items:center;width:min(520px,90vw)}
   .sp-sign-drop{top:-500px;animation:signDrop 1.8s cubic-bezier(.22,1,.36,1) forwards}
   .sp-sign-falling{top:50%;transform:translate(-50%,-50%);animation:signFall 1.2s cubic-bezier(.55,0,1,.45) forwards}
   .sp-ropes{display:flex;justify-content:space-between;width:65%;padding:0 8px}
   .sp-rope{width:2px;height:0;background:linear-gradient(to bottom,rgba(255,255,255,.05),rgba(255,255,255,.4),rgba(255,255,255,.15));animation:ropeGrow 0.5s ease 0.2s forwards}
-  .sp-sign-board{background:#080808;border:2px solid rgba(255,255,255,.2);padding:30px 38px 34px;text-align:center;width:100%;box-shadow:0 8px 60px rgba(0,0,0,.95),inset 0 0 40px rgba(0,0,0,.6);position:relative}
-  .sp-sign-board::before{content:'';position:absolute;inset:5px;border:1px solid rgba(255,255,255,.06);pointer-events:none}
-  .sp-neon-main{font-family:'Anton',sans-serif;font-size:clamp(46px,10vw,82px);letter-spacing:8px;color:rgba(255,255,255,.18);line-height:1;text-transform:uppercase}
+  .sp-sign-board{background:#060606;border:2px solid rgba(255,255,255,.22);padding:32px 42px 36px;text-align:center;width:100%;box-shadow:0 12px 80px rgba(0,0,0,.98),0 0 0 1px rgba(255,255,255,.04),inset 0 0 60px rgba(0,0,0,.7);position:relative}
+  .sp-sign-board::before{content:'';position:absolute;inset:6px;border:1px solid rgba(255,255,255,.07);pointer-events:none}
+  .sp-sign-board::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(255,255,255,.03) 0%,transparent 65%);pointer-events:none}
+  .sp-neon-main{font-family:'Anton',sans-serif;font-size:clamp(50px,11vw,88px);letter-spacing:8px;color:rgba(255,255,255,.18);line-height:1;text-transform:uppercase}
   .sp-sign-divider{height:1px;background:rgba(255,255,255,.18);margin:14px 0 10px;width:100%}
-  .sp-neon-sub2{font-family:'Anton',sans-serif;font-size:clamp(9px,2vw,13px);letter-spacing:5px;color:rgba(255,255,255,.18);text-transform:uppercase;margin-bottom:16px}
-  .sp-sign-sep{height:1px;background:rgba(255,200,50,.2);margin:0 0 14px;width:100%}
-  .sp-neon-gold{font-family:'Anton',sans-serif;font-size:clamp(11px,2.4vw,17px);letter-spacing:10px;color:rgba(255,200,50,.18);text-transform:uppercase}
+  .sp-neon-sub2{font-family:'Anton',sans-serif;font-size:clamp(9px,2vw,13px);letter-spacing:6px;color:rgba(255,255,255,.18);text-transform:uppercase;margin-bottom:18px}
+  .sp-sign-sep{height:1px;background:rgba(255,200,50,.22);margin:0 0 12px;width:100%}
+  .sp-neon-gold{font-family:'Anton',sans-serif;font-size:clamp(13px,2.8vw,20px);letter-spacing:10px;color:rgba(255,200,50,.18);text-transform:uppercase;margin-bottom:10px}
+  .sp-neon-tag{font-family:'Outfit',sans-serif;font-size:clamp(8px,1.6vw,11px);letter-spacing:4px;color:rgba(255,255,255,.18);text-transform:uppercase;margin-top:2px}
 
   /* ── ANIMATIONS ── */
   .page-anim{animation:pageIn 0.25s ease both}
@@ -2869,4 +3757,161 @@ const CSS = `
   @keyframes digitPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
   @keyframes expandW{from{transform:scaleX(0)}to{transform:scaleX(1)}}
   @keyframes fillBar{from{width:0}to{width:100%}}
+
+  /* ── FLOOR PLAN ── */
+  .fp-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
+  .fp-header-title{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:3px;color:#fff}
+  .fp-stats{display:flex;align-items:center;gap:12px}
+  .fp-stat{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .fp-stat-lbl{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2.5px;color:rgba(255,255,255,.3)}
+  .fp-stat-div{width:1px;height:28px;background:rgba(255,255,255,.1)}
+  .fp-legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .fp-legend-item{display:flex;align-items:center;gap:5px}
+  .fp-zone{position:relative;padding:20px 16px 24px;border:1px solid rgba(255,255,255,.06)}
+  .fp-zone-red{background:rgba(180,60,60,.06)}
+  .fp-zone-white{background:rgba(240,240,240,.03)}
+  .fp-zone-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:4px;color:rgba(255,255,255,.25);margin-bottom:20px}
+  .fp-row{display:flex;align-items:center;gap:16px}
+  .fp-stairs{display:flex;align-items:center;justify-content:center;gap:0;padding:8px 0;background:rgba(255,255,255,.03);border-top:1px dashed rgba(255,255,255,.08);border-bottom:1px dashed rgba(255,255,255,.08)}
+  .fp-stair{width:24px;height:8px;background:rgba(255,255,255,.1);margin:0 1px}
+  .fp-stairs-label{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:4px;color:rgba(255,255,255,.25);margin:0 14px}
+  .fp-table{user-select:none}
+  .fp-history-btn{padding:9px 16px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2.5px;transition:all .2s;flex-shrink:0}
+  .fp-history-btn:hover{border-color:#fff;color:#fff}
+  .fp-history-btn-on{background:rgba(255,255,255,.1);border-color:#fff;color:#fff}
+  @keyframes fpBlink{0%,100%{opacity:1}50%{opacity:.4}}
+  .fp-blink{animation:fpBlink 1.2s ease-in-out infinite}
+
+  /* ── MENU & ORDER ── */
+  .wallet-header{display:flex;align-items:center;justify-content:space-between;padding:20px 16px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.1)}
+  .wallet-left{display:flex;flex-direction:column;gap:3px}
+  .wallet-label{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;color:rgba(255,255,255,.55)}
+  .wallet-balance{font-family:'Anton',sans-serif;font-size:38px;color:#fff;line-height:1;letter-spacing:1px}
+  .wallet-sub{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);font-weight:500}
+  .wallet-topup-btn{padding:14px 24px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;transition:opacity .15s;flex-shrink:0}
+  .wallet-topup-btn:hover{opacity:.85}
+
+  .menu-cat-header{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:6px;color:rgba(255,255,255,.5);padding:28px 16px 10px;text-transform:uppercase;display:flex;align-items:center;gap:12px;background:transparent;margin-top:0}
+  .menu-cat-header::before{content:"";flex:0 0 3px;height:18px;background:#fff;display:block}
+  .menu-cat-header::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.1)}
+  .menu-item-row{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
+  .menu-item-row:hover{background:rgba(255,255,255,.025)}
+  .menu-item-info{flex:1;min-width:0}
+  .menu-item-name{font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:.5px;margin-bottom:4px}
+  .menu-item-desc{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.55);margin-bottom:6px;line-height:1.5}
+  .menu-item-price{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.8);letter-spacing:1px}
+  .menu-add-btn{padding:11px 20px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;transition:opacity .15s;flex-shrink:0}
+  .menu-add-btn:hover{opacity:.85}
+  .menu-qty-ctrl{display:flex;align-items:center;border:1px solid rgba(255,255,255,.2);flex-shrink:0}
+  .menu-qty-btn{width:40px;height:40px;background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;font-family:'Anton',sans-serif;display:flex;align-items:center;justify-content:center;transition:background .15s}
+  .menu-qty-btn:hover{background:rgba(255,255,255,.1)}
+  .menu-qty-val{font-family:'Anton',sans-serif;font-size:18px;color:#fff;min-width:32px;text-align:center}
+  .cart-fab{position:sticky;bottom:72px;margin:0 16px;padding:16px 20px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;text-align:center;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,.5);transition:opacity .15s}
+  .cart-fab:hover{opacity:.9}
+
+  .cart-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);gap:12px}
+  .cart-row-name{font-family:'Anton',sans-serif;font-size:16px;color:#fff;flex:1;letter-spacing:.5px}
+  .cart-row-price{font-family:'Anton',sans-serif;font-size:18px;color:#fff;min-width:64px;text-align:right}
+  .cart-total-row{display:flex;align-items:baseline;justify-content:space-between;padding:16px 16px 20px;border-top:2px solid rgba(255,255,255,.12)}
+  .cart-total-label{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:4px;color:rgba(255,255,255,.45)}
+  .cart-total-val{font-family:'Anton',sans-serif;font-size:34px;color:#fff}
+  .menu-pay-btn{flex:1;padding:12px 8px;background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.55);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;transition:all .15s;text-align:center}
+  .menu-pay-btn:hover{border-color:rgba(255,255,255,.35);color:#fff}
+  .menu-pay-btn-on{background:rgba(255,255,255,.08);border-color:#fff;color:#fff}
+  .wallet-warning{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(239,68,68,.8);margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .wallet-warning-link{background:transparent;border:none;color:#fff;cursor:pointer;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1px;text-decoration:underline;padding:0}
+  .table-picker-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px}
+  .table-picker-btn{padding:12px 4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);cursor:pointer;font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.5px;transition:all .15s;border-radius:4px}
+  .table-picker-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.35);color:#fff}
+  .table-picker-on{background:#fff!important;color:#000!important;border-color:#fff!important}
+  .order-place-btn{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;transition:opacity .15s}
+  .order-place-btn:hover{opacity:.88}
+  .order-place-btn:disabled{opacity:.3;cursor:not-allowed}
+
+  /* Wallet tab */
+  .wallet-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);padding:32px 24px;margin:20px 0;text-align:center}
+  .wallet-card-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:4px;color:rgba(255,255,255,.4);margin-bottom:8px}
+  .wallet-card-amount{font-family:'Anton',sans-serif;font-size:56px;color:#fff;line-height:1;letter-spacing:2px;margin-bottom:10px}
+  .wallet-card-name{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px}
+  .wallet-section-title{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.45);margin-bottom:14px;padding-top:4px}
+  .wallet-topup-amounts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+  .wallet-amt-btn{padding:14px 8px;background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:16px;letter-spacing:1px;transition:all .15s}
+  .wallet-amt-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
+  .wallet-amt-on{background:rgba(255,255,255,.1);border-color:#fff;color:#fff}
+  .stripe-coming-soon{margin-bottom:16px;padding:20px 18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .stripe-coming-soon-icon{font-size:28px;line-height:1;opacity:.5}
+  .stripe-coming-soon-title{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.4)}
+  .stripe-coming-soon-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.35);line-height:1.6;max-width:300px}
+  .wallet-cash-box{margin-top:20px;padding:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
+  .wallet-cash-title{font-family:'Anton',sans-serif;font-size:14px;color:#fff;letter-spacing:.5px;margin-bottom:8px}
+  .wallet-cash-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);line-height:1.6}
+  .wallet-info-box{margin-top:12px;padding:16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
+  .wallet-info-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1px;color:rgba(255,255,255,.5);margin-bottom:6px}
+  .wallet-info-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);line-height:1.6}
+
+  .order-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);padding:16px;margin:0 0 10px}
+  .order-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+  .order-card-table{font-family:'Anton',sans-serif;font-size:17px;color:#fff;letter-spacing:.5px}
+  .order-card-date{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.4);margin-top:3px}
+  .order-card-status{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.5px;text-align:right}
+  .order-card-items{border-top:1px solid rgba(255,255,255,.07);padding-top:10px;margin-bottom:10px}
+  .order-item-line{display:flex;justify-content:space-between;font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);padding:3px 0;font-weight:500}
+  .order-item-line span{color:rgba(255,255,255,.4)}
+  .order-card-total{font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;color:rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.07);padding-top:10px}
+
+  /* Profile sponsors section */
+  .prof-section-divider{display:flex;align-items:center;gap:12px;padding:24px 16px 8px}
+  .prof-section-label{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.35)}
+  .prof-sponsor-sub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.3);padding:0 16px 16px;font-weight:500}
+
+  /* Player number card */
+  .player-num-card{margin:0 0 2px;padding:20px 16px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px}
+  .player-num-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:4px;color:rgba(255,255,255,.4)}
+  .player-num-value{font-family:'Anton',sans-serif;font-size:56px;color:#fff;line-height:1;letter-spacing:2px}
+  .player-num-hint{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;max-width:320px;font-weight:500;border:1px solid rgba(255,255,255,.1);padding:10px 14px;background:rgba(255,255,255,.03)}
+
+  /* Order ID chip */
+  .order-id-chip{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:2px 8px;flex-shrink:0}
+
+  /* Orders page tabs */
+  .orders-page-tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid rgba(255,255,255,.08)}
+  .orders-page-tab{padding:18px 12px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .2s;border-bottom:3px solid transparent;margin-bottom:-2px}
+  .orders-page-tab:hover{background:rgba(255,255,255,.04)}
+  .orders-page-tab-on{background:rgba(255,255,255,.05);border-bottom-color:#fff}
+  .orders-page-tab-label{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;color:rgba(255,255,255,.6)}
+  .orders-page-tab-on .orders-page-tab-label{color:#fff}
+  .orders-live-badge{background:#f59e0b;color:#000;font-family:'Anton',sans-serif;font-size:11px;padding:2px 9px;border-radius:0;min-width:24px;text-align:center}
+
+  /* Live stats bar */
+  .live-stats-bar{display:flex;align-items:center;justify-content:space-around;padding:14px 16px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.07)}
+  .live-stat{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .live-stat-val{font-family:'Anton',sans-serif;font-size:28px;line-height:1;color:rgba(255,255,255,.5)}
+  .live-stat-lbl{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2.5px;color:rgba(255,255,255,.3)}
+  .live-stat-divider{width:1px;height:36px;background:rgba(255,255,255,.08)}
+
+  /* Live orders grid — 2 cols on wider screens */
+  .live-orders-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:14px}
+  .live-order-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;transition:border-color .2s}
+  .live-order-status-row{display:flex;align-items:center;gap:8px;padding:10px 14px}
+  .live-order-status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .live-order-status-txt{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;flex:1}
+  .live-order-time{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.4);font-weight:600;margin-left:auto}
+  .live-order-hero{display:flex;align-items:flex-start;justify-content:space-between;padding:14px 14px 10px}
+  .live-order-table{font-family:'Anton',sans-serif;font-size:26px;color:#fff;letter-spacing:1px;line-height:1}
+  .live-order-name{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);font-weight:600;margin-top:4px}
+  .live-order-total{font-family:'Anton',sans-serif;font-size:22px;color:#fff;letter-spacing:1px}
+  .live-order-items{padding:0 14px 14px;display:flex;flex-direction:column;gap:5px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .live-order-item{display:flex;align-items:center;gap:8px}
+  .live-order-qty{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.5);min-width:28px}
+  .live-order-item-name{font-family:'Outfit',sans-serif;font-size:15px;color:#fff;font-weight:600}
+  .live-order-action-btn{width:100%;padding:16px;background:transparent;border:none;border-top:1px solid rgba(255,255,255,.08);cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;transition:background .2s}
+  .live-order-action-btn:hover{background:rgba(255,255,255,.07)}
+  .history-person-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:rgba(255,255,255,.05);border-top:2px solid rgba(255,255,255,.15);border-bottom:1px solid rgba(255,255,255,.08)}
+  .history-person-name{font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:.5px;text-transform:uppercase}
+  .history-person-meta{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-top:3px;font-weight:500}
+  .history-order-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.05);gap:12px}
+  .history-order-row-left{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .history-order-table{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.7);letter-spacing:.5px}
+  .history-order-items-inline{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.55);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .history-order-amount{font-family:'Anton',sans-serif;font-size:18px;color:#fff;flex-shrink:0}
 `;
