@@ -106,6 +106,9 @@ export default function App() {
   const [myOrders,    setMyOrders]    = useState([]);
   const [allOrders,   setAllOrders]   = useState([]);
   const [matchesLoaded, setMatchesLoaded] = useState(false);
+  const [activeGroup,  setActiveGroup]  = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [groupItems,   setGroupItems]   = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -113,17 +116,6 @@ export default function App() {
       const sp = await sget("em_sponsors");
       if (rl) setRules(rl);
       if (sp) setSponsors(sp);
-
-      // Handle Stripe success redirect — process AFTER session is confirmed
-      const params = new URLSearchParams(window.location.search);
-      const topupStatus = params.get("topup");
-      const topupAmount = parseFloat(params.get("amount") || "0");
-      const topupUserId = params.get("user_id");
-      // Store in sessionStorage to process after login
-      if (topupStatus === "success" && topupAmount > 0 && topupUserId) {
-        sessionStorage.setItem("pending_topup", JSON.stringify({ amount: topupAmount, userId: topupUserId }));
-        window.history.replaceState({}, "", window.location.pathname);
-      }
 
       const { data: mRows } = await supabase.from("matches").select("*");
       if (mRows) {
@@ -179,22 +171,28 @@ export default function App() {
           const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
           if (orderRows) setMyOrders(orderRows);
 
-          // Process pending Stripe top-up if any
-          const pendingTopup = sessionStorage.getItem("pending_topup");
-          if (pendingTopup) {
-            try {
-              const { amount, userId } = JSON.parse(pendingTopup);
-              if (userId === session.user.id && amount > 0) {
-                sessionStorage.removeItem("pending_topup");
-                const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
-                const newBal = +((cur?.balance || 0) + amount).toFixed(2);
-                await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
-                await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "stripe" });
-                setMyCredits(newBal);
-                setTimeout(() => setToast({ msg: `$${amount.toFixed(2)} credits added! 🎉`, ok: true }), 4000);
-                setTimeout(() => setToast(null), 7500);
-              }
-            } catch(e) { sessionStorage.removeItem("pending_topup"); }
+          // Restore active group order if user is still a member
+          const { data: memRow } = await supabase
+            .from("group_order_members")
+            .select("group_order_id")
+            .eq("user_id", session.user.id)
+            .order("joined_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (memRow) {
+            const { data: grpRow } = await supabase
+              .from("group_orders")
+              .select("*")
+              .eq("id", memRow.group_order_id)
+              .in("status", ["open", "awaiting_payment"])
+              .maybeSingle();
+            if (grpRow) {
+              setActiveGroup(grpRow);
+              const { data: mems } = await supabase.from("group_order_members").select("*").eq("group_order_id", grpRow.id);
+              if (mems) setGroupMembers(mems);
+              const { data: items } = await supabase.from("group_order_items").select("*").eq("group_order_id", grpRow.id);
+              if (items) setGroupItems(items);
+            }
           }
 
           // Show splash briefly (ball smash moment ~3.5s), then go to app
@@ -315,6 +313,27 @@ export default function App() {
     };
   }, [page, user?.id]);
 
+  useEffect(() => {
+    if (!activeGroup?.id) return;
+    const gid = activeGroup.id;
+    const mSub = supabase.channel(`go-members-${gid}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"group_order_members", filter:`group_order_id=eq.${gid}` },
+        async () => {
+          const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", gid);
+          if (data) setGroupMembers(data);
+        }).subscribe();
+    const iSub = supabase.channel(`go-items-${gid}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"group_order_items", filter:`group_order_id=eq.${gid}` },
+        async () => {
+          const { data } = await supabase.from("group_order_items").select("*").eq("group_order_id", gid);
+          if (data) setGroupItems(data);
+        }).subscribe();
+    const oSub = supabase.channel(`go-order-${gid}`)
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"group_orders", filter:`id=eq.${gid}` },
+        payload => { if (payload.new) setActiveGroup(prev => ({ ...prev, ...payload.new })); }).subscribe();
+    return () => { supabase.removeChannel(mSub); supabase.removeChannel(iSub); supabase.removeChannel(oSub); };
+  }, [activeGroup?.id]);
+
   const toast$ = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3200); };
 
   const doRegister = async () => {
@@ -358,6 +377,22 @@ export default function App() {
   };
 
   const doLogout = async () => {
+    // Cancel/leave any active group order before signing out
+    if (activeGroup) {
+      if (activeGroup.host_user_id === user?.id) {
+        // Only cancel if not already placed — don't destroy a completed order
+        if (activeGroup.status !== "placed") {
+          await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", activeGroup.id);
+        }
+      } else {
+        // Unassign anyone who was counting on this user to pay for them
+        await supabase.from("group_order_members")
+          .update({ pay_for_user_id: null, payment_status: "pending" })
+          .eq("group_order_id", activeGroup.id).eq("pay_for_user_id", user.id);
+        await supabase.from("group_order_members").delete().eq("group_order_id", activeGroup.id).eq("user_id", user.id);
+      }
+      setActiveGroup(null); setGroupMembers([]); setGroupItems([]);
+    }
     await supabase.auth.signOut();
     setUser(null); setPage("auth");
     setForm({ name:"", email:"", phone:"", password:"" });
@@ -453,7 +488,6 @@ export default function App() {
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
     if (paymentMethod === "credits") {
       if (myCredits < total) { toast$("Not enough credits", false); return false; }
-      // Deduct credits
       const newBal = +(myCredits - total).toFixed(2);
       await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
       setMyCredits(newBal);
@@ -468,7 +502,6 @@ export default function App() {
       status: "pending",
     }).select().single();
     if (error) { toast$("Error placing order", false); return false; }
-    // Don't manually add to myOrders — Realtime subscription will add it
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
     return true;
   };
@@ -478,7 +511,54 @@ export default function App() {
     const newBal = +((cur?.balance || 0) + amount).toFixed(2);
     await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
-    toast$(`${amount} credits added to ${userName} ✓`);
+    toast$(`$${amount} credits added to ${userName} ✓`);
+    // Print top-up receipt
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const dateStr = now.toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" });
+    const win = window.open("", "_blank", "width=320,height=400");
+    if (win) {
+      win.document.write(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title>
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { width: 80mm; }
+        body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; background: #fff; }
+        .wrap { width: 72mm; margin: 0 auto; padding: 4mm 0; }
+        .center { text-align: center; }
+        .logo { font-size: 24px; font-weight: 900; letter-spacing: 3px; margin-bottom: 2px; }
+        .sub { font-size: 9px; color: #333; margin-bottom: 8px; letter-spacing: 2px; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .divider-solid { border-top: 2px solid #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; padding: 3px 0; font-size:11px; }
+        .label { font-size: 9px; color: #333; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .big { font-size: 20px; font-weight: 900; letter-spacing: 1px; }
+        .amount { font-size: 28px; font-weight: 900; }
+        .footer { font-size: 10px; color: #333; margin-top: 10px; text-align:center; }
+        .type { display:inline-block; border:1px solid #000; padding: 2px 8px; font-size:9px; letter-spacing:2px; font-weight:900; margin-top:5px; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style></head><body><div class="wrap">
+      <div class="center">
+        <div class="logo">EL MUNDO</div>
+        <div class="sub">WORLD CUP 2026 · BONAIRE</div>
+        <div class="type">TOP-UP RECEIPT</div>
+      </div>
+      <div class="divider"></div>
+      <div class="label">Customer</div>
+      <div style="font-size:16px;font-weight:900;margin-bottom:10px">${userName}</div>
+      <div class="label">Credits Added</div>
+      <div class="amount">$${(+amount).toFixed(2)}</div>
+      <div class="divider-solid"></div>
+      <div class="row"><span>New Balance</span><span style="font-weight:900">$${newBal.toFixed(2)}</span></div>
+      <div class="row"><span>Payment</span><span>Cash / Card</span></div>
+      <div class="row"><span>Date & Time</span><span>${dateStr} · ${timeStr}</span></div>
+      <div class="divider"></div>
+      <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food & drinks.</div>
+      </div></body></html>`);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); win.close(); }, 400);
+    }
   };
 
   const updateOrderStatus = async (orderId, status) => {
@@ -495,6 +575,210 @@ export default function App() {
   const loadAllOrders = async () => {
     const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
     if (data) setAllOrders(data);
+  };
+
+  const handlePayPalTopup = (newBalance, amount) => {
+    setMyCredits(newBalance);
+    toast$(`$${(+amount).toFixed(2)} credits added! 🎉`);
+  };
+
+  const createGroupOrder = async (tableNumber) => {
+    // Check if another active group order already holds this table
+    const { data: conflict } = await supabase.from("group_orders")
+      .select("id").eq("table_number", String(tableNumber))
+      .in("status", ["open", "awaiting_payment"]).maybeSingle();
+    if (conflict) { toast$(`Table ${tableNumber} already has an active group order`, false); return; }
+
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { data, error } = await supabase.from("group_orders")
+      .insert({ code, table_number: tableNumber, host_user_id: user.id, status: "open" })
+      .select().single();
+    if (error || !data) { toast$("Failed to create group order", false); return; }
+    await supabase.from("group_order_members")
+      .insert({ group_order_id: data.id, user_id: user.id, display_name: user.name, payment_status: "pending" });
+    const { data: members } = await supabase.from("group_order_members").select("*").eq("group_order_id", data.id);
+    setActiveGroup(data);
+    setGroupMembers(members || []);
+    setGroupItems([]);
+  };
+
+  const joinGroupOrder = async (code) => {
+    const { data: order } = await supabase.from("group_orders").select("*")
+      .eq("code", code.trim().toUpperCase()).eq("status", "open").maybeSingle();
+    if (!order) { toast$("Group order not found or already closed", false); return false; }
+    const { data: existing } = await supabase.from("group_order_members").select("id")
+      .eq("group_order_id", order.id).eq("user_id", user.id).maybeSingle();
+    if (!existing) {
+      await supabase.from("group_order_members")
+        .insert({ group_order_id: order.id, user_id: user.id, display_name: user.name, payment_status: "pending" });
+    }
+    const { data: members } = await supabase.from("group_order_members").select("*").eq("group_order_id", order.id);
+    const { data: items } = await supabase.from("group_order_items").select("*").eq("group_order_id", order.id);
+    setActiveGroup(order);
+    setGroupMembers(members || []);
+    setGroupItems(items || []);
+    return true;
+  };
+
+  const leaveGroupOrder = async () => {
+    if (!activeGroup) return;
+    if (activeGroup.host_user_id === user.id) {
+      // Only cancel if not already placed — don't destroy a completed order
+      if (activeGroup.status !== "placed") {
+        await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", activeGroup.id);
+      }
+    } else {
+      // Unassign anyone who was counting on this user to pay for them
+      await supabase.from("group_order_members")
+        .update({ pay_for_user_id: null, payment_status: "pending" })
+        .eq("group_order_id", activeGroup.id).eq("pay_for_user_id", user.id);
+      await supabase.from("group_order_members").delete().eq("group_order_id", activeGroup.id).eq("user_id", user.id);
+      await supabase.from("group_order_items").delete().eq("group_order_id", activeGroup.id).eq("added_by_user_id", user.id);
+    }
+    setActiveGroup(null); setGroupMembers([]); setGroupItems([]);
+  };
+
+  const addGroupItem = async (item) => {
+    if (!activeGroup) return;
+    const existing = groupItems.find(i => i.added_by_user_id === user.id && i.item_id === item.id);
+    if (existing) {
+      const { data } = await supabase.from("group_order_items").update({ qty: existing.qty + 1 }).eq("id", existing.id).select().single();
+      if (data) setGroupItems(prev => prev.map(i => i.id === data.id ? data : i));
+    } else {
+      const { data } = await supabase.from("group_order_items")
+        .insert({ group_order_id: activeGroup.id, added_by_user_id: user.id, item_id: item.id, item_name: item.name, price: item.price, qty: 1 })
+        .select().single();
+      if (data) setGroupItems(prev => [...prev, data]);
+    }
+  };
+
+  const removeGroupItem = async (groupItemId) => {
+    const item = groupItems.find(i => i.id === groupItemId);
+    if (!item) return;
+    if (item.qty > 1) {
+      const { data } = await supabase.from("group_order_items").update({ qty: item.qty - 1 }).eq("id", groupItemId).select().single();
+      if (data) setGroupItems(prev => prev.map(i => i.id === data.id ? data : i));
+    } else {
+      await supabase.from("group_order_items").delete().eq("id", groupItemId);
+      setGroupItems(prev => prev.filter(i => i.id !== groupItemId));
+    }
+  };
+
+  const setGroupPaymentMode = async (mode) => {
+    const { data } = await supabase.from("group_orders")
+      .update({ status: "awaiting_payment", payment_mode: mode }).eq("id", activeGroup.id).select().single();
+    if (data) setActiveGroup(data);
+    // In individual mode, auto-mark anyone with $0 share as paid so they never block the order
+    if (mode === "individual") {
+      const zeroShareIds = groupMembers
+        .filter(m => groupItems.filter(i => i.added_by_user_id === m.user_id).reduce((s, i) => s + i.price * i.qty, 0) === 0)
+        .map(m => m.user_id);
+      if (zeroShareIds.length > 0) {
+        await supabase.from("group_order_members").update({ payment_status: "paid" })
+          .eq("group_order_id", activeGroup.id).in("user_id", zeroShareIds);
+        const { data: updated } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+        if (updated) setGroupMembers(updated);
+      }
+    }
+  };
+
+  const assignMyPaymentTo = async (targetUserId) => {
+    await supabase.from("group_order_members")
+      .update({ pay_for_user_id: targetUserId, payment_status: "assigned" })
+      .eq("group_order_id", activeGroup.id).eq("user_id", user.id);
+    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (data) setGroupMembers(data);
+  };
+
+  const unassignMyPayment = async () => {
+    await supabase.from("group_order_members")
+      .update({ pay_for_user_id: null, payment_status: "pending" })
+      .eq("group_order_id", activeGroup.id).eq("user_id", user.id);
+    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (data) setGroupMembers(data);
+  };
+
+  const checkAndPlaceGroupOrder = async (groupId) => {
+    const { data: members } = await supabase.from("group_order_members").select("*").eq("group_order_id", groupId);
+    if (!members?.every(m => m.payment_status === "paid")) return false;
+    const { data: items } = await supabase.from("group_order_items").select("*").eq("group_order_id", groupId);
+    const { data: order } = await supabase.from("group_orders").select("*").eq("id", groupId).maybeSingle();
+    if (!items || !order) return false;
+    // Guard against race condition: only place if still awaiting_payment (not already placed)
+    if (order.status !== "awaiting_payment") return false;
+    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+    await supabase.from("orders").insert({
+      user_id: order.host_user_id,
+      table_number: order.table_number,
+      items: items.map(i => ({ id: i.item_id, name: i.item_name, price: i.price, qty: i.qty })),
+      total: +total.toFixed(2),
+      payment_method: order.payment_mode === "host" ? "group_host" : "group_individual",
+      status: "pending",
+    });
+    await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId);
+    // Immediately update local state — don't wait for realtime which can be slow
+    setActiveGroup(prev => prev ? { ...prev, status: "placed" } : prev);
+    return true;
+  };
+
+  const calcMyGroupShare = (uid, gMembers, gItems) => {
+    const assignedToMe = gMembers.filter(m => m.pay_for_user_id === uid).map(m => m.user_id);
+    const payingFor = [uid, ...assignedToMe];
+    return +gItems.filter(i => payingFor.includes(i.added_by_user_id)).reduce((s, i) => s + i.price * i.qty, 0).toFixed(2);
+  };
+
+  const payGroupShareCredits = async () => {
+    if (!activeGroup) return false;
+    const myShare = calcMyGroupShare(user.id, groupMembers, groupItems);
+    if (myCredits < myShare) { toast$("Not enough credits", false); return false; }
+    const newBal = +(myCredits - myShare).toFixed(2);
+    await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+    setMyCredits(newBal);
+    const assignedToMe = groupMembers.filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
+    await supabase.from("group_order_members").update({ payment_status: "paid" })
+      .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
+    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (data) setGroupMembers(data);
+    await checkAndPlaceGroupOrder(activeGroup.id);
+    return true;
+  };
+
+  const hostPayAllCredits = async () => {
+    if (!activeGroup) return false;
+    const total = groupItems.reduce((s, i) => s + i.price * i.qty, 0);
+    if (myCredits < total) { toast$("Not enough credits", false); return false; }
+    const newBal = +(myCredits - total).toFixed(2);
+    await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+    setMyCredits(newBal);
+    await supabase.from("group_order_members").update({ payment_status: "paid" }).eq("group_order_id", activeGroup.id);
+    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (data) setGroupMembers(data);
+    await checkAndPlaceGroupOrder(activeGroup.id);
+    return true;
+  };
+
+  const handleGroupPayPalSuccess = async (capturedAmount, isHost) => {
+    if (!activeGroup) return;
+    if (isHost) {
+      await supabase.from("group_order_members").update({ payment_status: "paid" }).eq("group_order_id", activeGroup.id);
+    } else {
+      const assignedToMe = groupMembers.filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
+      await supabase.from("group_order_members").update({ payment_status: "paid" })
+        .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
+    }
+    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (data) setGroupMembers(data);
+    await checkAndPlaceGroupOrder(activeGroup.id);
+  };
+
+  const resetGroupToLobby = async () => {
+    if (!activeGroup) return;
+    const { data } = await supabase.from("group_orders")
+      .update({ status: "open", payment_mode: null })
+      .eq("id", activeGroup.id)
+      .select()
+      .single();
+    if (data) setActiveGroup(data);
   };
 
   return (
@@ -528,7 +812,7 @@ export default function App() {
           adminSaveRules={adminSaveRules}
           adminSaveSponsors={adminSaveSponsors}
           menuItems={menuItems} myCredits={myCredits} myOrders={myOrders}
-          placeOrder={placeOrder}
+          placeOrder={placeOrder} onPayPalTopup={handlePayPalTopup}
           saveMenuItem={saveMenuItem} deleteMenuItem={deleteMenuItem}
           toggleMenuItemAvail={toggleMenuItemAvail}
           adminAddCredits={adminAddCredits}
@@ -537,6 +821,13 @@ export default function App() {
           loadAllOrders={loadAllOrders}
           allOrders={allOrders}
           matchesLoaded={matchesLoaded}
+          activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
+          createGroupOrder={createGroupOrder} joinGroupOrder={joinGroupOrder} leaveGroupOrder={leaveGroupOrder}
+          addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
+          setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
+          payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
+          handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+          resetGroupToLobby={resetGroupToLobby}
         />
       )}
     </div>
@@ -1081,9 +1372,16 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 users,
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
                 adminSaveRules, adminSaveSponsors,
-                menuItems, myCredits, myOrders, placeOrder,
+                menuItems, myCredits, myOrders, placeOrder, onPayPalTopup,
                 saveMenuItem, deleteMenuItem, toggleMenuItemAvail,
-                adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded }) {
+                adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded,
+                activeGroup, groupMembers, groupItems,
+                createGroupOrder, joinGroupOrder, leaveGroupOrder,
+                addGroupItem, removeGroupItem,
+                setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
+                payGroupShareCredits, hostPayAllCredits,
+                handleGroupPayPalSuccess, calcMyGroupShare,
+                resetGroupToLobby }) {
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
@@ -1135,7 +1433,15 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} />}
           {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
-          {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder} />}
+          {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder} onPayPalTopup={onPayPalTopup}
+            activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
+            createGroupOrder={createGroupOrder} joinGroupOrder={joinGroupOrder} leaveGroupOrder={leaveGroupOrder}
+            addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
+            setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
+            payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
+            handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+            resetGroupToLobby={resetGroupToLobby}
+          />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
           {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} />}
           {appTab === "admin" && isAdmin && (
@@ -1579,7 +1885,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
         <div className="player-num-card">
           <div className="player-num-label">YOUR PLAYER NUMBER</div>
           <div className="player-num-value">#{user.player_number}</div>
-          <div className="player-num-hint">💵 Paying cash at the bar? Give this number to the staff and they'll top up your credits instantly.</div>
+          <div className="player-num-hint">🏧 Visit any Top-Up Desk and give this number to the staff — they'll add credits to your account instantly.</div>
         </div>
       )}
       <div className="stats-grid">
@@ -1648,29 +1954,99 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
 function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders }) {
   const [section, setSection] = useState("floorplan");
+
+  const TABS = [
+    { id:"floorplan", label:"🗺 Floor Plan" },
+    { id:"matches",  label:"⚽ Matches"  },
+    { id:"rules",    label:"📋 Rules"    },
+    { id:"sponsors", label:"⭐ Sponsors" },
+    { id:"menu",     label:"🍽 Menu"     },
+    { id:"credits",  label:"💳 Credits"  },
+    { id:"tables",   label:"🪑 Tables"   },
+  ];
+
   return (
     <div className={section === "floorplan" ? "" : "vpad"}>
       {section !== "floorplan" && <SecHead title="Admin Panel" sub="Manage all content from here" />}
       <div className="admin-subtabs" style={{flexWrap:"wrap"}}>
-        {[
-          { id:"floorplan", label:"🗺 Floor Plan" },
-          { id:"matches",  label:"⚽ Matches"  },
-          { id:"rules",    label:"📋 Rules"    },
-          { id:"sponsors", label:"⭐ Sponsors" },
-          { id:"menu",     label:"🍽 Menu"     },
-          { id:"credits",  label:"💳 Credits"  },
-        ].map(t => (
+        {TABS.map(t => (
           <button key={t.id} className={`admin-subtab ${section===t.id?"ast-on":""}`} onClick={()=>setSection(t.id)}>
             {t.label}
           </button>
         ))}
       </div>
       {section === "floorplan" && <FloorPlan allOrders={allOrders} onLoad={onLoadAllOrders} onUpdateStatus={onUpdateOrderStatus} onDeleteOrder={onDeleteOrder} />}
-      {section === "matches"  && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
-      {section === "rules"    && <AdminRules    rules={rules}       onSave={onSaveRules} />}
-      {section === "sponsors" && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
-      {section === "menu"     && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} />}
-      {section === "credits"  && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
+      {section === "matches"   && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
+      {section === "rules"     && <AdminRules    rules={rules}       onSave={onSaveRules} />}
+      {section === "sponsors"  && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
+      {section === "menu"      && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} />}
+      {section === "credits"   && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
+      {section === "tables"    && <AdminTables />}
+    </div>
+  );
+}
+
+/* ── Admin: Tables ── */
+function AdminTables() {
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("group_orders")
+      .select("id, code, table_number, status, payment_mode, created_at, host_user_id, profiles:host_user_id(name)")
+      .in("status", ["open","awaiting_payment"])
+      .order("created_at", { ascending: false });
+    setGroups(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const unlock = async (id, tableNum) => {
+    if (!window.confirm(`Unlock table ${tableNum}? This will cancel the group order.`)) return;
+    await supabase.from("group_order_members").delete().eq("group_order_id", id);
+    await supabase.from("group_order_items").delete().eq("group_order_id", id);
+    await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", id);
+    load();
+  };
+
+  const statusColor = (s) => s === "awaiting_payment" ? "#f59e0b" : "#22c55e";
+
+  return (
+    <div style={{padding:"0 4px"}}>
+      <div className="admin-section-lbl" style={{marginBottom:8}}>
+        RESERVED TABLES
+        <button onClick={load} style={{marginLeft:12,fontSize:11,padding:"2px 10px",background:"#222",color:"#aaa",border:"1px solid #333",borderRadius:6,cursor:"pointer"}}>↻ Refresh</button>
+      </div>
+      {loading && <div style={{color:"#666",padding:20,textAlign:"center"}}>Loading...</div>}
+      {!loading && groups.length === 0 && (
+        <div style={{color:"#555",padding:24,textAlign:"center",border:"1px dashed #333",borderRadius:10}}>No tables currently reserved</div>
+      )}
+      {!loading && groups.map(g => (
+        <div key={g.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#111",border:"1px solid #222",borderRadius:10,marginBottom:8}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+              <span style={{fontFamily:"Anton",fontSize:22,color:"#fff"}}>TABLE {g.table_number}</span>
+              <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:statusColor(g.status)+"22",color:statusColor(g.status),border:`1px solid ${statusColor(g.status)}44`,fontWeight:600,letterSpacing:1}}>
+                {g.status === "awaiting_payment" ? "AWAITING PAYMENT" : "OPEN"}
+              </span>
+            </div>
+            <div style={{fontSize:12,color:"#666"}}>
+              Code: <span style={{color:"#aaa",fontWeight:600}}>{g.code}</span>
+              {g.profiles?.name && <> · Host: <span style={{color:"#aaa"}}>{g.profiles.name}</span></>}
+              {g.payment_mode && <> · Mode: <span style={{color:"#aaa"}}>{g.payment_mode}</span></>}
+            </div>
+          </div>
+          <button
+            onClick={() => unlock(g.id, g.table_number)}
+            style={{padding:"8px 16px",background:"#1a0000",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:1,flexShrink:0}}
+          >
+            🔓 UNLOCK
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1903,14 +2279,656 @@ function AdminSponsors({ sponsors, onSave }) {
 
 /* ── Admin: Rooms ── */
 
-function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
-  const [cart,      setCart]      = useState({});
-  const [tab,       setTab]       = useState("menu");
-  const [table,     setTable]     = useState("");
-  const [payMethod, setPayMethod] = useState("credits");
-  const [placing,   setPlacing]   = useState(false);
-  const [tableErr,  setTableErr]  = useState("");
-  const [topupAmt,  setTopupAmt]  = useState("");
+/* ═══ GROUP ORDER VIEW ══════════════════════════════════════════════════════ */
+function GroupOrderView({
+  user, menuItems, myCredits,
+  activeGroup, groupMembers, groupItems,
+  createGroupOrder, joinGroupOrder, leaveGroupOrder,
+  addGroupItem, removeGroupItem,
+  setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
+  payGroupShareCredits, hostPayAllCredits,
+  handleGroupPayPalSuccess, calcMyGroupShare,
+  resetGroupToLobby,
+}) {
+  const [screen, setScreen] = useState("start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
+  const [joinCode, setJoinCode] = useState("");
+  const [tableInput, setTableInput] = useState("");
+  const [tableErr, setTableErr] = useState("");
+  const [joinErr, setJoinErr] = useState("");
+  const [paypalReady, setPaypalReady] = useState(!!window.paypal);
+  const [paying, setPaying] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [takenTables, setTakenTables] = useState([]);
+  const [cancelNote, setCancelNote] = useState(false);
+
+  // Load taken tables whenever the create screen is shown
+  useEffect(() => {
+    if (screen !== "create") return;
+    supabase.from("group_orders").select("table_number")
+      .in("status", ["open", "awaiting_payment"])
+      .then(({ data }) => setTakenTables(data ? data.map(r => String(r.table_number)) : []));
+  }, [screen]);
+  const sharePaypalBtnsRef = useRef(null);
+  const sharePaypalContainerRef = useRef(null);
+  const hostPaypalBtnsRef = useRef(null);
+  const hostPaypalContainerRef = useRef(null);
+  const paypalConfigured = !!(import.meta.env.VITE_PAYPAL_CLIENT_ID) &&
+    import.meta.env.VITE_PAYPAL_CLIENT_ID !== "PLACEHOLDER";
+
+  const isHost = activeGroup?.host_user_id === user.id;
+  const myMember = groupMembers.find(m => m.user_id === user.id);
+  const myShare = activeGroup ? calcMyGroupShare(user.id, groupMembers, groupItems) : 0;
+  const groupTotal = groupItems.reduce((s, i) => s + i.price * i.qty, 0);
+  const myItems = groupItems.filter(i => i.added_by_user_id === user.id);
+
+  // Sync screen with activeGroup status
+  useEffect(() => {
+    if (!activeGroup) { setScreen("start"); return; }
+    if (activeGroup.status === "placed") { setScreen("placed"); return; }
+    if (activeGroup.status === "cancelled") {
+      // Show a notification so non-host members know why they were kicked out
+      if (activeGroup.host_user_id !== user.id) setCancelNote(true);
+      leaveGroupOrder(); setScreen("start"); return;
+    }
+    if (activeGroup.status === "awaiting_payment") { setScreen("payment"); return; }
+    setScreen("lobby");
+  }, [activeGroup?.status]);
+
+  // Load PayPal SDK
+  useEffect(() => {
+    if (!paypalConfigured || window.paypal) { if (window.paypal) setPaypalReady(true); return; }
+    if (document.getElementById("paypal-sdk-script")) return;
+    const s = document.createElement("script");
+    s.id = "paypal-sdk-script";
+    s.src = `https://www.paypal.com/sdk/js?client-id=${import.meta.env.VITE_PAYPAL_CLIENT_ID}&currency=USD`;
+    s.onload = () => setPaypalReady(true);
+    document.body.appendChild(s);
+  }, []);
+
+  // Render "my share" PayPal buttons
+  useEffect(() => {
+    if (screen !== "payment" || !paypalReady || !sharePaypalContainerRef.current) return;
+    if (myMember?.payment_status === "paid" || myMember?.payment_status === "assigned") return;
+    if (sharePaypalBtnsRef.current) { try { sharePaypalBtnsRef.current.close(); } catch {} sharePaypalBtnsRef.current = null; }
+    sharePaypalContainerRef.current.innerHTML = "";
+    if (myShare <= 0) return;
+    const btns = window.paypal.Buttons({
+      style: { layout:"vertical", color:"blue", shape:"rect", label:"pay", height:42 },
+      createOrder: (_d, a) => a.order.create({ purchase_units:[{ amount:{ value: myShare.toFixed(2), currency_code:"USD" } }] }),
+      onApprove: async (data) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token}` },
+          body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: myShare, skipCredits: true }),
+        });
+        const result = await res.json();
+        if (result.success) await handleGroupPayPalSuccess(myShare, false);
+        else alert("Payment failed: " + (result.error || "Unknown error"));
+      },
+      onError: () => alert("PayPal error. Please try again."),
+    });
+    if (btns.isEligible()) { btns.render(sharePaypalContainerRef.current); sharePaypalBtnsRef.current = btns; }
+  }, [screen, paypalReady, myShare, myMember?.payment_status]);
+
+  // Render "host pays all" PayPal buttons
+  useEffect(() => {
+    if (screen !== "payment" || !paypalReady || !hostPaypalContainerRef.current) return;
+    if (!isHost || activeGroup?.payment_mode !== "host") return;
+    if (hostPaypalBtnsRef.current) { try { hostPaypalBtnsRef.current.close(); } catch {} hostPaypalBtnsRef.current = null; }
+    hostPaypalContainerRef.current.innerHTML = "";
+    if (groupTotal <= 0) return;
+    const btns = window.paypal.Buttons({
+      style: { layout:"vertical", color:"blue", shape:"rect", label:"pay", height:42 },
+      createOrder: (_d, a) => a.order.create({ purchase_units:[{ amount:{ value: groupTotal.toFixed(2), currency_code:"USD" } }] }),
+      onApprove: async (data) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token}` },
+          body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: groupTotal, skipCredits: true }),
+        });
+        const result = await res.json();
+        if (result.success) await handleGroupPayPalSuccess(groupTotal, true);
+        else alert("Payment failed: " + (result.error || "Unknown error"));
+      },
+      onError: () => alert("PayPal error. Please try again."),
+    });
+    if (btns.isEligible()) { btns.render(hostPaypalContainerRef.current); hostPaypalBtnsRef.current = btns; }
+  }, [screen, paypalReady, groupTotal, activeGroup?.payment_mode]);
+
+  const handleCreate = async () => {
+    if (!tableInput.trim() || isNaN(+tableInput) || +tableInput < 1 || +tableInput > 26) {
+      setTableErr("Enter a valid table number (1–26)"); return;
+    }
+    setTableErr("");
+    await createGroupOrder(tableInput.trim());
+  };
+
+  const handleJoin = async () => {
+    if (joinCode.trim().length < 4) { setJoinErr("Enter the join code"); return; }
+    setJoinErr("");
+    await joinGroupOrder(joinCode.trim());
+  };
+
+  const handleCopyCode = () => {
+    navigator.clipboard?.writeText(activeGroup?.code || "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Guard: if activeGroup is null but we're still on an active screen, wait for the useEffect to reset screen
+  if (!activeGroup && !["start","create","join"].includes(screen)) return null;
+
+  // ── SCREEN: START (no active group) ──
+  if (screen === "start") return (
+    <div style={{padding:"24px 16px"}}>
+      {cancelNote && (
+        <div style={{background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",fontFamily:"'Outfit',sans-serif"}}>
+          <div>
+            <div style={{fontWeight:600,color:"#f87171",fontSize:13,marginBottom:2}}>Group order was cancelled</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>The host cancelled the group order.</div>
+          </div>
+          <button onClick={() => setCancelNote(false)} style={{background:"none",border:"none",color:"#888",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
+        </div>
+      )}
+      <div className="go-hero">
+        <div className="go-hero-icon">👥</div>
+        <div className="go-hero-title">GROUP ORDER</div>
+        <div className="go-hero-sub">Order together, pay your way</div>
+      </div>
+      <div className="go-how">
+        {[
+          ["1","Start or join a group order"],
+          ["2","Everyone adds their items"],
+          ["3","Choose who pays — split or one pays all"],
+          ["4","Order goes to the bar when paid"],
+        ].map(([n, t]) => (
+          <div key={n} className="go-how-row">
+            <div className="go-how-num">{n}</div>
+            <div className="go-how-txt">{t}</div>
+          </div>
+        ))}
+      </div>
+      <button className="go-btn-primary" onClick={() => setScreen("create")}>
+        + START GROUP ORDER
+      </button>
+      <button className="go-btn-secondary" style={{marginTop:10}} onClick={() => setScreen("join")}>
+        JOIN WITH CODE
+      </button>
+    </div>
+  );
+
+  // ── SCREEN: CREATE ──
+  if (screen === "create") return (
+    <div style={{padding:"24px 16px"}}>
+      <button className="go-back-btn" onClick={() => setScreen("start")}>← Back</button>
+      <div className="go-section-title">START GROUP ORDER</div>
+      <label className="afield-lbl" style={{display:"block",margin:"8px 0 12px"}}>SELECT YOUR TABLE</label>
+      <div className="table-picker-grid" style={{marginBottom:8}}>
+        {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26].map(n => {
+          const taken = takenTables.includes(String(n));
+          return (
+            <button key={n}
+              disabled={taken}
+              className={`table-picker-btn ${tableInput===String(n)?"table-picker-on":""}`}
+              style={taken ? {opacity:.3,cursor:"not-allowed",position:"relative"} : {}}
+              onClick={() => { if (!taken) { setTableInput(String(n)); setTableErr(""); } }}
+              title={taken ? `Table ${n} is taken` : `Table ${n}`}>
+              {n}
+              {taken && <span style={{position:"absolute",top:2,right:3,fontSize:8,color:"#f87171"}}>✕</span>}
+            </button>
+          );
+        })}
+      </div>
+      {takenTables.length > 0 && (
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",marginBottom:8}}>
+          ✕ = table already has an active group order
+        </div>
+      )}
+      {tableInput && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:8,fontWeight:600}}>Selected: Table {tableInput}</div>}
+      {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{tableErr}</div>}
+      <button className="go-btn-primary" style={{marginTop:8}} disabled={!tableInput} onClick={handleCreate}>
+        CREATE GROUP ORDER
+      </button>
+    </div>
+  );
+
+  // ── SCREEN: JOIN ──
+  if (screen === "join") return (
+    <div style={{padding:"24px 16px"}}>
+      <button className="go-back-btn" onClick={() => setScreen("start")}>← Back</button>
+      <div className="go-section-title">JOIN GROUP ORDER</div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:16}}>
+        Ask the host for the 6-character join code.
+      </div>
+      <input className="ffield-inp" type="text" placeholder="Enter code e.g. X7K2QP"
+        value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
+        style={{width:"100%",fontSize:28,textAlign:"center",padding:"14px",letterSpacing:8,marginBottom:8}} />
+      {joinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{joinErr}</div>}
+      <button className="go-btn-primary" style={{marginTop:8}} onClick={handleJoin}>
+        JOIN ORDER
+      </button>
+    </div>
+  );
+
+  // ── SCREEN: PLACED ──
+  if (screen === "placed" || activeGroup?.status === "placed") return (
+    <div style={{padding:"40px 16px",textAlign:"center"}}>
+      <div style={{fontSize:64,marginBottom:12}}>🎉</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,color:"#4ade80",letterSpacing:2,marginBottom:8}}>ORDER PLACED!</div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(255,255,255,.6)",lineHeight:1.6,marginBottom:8}}>
+        Your waiter will bring everything to
+      </div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",letterSpacing:2,marginBottom:8}}>
+        TABLE {activeGroup?.table_number}
+      </div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.35)",marginBottom:40}}>
+        Sit back and enjoy! ⚽
+      </div>
+      <button className="go-btn-primary" style={{marginBottom:12}} onClick={() => { leaveGroupOrder(); }}>
+        + START NEW GROUP ORDER
+      </button>
+      <button className="go-btn-secondary" onClick={() => { leaveGroupOrder(); }}>
+        DONE — CLOSE
+      </button>
+    </div>
+  );
+
+  // ── SCREEN: LOBBY (open — adding items) ──
+  if (screen === "lobby") return (
+    <div style={{paddingBottom:24}}>
+      {/* Header */}
+      <div className="go-header">
+        <div>
+          <div className="go-code-label">JOIN CODE</div>
+          <div className="go-code">{activeGroup.code}</div>
+        </div>
+        <button className="go-copy-btn" onClick={handleCopyCode}>
+          {copied ? "✓ COPIED" : "COPY CODE"}
+        </button>
+      </div>
+      <div className="go-table-row">Table {activeGroup.table_number} · {groupMembers.length} {groupMembers.length === 1 ? "member" : "members"}</div>
+
+      {/* Members */}
+      <div className="go-section-title" style={{padding:"16px 16px 8px"}}>MEMBERS</div>
+      {groupMembers.map(m => {
+        const mItems = groupItems.filter(i => i.added_by_user_id === m.user_id);
+        const mTotal = mItems.reduce((s, i) => s + i.price * i.qty, 0);
+        return (
+          <div key={m.id} className="go-member-row">
+            <div className="go-member-info">
+              <span className="go-member-name">{m.display_name || "Guest"}</span>
+              {m.user_id === activeGroup.host_user_id && <span className="go-host-badge">HOST</span>}
+              {m.user_id === user.id && <span className="go-you-badge">YOU</span>}
+            </div>
+            <div className="go-member-items">
+              {mItems.length === 0 ? (
+                <span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>no items yet</span>
+              ) : (
+                mItems.map(i => (
+                  <div key={i.id} className="go-item-row">
+                    <span className="go-item-name">{i.item_name}</span>
+                    {m.user_id === user.id && activeGroup.status === "open" && (
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button className="go-qty-btn" onClick={() => removeGroupItem(i.id)}>−</button>
+                        <span className="go-qty-val">×{i.qty}</span>
+                        <button className="go-qty-btn" onClick={() => addGroupItem({ id: i.item_id, name: i.item_name, price: i.price })}>+</button>
+                      </div>
+                    )}
+                    {m.user_id !== user.id && <span className="go-qty-val">×{i.qty}</span>}
+                    <span className="go-item-price">${(i.price * i.qty).toFixed(2)}</span>
+                  </div>
+                ))
+              )}
+              {mItems.length > 0 && <div className="go-member-subtotal">Subtotal: ${mTotal.toFixed(2)}</div>}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Add items from menu — grouped by category */}
+      <div className="go-section-title" style={{padding:"16px 16px 8px"}}>ADD FROM MENU</div>
+      {(() => {
+        const available = menuItems.filter(i => i.available);
+        const byCategory = available.reduce((acc, item) => {
+          const cat = item.category || "Other";
+          if (!acc[cat]) acc[cat] = [];
+          acc[cat].push(item);
+          return acc;
+        }, {});
+        return Object.entries(byCategory).map(([cat, items]) => (
+          <div key={cat}>
+            <div style={{padding:"8px 16px 4px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",letterSpacing:2,textTransform:"uppercase"}}>{cat}</div>
+            {items.map(item => (
+              <div key={item.id} className="go-menu-row">
+                <div>
+                  <div className="go-menu-name">{item.name}</div>
+                  <div className="go-menu-price">${(+item.price).toFixed(2)}</div>
+                </div>
+                <button className="go-add-btn" onClick={() => addGroupItem(item)}>+ ADD</button>
+              </div>
+            ))}
+          </div>
+        ));
+      })()}
+
+      {/* Total + checkout */}
+      <div className="go-footer">
+        <div className="go-footer-total">
+          <span>GROUP TOTAL</span>
+          <span>${groupTotal.toFixed(2)}</span>
+        </div>
+        {isHost && activeGroup.status === "open" && (
+          <button className="go-btn-primary" style={{marginTop:12}}
+            disabled={groupItems.length === 0}
+            onClick={() => setScreen("checkout")}>
+            PROCEED TO CHECKOUT →
+          </button>
+        )}
+        {!isHost && activeGroup.status === "open" && (
+          <div style={{textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",marginTop:12,padding:"10px 0"}}>
+            Waiting for host to start checkout…
+          </div>
+        )}
+        <button className="go-btn-leave" style={{marginTop:10}} onClick={leaveGroupOrder}>
+          {isHost ? "CANCEL GROUP ORDER" : "LEAVE GROUP ORDER"}
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── SCREEN: CHECKOUT (host picks payment mode) ──
+  if (screen === "checkout" && isHost) return (
+    <div style={{padding:"24px 16px"}}>
+      <button className="go-back-btn" onClick={() => setScreen("lobby")}>← Back</button>
+      <div className="go-section-title">CHOOSE PAYMENT MODE</div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:20,lineHeight:1.6}}>
+        How does your group want to pay?
+      </div>
+      <div className="go-pay-mode-card" onClick={() => setGroupPaymentMode("host")}>
+        <div className="go-pay-mode-icon">💳</div>
+        <div>
+          <div className="go-pay-mode-title">I'LL PAY FOR EVERYONE</div>
+          <div className="go-pay-mode-sub">You cover the full bill · ${groupTotal.toFixed(2)}</div>
+        </div>
+        <div className="go-pay-mode-arrow">→</div>
+      </div>
+      <div className="go-pay-mode-card" style={{marginTop:10}} onClick={() => setGroupPaymentMode("individual")}>
+        <div className="go-pay-mode-icon">🤝</div>
+        <div>
+          <div className="go-pay-mode-title">EVERYONE PAYS THEIR OWN</div>
+          <div className="go-pay-mode-sub">Each person pays their share separately</div>
+        </div>
+        <div className="go-pay-mode-arrow">→</div>
+      </div>
+    </div>
+  );
+
+  // ── SCREEN: PAYMENT (awaiting_payment) ──
+  if (screen === "payment") {
+    const anyPaid = groupMembers.some(m => m.payment_status === "paid");
+
+    // HOST PAYS ALL
+    if (activeGroup?.payment_mode === "host" && isHost) {
+      const alreadyPaid = myMember?.payment_status === "paid";
+      return (
+        <div style={{padding:"24px 16px"}}>
+          {!anyPaid && (
+            <button className="go-btn-secondary" style={{marginBottom:16,padding:"8px 16px",fontSize:11}}
+              onClick={resetGroupToLobby}>
+              ← BACK TO ORDER
+            </button>
+          )}
+          <div className="go-section-title">PAY FOR EVERYONE</div>
+          <div className="go-pay-summary">
+            {groupMembers.map(m => {
+              const mTotal = groupItems.filter(i => i.added_by_user_id === m.user_id).reduce((s,i)=>s+i.price*i.qty,0);
+              return (
+                <div key={m.id} className="go-pay-row">
+                  <span>{m.display_name}{m.user_id === user.id ? " (you)" : ""}</span>
+                  <span>${mTotal.toFixed(2)}</span>
+                </div>
+              );
+            })}
+            <div className="go-pay-total-row"><span>TOTAL</span><span>${groupTotal.toFixed(2)}</span></div>
+          </div>
+          {alreadyPaid ? (
+            <div style={{textAlign:"center",padding:"20px 0",fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80"}}>
+              ✅ Payment confirmed — waiting for order to be placed…
+            </div>
+          ) : (
+            <>
+              <div className="go-section-title" style={{marginBottom:12}}>PAY ${groupTotal.toFixed(2)}</div>
+              <button className="go-btn-primary" style={{marginBottom:10}}
+                disabled={paying || myCredits < groupTotal}
+                onClick={async () => { setPaying(true); await hostPayAllCredits(); setPaying(false); }}>
+                {paying ? "PROCESSING..." : `PAY WITH CREDITS · $${groupTotal.toFixed(2)}`}
+              </button>
+              {myCredits < groupTotal && (
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#f87171",marginBottom:10}}>
+                  Not enough credits (balance: ${myCredits.toFixed(2)})
+                </div>
+              )}
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",textAlign:"center",margin:"8px 0",letterSpacing:1}}>— OR —</div>
+              {paypalReady ? (
+                <div ref={hostPaypalContainerRef} />
+              ) : (
+                <div className="paypal-hint">{paypalConfigured ? "Loading PayPal…" : "PayPal not configured"}</div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // HOST PAYS ALL — non-host sees waiting screen
+    if (activeGroup?.payment_mode === "host" && !isHost) {
+      const hostPaid = groupMembers.find(m => m.user_id === activeGroup.host_user_id)?.payment_status === "paid";
+      return (
+        <div style={{padding:"40px 16px",textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:16}}>{hostPaid ? "✅" : "⏳"}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff",marginBottom:8}}>
+            {hostPaid ? "Payment confirmed!" : "Waiting for host to pay…"}
+          </div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>
+            {hostPaid ? "Your order is being placed." : "The host is covering the full bill."}
+          </div>
+        </div>
+      );
+    }
+
+    // INDIVIDUAL PAYMENTS
+    if (activeGroup?.payment_mode === "individual") {
+      const isPaid = myMember?.payment_status === "paid";
+      const isAssigned = myMember?.payment_status === "assigned";
+      const myPayer = isAssigned ? groupMembers.find(m => m.user_id === myMember.pay_for_user_id) : null;
+      const otherMembers = groupMembers.filter(m => m.user_id !== user.id);
+
+      return (
+        <div style={{padding:"16px"}}>
+          {isHost && !anyPaid && (
+            <button className="go-btn-secondary" style={{marginBottom:16,padding:"8px 16px",fontSize:11}}
+              onClick={resetGroupToLobby}>
+              ← BACK TO ORDER
+            </button>
+          )}
+          <div className="go-section-title" style={{marginBottom:12}}>PAYMENT STATUS</div>
+          <div className="go-pay-summary" style={{marginBottom:20}}>
+            {groupMembers.map(m => {
+              const assignedToM = groupMembers.filter(x => x.pay_for_user_id === m.user_id).map(x => x.user_id);
+              const payingFor = [m.user_id, ...assignedToM];
+              const share = groupItems.filter(i => payingFor.includes(i.added_by_user_id)).reduce((s,i)=>s+i.price*i.qty,0);
+              const badge = m.payment_status === "paid" ? "✅" : m.payment_status === "assigned" ? "→" : "⏳";
+              return (
+                <div key={m.id} className="go-pay-row">
+                  <span>{badge} {m.display_name}{m.user_id === user.id ? " (you)" : ""}
+                    {m.payment_status === "assigned" && myPayer ? ` → paid by ${myPayer.display_name}` : ""}
+                  </span>
+                  <span style={{color: m.payment_status==="paid" ? "#4ade80" : "inherit"}}>${share.toFixed(2)}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {!isPaid && !isAssigned && (
+            <>
+              <div className="go-section-title" style={{marginBottom:8}}>YOUR SHARE · ${myShare.toFixed(2)}</div>
+
+              {/* Assign to someone else — only show unpaid members who aren't already paying for someone else */}
+              {otherMembers.filter(m => m.payment_status !== "paid").length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:8,letterSpacing:1}}>ASSIGN TO SOMEONE ELSE</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {otherMembers.filter(m => m.payment_status !== "paid").map(m => (
+                      <button key={m.id} className="go-assign-btn"
+                        onClick={() => assignMyPaymentTo(m.user_id)}>
+                        {m.display_name} pays for me
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button className="go-btn-primary" style={{marginBottom:10}}
+                disabled={paying || myCredits < myShare}
+                onClick={async () => { setPaying(true); await payGroupShareCredits(); setPaying(false); }}>
+                {paying ? "PROCESSING..." : `PAY WITH CREDITS · $${myShare.toFixed(2)}`}
+              </button>
+              {myCredits < myShare && (
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#f87171",marginBottom:10}}>
+                  Not enough credits (balance: ${myCredits.toFixed(2)})
+                </div>
+              )}
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",textAlign:"center",margin:"8px 0",letterSpacing:1}}>— OR —</div>
+              {paypalReady ? (
+                <div ref={sharePaypalContainerRef} />
+              ) : (
+                <div className="paypal-hint">{paypalConfigured ? "Loading PayPal…" : "PayPal not configured"}</div>
+              )}
+            </>
+          )}
+
+          {isAssigned && (
+            <div style={{padding:"16px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,marginBottom:16}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.7)",marginBottom:8}}>
+                {myPayer
+                  ? <>{myPayer.display_name} is paying for you (${myShare.toFixed(2)})</>
+                  : <span style={{color:"#f87171"}}>Your assigned payer has left the group — you need to pay yourself.</span>
+                }
+              </div>
+              <button className="go-btn-secondary" style={{padding:"8px 16px",fontSize:11}}
+                onClick={unassignMyPayment}>
+                PAY MYSELF INSTEAD
+              </button>
+            </div>
+          )}
+
+          {isPaid && (
+            <div style={{textAlign:"center",padding:"16px 0",fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80"}}>
+              ✅ Your payment is confirmed!
+            </div>
+          )}
+        </div>
+      );
+    }
+  }
+
+  return null;
+}
+
+function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPalTopup,
+  activeGroup, groupMembers, groupItems,
+  createGroupOrder, joinGroupOrder, leaveGroupOrder,
+  addGroupItem, removeGroupItem,
+  setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
+  payGroupShareCredits, hostPayAllCredits,
+  handleGroupPayPalSuccess, calcMyGroupShare,
+  resetGroupToLobby }) {
+  const [cart,        setCart]        = useState({});
+  const [tab,         setTab]         = useState("menu");
+  const [table,       setTable]       = useState("");
+  const [placing,     setPlacing]     = useState(false);
+  const [tableErr,    setTableErr]    = useState("");
+  const [topupAmt,    setTopupAmt]    = useState("");
+  const [paypalReady, setPaypalReady] = useState(false);
+  const [payMethod,   setPayMethod]   = useState("credits"); // "credits" | "paypal"
+  const paypalBtnsRef      = useRef(null);
+  const paypalContainerRef = useRef(null);
+  const cartPaypalBtnsRef      = useRef(null);
+  const cartPaypalContainerRef = useRef(null);
+  const paypalConfigured = !!(import.meta.env.VITE_PAYPAL_CLIENT_ID) &&
+    import.meta.env.VITE_PAYPAL_CLIENT_ID !== "PLACEHOLDER";
+
+  // Load PayPal JS SDK once when wallet tab or cart PayPal is opened
+  useEffect(() => {
+    const needsPayPal = tab === "wallet" || (tab === "cart" && payMethod === "paypal");
+    if (!needsPayPal) return;
+    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+    if (!clientId || clientId === "PLACEHOLDER") return;
+    if (window.paypal) { setPaypalReady(true); return; }
+    if (document.getElementById("paypal-sdk-script")) return; // already loading
+    const script = document.createElement("script");
+    script.id = "paypal-sdk-script";
+    script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD`;
+    script.onload = () => setPaypalReady(true);
+    document.body.appendChild(script);
+  }, [tab, payMethod]);
+
+  // Render / re-render PayPal buttons whenever SDK is ready or amount changes
+  useEffect(() => {
+    const container = paypalContainerRef.current;
+    if (!paypalReady || !container) return;
+
+    // Close previous render
+    if (paypalBtnsRef.current) {
+      try { paypalBtnsRef.current.close(); } catch {}
+      paypalBtnsRef.current = null;
+    }
+    container.innerHTML = "";
+
+    if (!topupAmt || +topupAmt < 1) return;
+
+    const amount = (+topupAmt).toFixed(2);
+    const buttons = window.paypal.Buttons({
+      style: { layout: "vertical", color: "blue", shape: "rect", label: "pay", height: 45 },
+      createOrder: (_data, actions) => actions.order.create({
+        purchase_units: [{ amount: { value: amount, currency_code: "USD" } }],
+      }),
+      onApprove: async (data) => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session?.access_token}`,
+              },
+              body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: +amount }),
+            }
+          );
+          const result = await res.json();
+          if (result.newBalance !== undefined) {
+            onPayPalTopup(result.newBalance, +amount);
+            setTopupAmt("");
+            setTab("menu");
+          } else {
+            alert("Payment failed: " + (result.error || "Unknown error"));
+          }
+        } catch {
+          alert("Something went wrong. Please contact staff.");
+        }
+      },
+      onError: () => alert("PayPal encountered an error. Please try again."),
+    });
+
+    if (buttons.isEligible()) {
+      buttons.render(container);
+      paypalBtnsRef.current = buttons;
+    }
+  }, [paypalReady, topupAmt]);
 
   const available  = menuItems.filter(i => i.available);
   const [openCats, setOpenCats] = useState({});
@@ -1938,6 +2956,68 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
   const VALID_TABLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
   const placingRef = useRef(false); // ref guard prevents double submit
 
+  // Render / re-render PayPal buttons for cart checkout (placed after cartTotal/cartItems/VALID_TABLES)
+  useEffect(() => {
+    const container = cartPaypalContainerRef.current;
+    if (!paypalReady || !container) return;
+
+    if (cartPaypalBtnsRef.current) {
+      try { cartPaypalBtnsRef.current.close(); } catch {}
+      cartPaypalBtnsRef.current = null;
+    }
+    container.innerHTML = "";
+
+    if (payMethod !== "paypal" || cartTotal <= 0) return;
+
+    const amount = cartTotal.toFixed(2);
+    const buttons = window.paypal.Buttons({
+      style: { layout: "vertical", color: "blue", shape: "rect", label: "pay", height: 45 },
+      createOrder: (_data, actions) => actions.order.create({
+        purchase_units: [{ amount: { value: amount, currency_code: "USD" } }],
+      }),
+      onApprove: async (data) => {
+        if (!table.trim() || !VALID_TABLES.includes(parseInt(table))) {
+          setTableErr("Please select your table first");
+          return;
+        }
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session?.access_token}`,
+              },
+              body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: +amount }),
+            }
+          );
+          const result = await res.json();
+          if (result.success) {
+            const ok = await onPlaceOrder({
+              tableNumber: table,
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              total: +amount,
+              paymentMethod: "paypal",
+            });
+            if (ok) { clearCart(); setTab("orders"); setPayMethod("credits"); }
+          } else {
+            alert("Payment failed: " + (result.error || "Unknown error"));
+          }
+        } catch {
+          alert("Something went wrong. Please contact staff.");
+        }
+      },
+      onError: () => alert("PayPal encountered an error. Please try again."),
+    });
+
+    if (buttons.isEligible()) {
+      buttons.render(container);
+      cartPaypalBtnsRef.current = buttons;
+    }
+  }, [paypalReady, payMethod, cartTotal]);
+
   const handleOrder = async () => {
     if (!table.trim()) { setTableErr("Please select your table"); return; }
     const tableNum = parseInt(table.trim());
@@ -1953,7 +3033,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
       tableNumber: String(tableNum),
       items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty })),
       total: +cartTotal.toFixed(2),
-      paymentMethod: payMethod,
+      paymentMethod: "credits",
     });
     if (ok) { clearCart(); setTab("orders"); }
     placingRef.current = false;
@@ -1984,6 +3064,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
           {id:"cart",   label:`🛒 Cart${cartCount>0?` · ${cartCount}`:""}`},
           {id:"orders", label:"📦 Orders"},
           {id:"wallet", label:"💳 Wallet"},
+          {id:"group",  label:`👥 Group${activeGroup?" ·":""}`},
         ].map(t=>(
           <button key={t.id} className={`admin-subtab ${tab===t.id?"ast-on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
         ))}
@@ -2100,28 +3181,58 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
                 </div>
                 <div className="afield" style={{marginBottom:20}}>
                   <label className="afield-lbl">PAYMENT</label>
-                  <div style={{display:"flex",gap:8,marginTop:8}}>
-                    <button className={`menu-pay-btn ${payMethod==="credits"?"menu-pay-btn-on":""}`} onClick={()=>setPayMethod("credits")}>
-                      <div style={{fontSize:13,fontWeight:700}}>💳 Credits</div>
-                      <div style={{fontSize:11,opacity:.7,marginTop:2}}>Balance: ${(+myCredits).toFixed(2)}</div>
+                  {/* Payment method toggle */}
+                  <div style={{display:"flex",gap:8,marginTop:10,marginBottom:12}}>
+                    <button
+                      onClick={()=>setPayMethod("credits")}
+                      style={{flex:1,padding:"10px 8px",background:payMethod==="credits"?"#fff":"transparent",color:payMethod==="credits"?"#000":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="credits"?"#fff":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
+                      💳 CREDITS
                     </button>
-                    <button className={`menu-pay-btn ${payMethod==="stripe"?"menu-pay-btn-on":""}`} onClick={()=>setPayMethod("stripe")}>
-                      <div style={{fontSize:13,fontWeight:700}}>💳 Card</div>
-                      <div style={{fontSize:11,opacity:.7,marginTop:2}}>Pay via Stripe</div>
+                    <button
+                      onClick={()=>setPayMethod("paypal")}
+                      style={{flex:1,padding:"10px 8px",background:payMethod==="paypal"?"#0070ba":"transparent",color:payMethod==="paypal"?"#fff":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="paypal"?"#0070ba":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
+                      PAYPAL
                     </button>
                   </div>
-                  {payMethod==="credits" && cartTotal > myCredits && (
-                    <div className="wallet-warning">
-                      ⚠ Not enough credits · need ${cartTotal.toFixed(2)}, have ${(+myCredits).toFixed(2)}
-                      <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
+                  {/* Credits section */}
+                  {payMethod === "credits" && (
+                    <>
+                      <div style={{padding:"12px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",letterSpacing:.5}}>💳 Credits</div>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)",marginTop:3,fontWeight:600}}>Your balance: <span style={{color:"#fff"}}>${(+myCredits).toFixed(2)}</span></div>
+                        </div>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color: cartTotal > myCredits ? "#f87171" : "#4ade80"}}>
+                          ${cartTotal.toFixed(2)}
+                        </div>
+                      </div>
+                      {cartTotal > myCredits && (
+                        <div className="wallet-warning">
+                          ⚠ Not enough credits — you need ${(cartTotal - myCredits).toFixed(2)} more.
+                          <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {/* PayPal section */}
+                  {payMethod === "paypal" && (
+                    <div>
+                      {!paypalReady && (
+                        <div className="paypal-hint">
+                          {paypalConfigured ? "Loading PayPal…" : "PayPal not configured yet"}
+                        </div>
+                      )}
+                      <div ref={cartPaypalContainerRef} style={{minHeight: paypalReady ? 55 : 0}} />
                     </div>
                   )}
                 </div>
-                <button className="order-place-btn"
-                  disabled={placing||(payMethod==="credits"&&cartTotal>myCredits)}
-                  onClick={handleOrder}>
-                  {placing ? "PLACING ORDER..." : `PLACE ORDER · $${cartTotal.toFixed(2)}`}
-                </button>
+                {payMethod === "credits" && (
+                  <button className="order-place-btn"
+                    disabled={placing||cartTotal>myCredits}
+                    onClick={handleOrder}>
+                    {placing ? "PLACING ORDER..." : `PLACE ORDER · $${cartTotal.toFixed(2)}`}
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -2167,8 +3278,11 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
             <div className="wallet-card-name">{user.name}</div>
           </div>
 
-          {/* Top up via Stripe */}
-          <div className="wallet-section-title">TOP UP WITH CARD</div>
+          {/* Top up section */}
+          <div className="wallet-section-title">ADD CREDITS TO YOUR BALANCE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.55)",marginBottom:16,lineHeight:1.6}}>
+            Select an amount, then visit any <strong style={{color:"#fff"}}>Top-Up Desk</strong> in the restaurant. Pay by cash or card and staff will add the credits to your account instantly.
+          </div>
           <div className="wallet-topup-amounts">
             {[5,10,20,50].map(amt => (
               <button key={amt}
@@ -2178,59 +3292,59 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder }) {
               </button>
             ))}
           </div>
-          <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+          <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
             <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>$</span>
-            <input className="afield-inp" type="number" min="1" placeholder="Custom amount"
+            <input className="afield-inp" type="number" min="1" placeholder="Other amount"
               value={topupAmt} onChange={e=>setTopupAmt(e.target.value)}
               style={{flex:1,fontSize:18,letterSpacing:2}} />
           </div>
-          <button className="order-place-btn" disabled={!topupAmt||+topupAmt<=0}
-            onClick={async () => {
-              if (!topupAmt || +topupAmt <= 0) return;
-              try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const res = await fetch(
-                  "https://sibvflsmhihmkjdggwzn.supabase.co/functions/v1/create-checkout",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({
-                      amount: +topupAmt,
-                      userId: session.user.id,
-                      userEmail: session.user.email,
-                      successUrl: window.location.origin + "?topup=success",
-                      cancelUrl: window.location.origin + "?topup=cancel",
-                    }),
-                  }
-                );
-                const data = await res.json();
-                if (data.url) {
-                  window.location.href = data.url;
-                } else {
-                  alert("Error: " + (data.error || "Could not create checkout session"));
-                }
-              } catch (err) {
-                alert("Error: " + err.message);
-              }
-            }}>
-            PAY ${topupAmt||"0.00"} WITH CARD →
-          </button>
 
-          {/* Cash top-up info */}
-          <div className="wallet-cash-box">
-            <div className="wallet-cash-title">💵 Pay cash at the bar</div>
-            <div className="wallet-cash-body">Hand your cash to a staff member and they will top up your balance instantly from the admin panel.</div>
+          {/* Top-up desk info */}
+          <div className="topup-desk-box">
+            <div className="topup-desk-icon">🏧</div>
+            <div className="topup-desk-title">HOW TO TOP UP</div>
+            <div className="topup-desk-body">
+              1. Select your amount above<br/>
+              2. Go to a <strong>Top-Up Desk</strong> in the restaurant<br/>
+              3. Pay by <strong>cash or card</strong><br/>
+              4. Staff adds credits to your account instantly<br/>
+              5. Come back and order! 🍺
+            </div>
+          </div>
+
+          {/* PayPal top-up */}
+          <div style={{marginBottom:16}}>
+            <div className="wallet-section-title" style={{marginBottom:10}}>OR PAY ONLINE</div>
+            {(!topupAmt || +topupAmt < 1) && (
+              <div className="paypal-hint">Select an amount above to pay with PayPal</div>
+            )}
+            {topupAmt && +topupAmt >= 1 && !paypalReady && (
+              <div className="paypal-hint">
+                {paypalConfigured ? "Loading PayPal…" : "PayPal not configured yet"}
+              </div>
+            )}
+            <div ref={paypalContainerRef} style={{minHeight: topupAmt && +topupAmt >= 1 ? 55 : 0}} />
           </div>
 
           {/* How credits work */}
           <div className="wallet-info-box">
             <div className="wallet-info-title">How credits work</div>
-            <div className="wallet-info-body">Credits are stored in your account. Use them to pay for food and drinks directly from the app. The bar receives your order instantly after payment.</div>
+            <div className="wallet-info-body">Credits are stored in your account. Use them to pay for food and drinks directly from the app. Your waiter will bring your order to your table.</div>
           </div>
         </div>
+      )}
+
+      {tab === "group" && (
+        <GroupOrderView
+          user={user} menuItems={menuItems} myCredits={myCredits}
+          activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
+          createGroupOrder={createGroupOrder} joinGroupOrder={joinGroupOrder} leaveGroupOrder={leaveGroupOrder}
+          addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
+          setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
+          payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
+          handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+          resetGroupToLobby={resetGroupToLobby}
+        />
       )}
     </div>
   );
@@ -2756,40 +3870,43 @@ function printReceipt(ord) {
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Receipt #${ord.order_number||ord.id}</title>
   <style>
-    @page { size: A4; margin: 20mm; }
+    @page { size: 80mm auto; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Courier New', monospace; color: #000; background: #fff; }
-    .wrap { max-width: 72mm; margin: 0 auto; }
-    .logo-block { text-align: center; padding-bottom: 14px; border-bottom: 2px solid #000; margin-bottom: 14px; }
-    .logo-block .brand { font-size: 24px; font-weight: 900; letter-spacing: 4px; line-height: 1.1; }
-    .logo-block .sub   { font-size: 9px; letter-spacing: 3px; margin-top: 2px; }
-    .logo-block .sub2  { font-size: 8px; letter-spacing: 2px; color: #555; margin-top: 2px; }
-    .meta { font-size: 11px; line-height: 1.7; margin-bottom: 12px; }
+    body { font-family: 'Courier New', monospace; color: #000; background: #fff; width: 80mm; font-size: 12px; }
+    .wrap { width: 72mm; margin: 0 auto; padding: 4mm 0; }
+    .logo-block { text-align: center; padding-bottom: 10px; border-bottom: 2px solid #000; margin-bottom: 10px; }
+    .logo-block .brand { font-size: 28px; font-weight: 900; letter-spacing: 4px; line-height: 1; }
+    .logo-block .sub   { font-size: 9px; letter-spacing: 3px; margin-top: 4px; }
+    .logo-block .sub2  { font-size: 8px; letter-spacing: 2px; color: #333; margin-top: 2px; }
+    .meta { font-size: 11px; line-height: 1.9; margin-bottom: 10px; }
     .meta .row { display: flex; justify-content: space-between; }
-    .meta .lbl { color: #555; }
-    .divider { border: none; border-top: 1px dashed #aaa; margin: 12px 0; }
-    .divider-solid { border: none; border-top: 2px solid #000; margin: 12px 0; }
+    .meta .lbl { color: #333; }
+    .divider { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+    .divider-solid { border: none; border-top: 2px solid #000; margin: 8px 0; }
     table { width: 100%; border-collapse: collapse; }
-    .total-row td { font-size: 16px; font-weight: 900; letter-spacing: 1px; padding-top: 10px; }
-    .payment-row { font-size: 11px; color: #444; margin-top: 6px; }
-    .footer { text-align: center; margin-top: 18px; padding-top: 14px; border-top: 2px solid #000; }
+    td { font-size: 12px; padding: 4px 0; }
+    .total-row td { font-size: 15px; font-weight: 900; letter-spacing: 1px; padding-top: 8px; }
+    .payment-row { font-size: 11px; color: #333; margin-top: 5px; }
+    .footer { text-align: center; margin-top: 14px; padding-top: 10px; border-top: 2px solid #000; }
     .footer .thanks { font-size: 13px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
-    .footer .url    { font-size: 9px; letter-spacing: 2px; color: #666; }
-    .footer .wc     { font-size: 10px; letter-spacing: 3px; margin-top: 8px; color: #333; }
-    @media print { body { -webkit-print-color-adjust: exact; } }
+    .footer .url    { font-size: 9px; letter-spacing: 2px; color: #444; }
+    .footer .wc     { font-size: 10px; letter-spacing: 3px; margin-top: 6px; }
+    @media print { 
+      html, body { width: 80mm; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style></head>
   <body><div class="wrap">
     <div class="logo-block">
       <div class="brand">EL MUNDO</div>
       <div class="sub">BAR · REST · EST. 2009</div>
-      <div class="sub2">BONAIRE, ABC ISLANDS</div>
+      <div class="sub2">KRALENDIJK, BONAIRE</div>
     </div>
     <div class="meta">
       <div class="row"><span class="lbl">Date</span><span>${dateStr}</span></div>
       <div class="row"><span class="lbl">Time</span><span>${timeStr}</span></div>
       <div class="row"><span class="lbl">Table</span><span><b>${ord.table_number}</b></span></div>
       ${ord.order_number ? `<div class="row"><span class="lbl">Order #</span><span><b>${ord.order_number}</b></span></div>` : ""}
-      <div class="row"><span class="lbl">Customer</span><span>${ord.user_name||"Guest"}</span></div>
     </div>
     <hr class="divider"/>
     <table>
@@ -2910,33 +4027,41 @@ function AdminHistory({ allOrders }) {
 
 /* ═══ ADMIN: FINANCIAL REPORT ════════════════════════════════════════════════ */
 function AdminReport({ allOrders }) {
-  const [period, setPeriod] = useState("today");
+  const iso = d => d.toISOString().slice(0,10);
+  const todayISO = iso(new Date());
+  const [preset,  setPreset ] = useState("today");
+  const [finFrom, setFinFrom] = useState(todayISO);
+  const [finTo,   setFinTo  ] = useState(todayISO);
 
-  const now = new Date();
-  const startOfDay  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfWeek = new Date(startOfDay);
-  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  const applyPreset = (p) => {
+    const d = new Date();
+    setPreset(p);
+    if (p === "today")     { setFinFrom(iso(d)); setFinTo(iso(d)); }
+    if (p === "yesterday") { const y=new Date(d); y.setDate(y.getDate()-1); setFinFrom(iso(y)); setFinTo(iso(y)); }
+    if (p === "week")      { const s=new Date(d); s.setDate(d.getDate()-d.getDay()); setFinFrom(iso(s)); setFinTo(iso(d)); }
+    if (p === "month")     { setFinFrom(iso(new Date(d.getFullYear(),d.getMonth(),1))); setFinTo(iso(d)); }
+    if (p === "all")       { setFinFrom("2024-01-01"); setFinTo(iso(d)); }
+  };
 
   const filtered = allOrders.filter(o => {
-    const d = new Date(o.created_at);
-    if (period === "today") return d >= startOfDay;
-    if (period === "week")  return d >= startOfWeek;
-    return true;
+    if (!o.created_at) return false;
+    const d = o.created_at.slice(0,10);
+    return d >= finFrom && d <= finTo;
   });
 
   const totalRevenue = filtered.reduce((s,o) => s + (+o.total), 0);
   const orderCount   = filtered.length;
   const avgOrder     = orderCount > 0 ? totalRevenue / orderCount : 0;
 
-  // By customer
-  const byCustomer = {};
+  // By table
+  const byTable = {};
   filtered.forEach(o => {
-    const name = o.user_name || "Unknown";
-    if (!byCustomer[name]) byCustomer[name] = { total:0, orders:0 };
-    byCustomer[name].total += (+o.total);
-    byCustomer[name].orders++;
+    const t = `Table ${o.table_number||"?"}`;
+    if (!byTable[t]) byTable[t] = { total:0, orders:0 };
+    byTable[t].total  += (+o.total);
+    byTable[t].orders++;
   });
-  const topCustomers = Object.entries(byCustomer).sort((a,b) => b[1].total - a[1].total).slice(0,10);
+  const topTables = Object.entries(byTable).sort((a,b)=>b[1].total-a[1].total).slice(0,8);
 
   // By product
   const byProduct = {};
@@ -2949,26 +4074,48 @@ function AdminReport({ allOrders }) {
   });
   const topProducts = Object.entries(byProduct).sort((a,b) => b[1].qty - a[1].qty).slice(0,10);
 
-  const statCard = (label, value) => (
-    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"14px 12px",borderRadius:4,flex:1}}>
+  // By payment method
+  const byPay = {};
+  filtered.forEach(o => {
+    const m = o.payment_method || "unknown";
+    if (!byPay[m]) byPay[m] = { total:0, orders:0 };
+    byPay[m].total  += (+o.total);
+    byPay[m].orders++;
+  });
+
+  const statCard = (label, value, sub) => (
+    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"14px 12px",flex:1,minWidth:80}}>
       <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:6}}>{label}</div>
       <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:"#fff",lineHeight:1}}>{value}</div>
+      {sub && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:4}}>{sub}</div>}
     </div>
   );
 
+  const PRESETS = [["today","TODAY"],["yesterday","YESTERDAY"],["week","THIS WEEK"],["month","THIS MONTH"],["all","ALL TIME"]];
+
   return (
     <div style={{padding:"12px 14px 32px"}}>
-      {/* Period selector */}
-      <div style={{display:"flex",gap:6,marginBottom:18}}>
-        {[["today","TODAY"],["week","THIS WEEK"],["all","ALL TIME"]].map(([v,l]) => (
-          <button key={v} onClick={()=>setPeriod(v)} style={{
-            flex:1, padding:"10px 0",
-            background: period===v ? "#fff" : "rgba(255,255,255,.05)",
-            color: period===v ? "#000" : "rgba(255,255,255,.5)",
-            border: period===v ? "none" : "1px solid rgba(255,255,255,.1)",
-            fontFamily:"'Anton',sans-serif", fontSize:10, letterSpacing:2, cursor:"pointer"
+      {/* Quick preset buttons */}
+      <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+        {PRESETS.map(([v,l]) => (
+          <button key={v} onClick={()=>applyPreset(v)} style={{
+            padding:"8px 13px",
+            background: preset===v ? "#fff" : "rgba(255,255,255,.05)",
+            color: preset===v ? "#000" : "rgba(255,255,255,.5)",
+            border: preset===v ? "none" : "1px solid rgba(255,255,255,.1)",
+            fontFamily:"'Anton',sans-serif", fontSize:9, letterSpacing:2, cursor:"pointer", whiteSpace:"nowrap"
           }}>{l}</button>
         ))}
+      </div>
+      {/* Custom date range */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",flexWrap:"wrap"}}>
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>CUSTOM</span>
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.25)"}}>FROM</span>
+        <input type="date" value={finFrom} onChange={e=>{setFinFrom(e.target.value);setPreset("custom");}}
+          style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12,colorScheme:"dark",cursor:"pointer",flex:1,minWidth:130}} />
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.25)"}}>TO</span>
+        <input type="date" value={finTo} onChange={e=>{setFinTo(e.target.value);setPreset("custom");}}
+          style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12,colorScheme:"dark",cursor:"pointer",flex:1,minWidth:130}} />
       </div>
 
       {/* Revenue stats */}
@@ -2978,10 +4125,23 @@ function AdminReport({ allOrders }) {
         {statCard("AVG ORDER", `$${avgOrder.toFixed(2)}`)}
       </div>
 
-      {/* Top customers */}
-      <div className="admin-section-lbl" style={{marginBottom:8}}>TOP CUSTOMERS</div>
-      {topCustomers.length === 0 && <div className="empty" style={{marginBottom:20}}>No data</div>}
-      {topCustomers.map(([name,d],i) => (
+      {/* Payment breakdown */}
+      {Object.keys(byPay).length > 0 && (
+        <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+          {Object.entries(byPay).map(([m,d])=>(
+            <div key={m} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"12px",flex:1,minWidth:80}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>{m}</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff"}}>${d.total.toFixed(2)}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>{d.orders} order{d.orders>1?"s":""}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Top tables */}
+      <div className="admin-section-lbl" style={{marginBottom:8}}>TOP TABLES</div>
+      {topTables.length === 0 && <div className="empty" style={{marginBottom:20}}>No data</div>}
+      {topTables.map(([name,d],i) => (
         <div key={name} style={{display:"flex",alignItems:"center",padding:"11px 14px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",minWidth:28}}>#{i+1}</span>
           <div style={{flex:1}}>
@@ -3047,8 +4207,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
   const [selectedTable, setSelectedTable] = useState(null);
   const [now,       setNow      ] = useState(Date.now());
   const [editMode,  setEditMode ] = useState(false);
-  const [fpView,    setFpView   ] = useState("live"); // "live" | "history" | "report"
-  const [showFin,   setShowFin  ] = useState(false);  // hide financials by default
+  const [fpView,  setFpView ] = useState("live"); // "live" | "history" | "report"
+  const [showFin, setShowFin] = useState(false);  // hide financials by default
   const [tables,    setTables   ] = useState(loadSaved);
   const [savedTbls, setSavedTbls] = useState(loadSaved);
   const [dragging,  setDragging ] = useState(null); // { id, ox, oy }
@@ -3076,9 +4236,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
     return acc;
   }, {});
 
-  // Financial summary — today's numbers
+  // Financial summary — today only (custom ranges live in the REPORT tab)
   const todayStr = new Date().toDateString();
-  const todayOrders = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
+  const todayOrders  = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
   const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
   const todayCount   = todayOrders.length;
 
@@ -3432,7 +4592,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
             ))}
             {/* Divider before financials */}
             <div style={{width:1,background:"rgba(255,255,255,.08)",alignSelf:"stretch",margin:"0 4px"}}/>
-            {/* Financial summary */}
+            {/* Revenue */}
             <div style={{textAlign:"center",flex:1,padding:"0 10px",position:"relative"}}>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:42,color:"rgba(255,255,255,.9)",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>
                 ${todayRevenue.toFixed(0)}
@@ -3445,6 +4605,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
               </div>
             </div>
             <div style={{width:1,background:"rgba(255,255,255,.08)",alignSelf:"stretch"}}/>
+            {/* Orders */}
             <div style={{textAlign:"center",flex:1,padding:"0 10px"}}>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:42,color:"rgba(255,255,255,.9)",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>
                 {todayCount}
@@ -3492,25 +4653,34 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
             onTouchMove={onMove} onTouchEnd={onEnd}
             onClick={()=>{ if(editMode) setEditSel(null); }}
           >
-            {/* BAR */}
+            {/* BAR — dark wood, no text/emoji */}
             <div
               style={{
                 position:"absolute", left:barPos.x, top:barPos.y, width:barPos.w, height:barPos.h,
-                background:"rgba(251,191,36,.12)",
-                border: editMode ? `2px dashed rgba(251,191,36,${barDrag?"1":".65"})` : "2px solid rgba(251,191,36,.45)",
-                borderRadius:4, display:"flex", flexDirection:"column",
-                alignItems:"center", justifyContent:"center", gap:3,
+                background:"linear-gradient(135deg, #3b2010 0%, #5c3317 40%, #3b2010 100%)",
+                border: editMode ? `2px dashed rgba(255,255,255,.5)` : "2px solid #6b3a1f",
+                borderRadius:6,
                 cursor: editMode ? (barDrag ? "grabbing" : "grab") : "default",
                 userSelect:"none", touchAction:"none",
-                boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.4)" : "none",
+                boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.6)" : "inset 0 1px 0 rgba(255,255,255,.08), 0 2px 8px rgba(0,0,0,.5)",
                 transition: barDrag ? "none" : "border .2s",
                 zIndex: barDrag ? 20 : 2,
+                /* Wood grain effect via repeating gradient */
+                backgroundImage:"repeating-linear-gradient(92deg, transparent, transparent 8px, rgba(0,0,0,.08) 8px, rgba(0,0,0,.08) 9px), linear-gradient(135deg, #3b2010 0%, #6b3a1f 45%, #3b2010 100%)",
               }}
               onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
               onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
             >
-              <span style={{fontSize:18}}>🍺</span>
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"#fbbf24"}}>BAR</span>
+              {/* Resize handle in edit mode */}
+              {editMode && (
+                <div
+                  onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = barPos.w; const startH = barPos.h;
+                    const onMove = e => setBarPos(b => ({ ...b, w: Math.max(40, startW + e.clientX - startX), h: Math.max(30, startH + e.clientY - startY) }));
+                    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp); }}
+                  style={{position:"absolute",bottom:-1,right:-1,width:14,height:14,background:"rgba(255,255,255,.6)",cursor:"se-resize",borderRadius:"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
+                />
+              )}
             </div>
             {/* Stairs */}
             <div style={{position:"absolute",left:0,right:0,top:207,height:16,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
@@ -4064,10 +5234,11 @@ const CSS = `
   .wallet-amt-btn{padding:14px 8px;background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:16px;letter-spacing:1px;transition:all .15s}
   .wallet-amt-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
   .wallet-amt-on{background:rgba(255,255,255,.1);border-color:#fff;color:#fff}
-  .stripe-coming-soon{margin-bottom:16px;padding:20px 18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
-  .stripe-coming-soon-icon{font-size:28px;line-height:1;opacity:.5}
-  .stripe-coming-soon-title{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.4)}
-  .stripe-coming-soon-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.35);line-height:1.6;max-width:300px}
+  .topup-desk-box{margin:0 0 16px;padding:20px 18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.15);text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+  .paypal-hint{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:14px 0;letter-spacing:.3px}
+  .topup-desk-icon{font-size:32px;line-height:1}
+  .topup-desk-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:#fff}
+  .topup-desk-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.8;max-width:300px;text-align:left}
   .wallet-cash-box{margin-top:20px;padding:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
   .wallet-cash-title{font-family:'Anton',sans-serif;font-size:14px;color:#fff;letter-spacing:.5px;margin-bottom:8px}
   .wallet-cash-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);line-height:1.6}
@@ -4140,4 +5311,59 @@ const CSS = `
   .history-order-table{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.7);letter-spacing:.5px}
   .history-order-items-inline{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.55);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .history-order-amount{font-family:'Anton',sans-serif;font-size:18px;color:#fff;flex-shrink:0}
+
+  /* ── Group Order ── */
+  .go-hero{text-align:center;padding:32px 0 24px}
+  .go-hero-icon{font-size:48px;margin-bottom:8px}
+  .go-hero-title{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:4px;color:#fff}
+  .go-hero-sub{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);margin-top:6px}
+  .go-how{margin-bottom:28px}
+  .go-how-row{display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .go-how-num{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.25);min-width:20px}
+  .go-how-txt{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.4}
+  .go-btn-primary{width:100%;padding:16px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;transition:opacity .15s}
+  .go-btn-primary:hover{opacity:.85}
+  .go-btn-primary:disabled{opacity:.35;cursor:not-allowed}
+  .go-btn-secondary{width:100%;padding:14px;background:transparent;color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.25);cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;transition:all .15s}
+  .go-btn-secondary:hover{border-color:#fff;color:#fff}
+  .go-btn-leave{width:100%;padding:12px;background:transparent;color:rgba(239,68,68,.6);border:1px solid rgba(239,68,68,.3);cursor:pointer;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;transition:all .15s}
+  .go-btn-leave:hover{border-color:rgba(239,68,68,.7);color:rgba(239,68,68,.9)}
+  .go-back-btn{background:transparent;border:none;color:rgba(255,255,255,.45);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;padding:0 0 20px;letter-spacing:.5px}
+  .go-section-title{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.4)}
+  .go-header{display:flex;justify-content:space-between;align-items:center;padding:16px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.08)}
+  .go-code-label{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:2px;margin-bottom:4px}
+  .go-code{font-family:'Anton',sans-serif;font-size:32px;letter-spacing:8px;color:#fff}
+  .go-copy-btn{padding:10px 16px;background:transparent;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.7);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .go-copy-btn:hover{border-color:#fff;color:#fff}
+  .go-table-row{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .go-member-row{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .go-member-info{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .go-member-name{font-family:'Anton',sans-serif;font-size:14px;color:#fff;letter-spacing:.5px}
+  .go-host-badge{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;background:#fff;color:#000;padding:2px 6px}
+  .go-you-badge{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.5);padding:2px 6px}
+  .go-item-row{display:flex;align-items:center;gap:8px;padding:4px 0}
+  .go-item-name{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.75);flex:1}
+  .go-qty-btn{width:24px;height:24px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:2px}
+  .go-qty-val{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);min-width:20px;text-align:center}
+  .go-item-price{font-family:'Anton',sans-serif;font-size:13px;color:#fff;min-width:48px;text-align:right}
+  .go-member-subtotal{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.35);text-align:right;margin-top:4px}
+  .go-member-items{padding-left:4px}
+  .go-menu-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .go-menu-name{font-family:'Outfit',sans-serif;font-size:14px;color:#fff;font-weight:600}
+  .go-menu-price{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:2px}
+  .go-add-btn{padding:8px 14px;background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .go-add-btn:hover{border-color:#fff;color:#fff}
+  .go-footer{padding:16px}
+  .go-footer-total{display:flex;justify-content:space-between;align-items:center;font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:1px;padding:12px 0;border-top:1px solid rgba(255,255,255,.15);border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:4px}
+  .go-pay-mode-card{display:flex;align-items:center;gap:14px;padding:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:all .15s;margin-bottom:4px}
+  .go-pay-mode-card:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3)}
+  .go-pay-mode-icon{font-size:24px;min-width:32px}
+  .go-pay-mode-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:1px;color:#fff}
+  .go-pay-mode-sub{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:3px}
+  .go-pay-mode-arrow{font-size:18px;color:rgba(255,255,255,.3);margin-left:auto}
+  .go-pay-summary{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);padding:12px 14px}
+  .go-pay-row{display:flex;justify-content:space-between;font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7);padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .go-pay-total-row{display:flex;justify-content:space-between;font-family:'Anton',sans-serif;font-size:16px;color:#fff;padding-top:8px;margin-top:4px}
+  .go-assign-btn{padding:8px 14px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;border-radius:2px}
+  .go-assign-btn:hover{border-color:#fff;color:#fff}
 `;
