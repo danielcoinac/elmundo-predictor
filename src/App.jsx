@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from '@supabase/supabase-js';
 
 /* ─── Supabase ──────────────────────────────────────────────────────────────── */
@@ -6,6 +7,108 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+
+/* ─── Language / i18n ───────────────────────────────────────────────────── */
+const TRANSLATIONS = {
+  en: {
+    // Auth
+    signIn:"Sign In", register:"Register", email:"Email Address", password:"Password",
+    fullName:"Full Name", phone:"Phone Number", signInBtn:"SIGN IN", registerBtn:"REGISTER",
+    dontHaveAccount:"Don't have an account?", alreadyHaveAccount:"Already have an account?",
+    registerHere:"Register here", signInHere:"Sign in here",
+    // Nav
+    matches:"Matches", leaderboard:"Leaderboard", menu:"Menu", rules:"Rules",
+    profile:"Profile", admin:"Admin",
+    // Menu tabs
+    menuTab:"Menu", cartTab:"Cart", ordersTab:"Orders", walletTab:"Wallet", groupTab:"Group",
+    // Menu
+    addToCart:"ADD", viewCart:"View Cart", browseMenu:"BROWSE MENU",
+    itemsLabel:"items", noMenu:"Menu not available right now",
+    // Cart
+    yourCart:"Your cart", emptyCart:"Your cart is empty",
+    selectTable:"SELECT YOUR TABLE", payment:"PAYMENT",
+    payWithCredits:"💳 CREDITS", payWithPaypal:"PAYPAL",
+    placeOrder:"PLACE ORDER", placing:"PLACING...",
+    total:"TOTAL", selectedTable:"Selected: Table",
+    // Orders
+    noOrders:"No orders yet", pending:"⏳ Pending", confirmed:"✓ Confirmed",
+    ready:"🔔 Ready!", delivered:"Delivered", printReceipt:"PRINT RECEIPT",
+    // Wallet
+    creditBalance:"CREDIT BALANCE", topUp:"+ TOP UP", useCredits:"Use credits to pay for orders",
+    selectAmount:"SELECT AMOUNT", topUpWith:"TOP UP WITH PAYPAL",
+    // Group
+    groupOrder:"GROUP ORDER", orderTogether:"Order together, pay your way",
+    startGroup:"+ START GROUP ORDER", joinWithCode:"JOIN WITH CODE",
+    createGroup:"CREATE GROUP", joinGroup:"JOIN GROUP",
+    tableNumber:"TABLE NUMBER", yourName:"YOUR NAME",
+    back:"← Back", lobby:"Lobby", checkout:"CHECKOUT",
+    paymentMode:"PAYMENT MODE", splitBill:"SPLIT BILL", hostPaysAll:"HOST PAYS ALL",
+    proceedToCheckout:"PROCEED TO CHECKOUT →",
+    waitingForHost:"Waiting for host to start checkout…",
+    // Predictions
+    predictScore:"Predict score", savePred:"SAVE", saved:"Saved ✓",
+    // Profile
+    yourStats:"YOUR STATS", points:"pts", predictions:"predictions",
+    accuracy:"accuracy", rank:"rank", yourPredictions:"YOUR PREDICTIONS",
+    // General
+    loading:"Loading…", save:"Save", cancel:"Cancel", close:"Close",
+    delete:"Delete", edit:"EDIT", show:"SHOW", hide:"HIDE",
+    confirmDelete:"Are you sure you want to delete this?",
+    notEnoughCredits:"Not enough credits",
+    orderPlaced:"Order placed! 🍺 The bar will prepare it shortly.",
+    welcomeBack:"Welcome back",
+  },
+  nl: {
+    // Auth
+    signIn:"Inloggen", register:"Registreren", email:"E-mailadres", password:"Wachtwoord",
+    fullName:"Volledige naam", phone:"Telefoonnummer", signInBtn:"INLOGGEN", registerBtn:"REGISTREREN",
+    dontHaveAccount:"Nog geen account?", alreadyHaveAccount:"Al een account?",
+    registerHere:"Registreer hier", signInHere:"Log hier in",
+    // Nav
+    matches:"Wedstrijden", leaderboard:"Ranglijst", menu:"Menu", rules:"Regels",
+    profile:"Profiel", admin:"Admin",
+    // Menu tabs
+    menuTab:"Menu", cartTab:"Winkelwagen", ordersTab:"Bestellingen", walletTab:"Portemonnee", groupTab:"Groep",
+    // Menu
+    addToCart:"ADD", viewCart:"Winkelwagen", browseMenu:"BEKIJK MENU",
+    itemsLabel:"items", noMenu:"Menu momenteel niet beschikbaar",
+    // Cart
+    yourCart:"Uw winkelwagen", emptyCart:"Uw winkelwagen is leeg",
+    selectTable:"KIES UW TAFEL", payment:"BETALING",
+    payWithCredits:"💳 CREDITS", payWithPaypal:"PAYPAL",
+    placeOrder:"BESTELLING PLAATSEN", placing:"BEZIG...",
+    total:"TOTAAL", selectedTable:"Geselecteerd: Tafel",
+    // Orders
+    noOrders:"Nog geen bestellingen", pending:"⏳ In behandeling", confirmed:"✓ Bevestigd",
+    ready:"🔔 Klaar!", delivered:"Bezorgd", printReceipt:"BON AFDRUKKEN",
+    // Wallet
+    creditBalance:"CREDITSALDO", topUp:"+ OPLADEN", useCredits:"Gebruik credits om te betalen",
+    selectAmount:"KIES BEDRAG", topUpWith:"OPLADEN MET PAYPAL",
+    // Group
+    groupOrder:"GROEPSBESTELLING", orderTogether:"Samen bestellen, op jouw manier betalen",
+    startGroup:"+ GROEPSBESTELLING STARTEN", joinWithCode:"DEELNEMEN MET CODE",
+    createGroup:"GROEP AANMAKEN", joinGroup:"GROEP DEELNEMEN",
+    tableNumber:"TAFELNUMMER", yourName:"UW NAAM",
+    back:"← Terug", lobby:"Lobby", checkout:"AFREKENEN",
+    paymentMode:"BETALINGSWIJZE", splitBill:"REKENING SPLITSEN", hostPaysAll:"GASTHEER BETAALT ALLES",
+    proceedToCheckout:"VERDER NAAR AFREKENEN →",
+    waitingForHost:"Wachten tot de gastheer het afrekenen start…",
+    // Predictions
+    predictScore:"Score voorspellen", savePred:"OPSLAAN", saved:"Opgeslagen ✓",
+    // Profile
+    yourStats:"UW STATISTIEKEN", points:"pts", predictions:"voorspellingen",
+    accuracy:"nauwkeurigheid", rank:"rang", yourPredictions:"UW VOORSPELLINGEN",
+    // General
+    loading:"Laden…", save:"Opslaan", cancel:"Annuleren", close:"Sluiten",
+    delete:"Verwijderen", edit:"BEWERKEN", show:"TONEN", hide:"VERBERGEN",
+    confirmDelete:"Weet u zeker dat u dit wilt verwijderen?",
+    notEnoughCredits:"Niet genoeg credits",
+    orderPlaced:"Bestelling geplaatst! 🍺 De bar bereidt het zo snel mogelijk.",
+    welcomeBack:"Welkom terug",
+  },
+};
+const LangContext = React.createContext({ lang:"en", t: k => TRANSLATIONS.en[k] || k });
+function useLang() { return React.useContext(LangContext); }
 
 /* ─── Storage (rules/sponsors only) ──────────────────────────────────────── */
 async function sget(k) { try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; } }
@@ -98,6 +201,10 @@ export default function App() {
   const [rules,    setRules]    = useState(DEFAULT_RULES);
   const [sponsors, setSponsors] = useState(DEFAULT_SPONSORS);
   const [toast,    setToast]    = useState(null);
+  const toastTimerRef = useRef(null);
+  const [lang,     setLang]     = useState(() => localStorage.getItem("lang") || "en");
+  const t = k => TRANSLATIONS[lang]?.[k] ?? TRANSLATIONS.en[k] ?? k;
+  const toggleLang = () => { const nl = lang === "en" ? "nl" : "en"; setLang(nl); localStorage.setItem("lang", nl); };
   const [form,     setForm]     = useState({ name:"", email:"", phone:"", password:"" });
   const [formErr,  setFormErr]  = useState("");
   const [publicBoard, setPublicBoard] = useState([]);
@@ -364,7 +471,11 @@ export default function App() {
     return () => clearInterval(iv);
   }, [activeGroup?.id, activeGroup?.status]);
 
-  const toast$ = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3200); };
+  const toast$ = (msg, ok = true) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ msg, ok });
+    toastTimerRef.current = setTimeout(() => { setToast(null); toastTimerRef.current = null; }, 3200);
+  };
 
   const doRegister = async () => {
     setFormErr("");
@@ -389,21 +500,31 @@ export default function App() {
     const { data, error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password });
     if (error) return setFormErr("Incorrect email or password.");
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+    if (!profile) return setFormErr("Account not found. Please register.");
     setUser({ ...data.user, ...profile });
-    const { data: predRows } = await supabase.from("predictions").select("*").eq("user_id", data.user.id);
+    // Load all user data in parallel
+    const [predRows, allProfiles, menuRows, credRow, orderRows] = await Promise.all([
+      supabase.from("predictions").select("*").eq("user_id", data.user.id).then(r => r.data),
+      supabase.from("profiles").select("*").then(r => r.data),
+      supabase.from("menu_items").select("*").order("sort_order").then(r => r.data),
+      supabase.from("user_credits").select("balance").eq("user_id", data.user.id).maybeSingle().then(r => r.data),
+      supabase.from("orders").select("*").eq("user_id", data.user.id).order("created_at", { ascending: false }).limit(20).then(r => r.data),
+    ]);
     if (predRows) {
       const predMap = {};
       predRows.forEach(p => { predMap[`${data.user.id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
       setPreds(predMap);
     }
-    const { data: allProfiles } = await supabase.from("profiles").select("*");
     if (allProfiles) {
       const usersMap = {};
       allProfiles.filter(p => p.is_admin !== true && p.is_admin !== 1 && p.is_admin !== "true").forEach(p => { usersMap[p.id] = p; });
       setUsers(usersMap);
     }
+    if (menuRows) setMenuItems(menuRows);
+    if (credRow) setMyCredits(+credRow.balance);
+    if (orderRows) setMyOrders(orderRows);
     setPage("app");
-    toast$(`Welcome back, ${profile.name}!`);
+    toast$(`Welcome back, ${profile.name}! ⚽`);
   };
 
   const doLogout = async () => {
@@ -520,10 +641,8 @@ export default function App() {
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
     if (paymentMethod === "credits") {
       if (myCredits < total) { toast$("Not enough credits", false); return false; }
-      const newBal = +(myCredits - total).toFixed(2);
-      await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
-      setMyCredits(newBal);
     }
+    // Insert order FIRST — if this fails, no credits are deducted
     const { data, error } = await supabase.from("orders").insert({
       user_id: user.id,
       user_name: user.name,
@@ -534,6 +653,12 @@ export default function App() {
       status: "pending",
     }).select().single();
     if (error) { toast$("Error placing order", false); return false; }
+    // Deduct credits only after order is confirmed in DB
+    if (paymentMethod === "credits") {
+      const newBal = +(myCredits - total).toFixed(2);
+      await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+      setMyCredits(newBal);
+    }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
     return true;
   };
@@ -590,6 +715,8 @@ export default function App() {
       win.document.close();
       win.focus();
       setTimeout(() => { win.print(); win.close(); }, 400);
+    } else {
+      toast$("Credits added ✓ — allow popups to print receipt", true);
     }
   };
 
@@ -612,6 +739,55 @@ export default function App() {
   const handlePayPalTopup = (newBalance, amount) => {
     setMyCredits(newBalance);
     toast$(`$${(+amount).toFixed(2)} credits added! 🎉`);
+  };
+
+  // ── Order receipt printer ─────────────────────────────────────────────────
+  const printOrderReceipt = (ord, customerName) => {
+    const win = window.open("", "_blank", "width=340,height=500");
+    if (!win) { toast$("Allow popups to print receipt", false); return; }
+    const now = new Date(ord.created_at);
+    const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const dateStr = now.toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" });
+    const itemRows = (ord.items || []).map(it =>
+      `<div class="row"><span>${it.qty}× ${it.name}</span><span>$${(it.price*it.qty).toFixed(2)}</span></div>`
+    ).join("");
+    const payLabel = ord.payment_method === "credits" ? "Credits" : ord.payment_method === "paypal" ? "PayPal" : "Cash/Card";
+    win.document.write(`<!DOCTYPE html><html><head><title>Order Receipt</title>
+    <style>
+      @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm}
+      body{font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff}
+      .wrap{width:72mm;margin:0 auto;padding:4mm 0}
+      .center{text-align:center}.logo{font-size:22px;font-weight:900;letter-spacing:3px;margin-bottom:2px}
+      .sub{font-size:9px;color:#333;margin-bottom:8px;letter-spacing:2px}
+      .divider{border-top:1px dashed #000;margin:8px 0}.divider-solid{border-top:2px solid #000;margin:8px 0}
+      .row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px}
+      .label{font-size:9px;color:#333;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+      .total{font-size:18px;font-weight:900}.type{display:inline-block;border:1px solid #000;padding:2px 8px;font-size:9px;letter-spacing:2px;font-weight:900;margin-top:5px}
+      .footer{font-size:10px;color:#333;margin-top:10px;text-align:center}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body><div class="wrap">
+    <div class="center">
+      <div class="logo">EL MUNDO</div>
+      <div class="sub">WORLD CUP 2026 · BONAIRE</div>
+      <div class="type">ORDER RECEIPT</div>
+    </div>
+    <div class="divider"></div>
+    <div class="label">Customer</div>
+    <div style="font-size:14px;font-weight:900;margin-bottom:6px">${customerName || "Guest"}</div>
+    <div class="label">Table</div>
+    <div style="font-size:14px;font-weight:900;margin-bottom:8px">Table ${ord.table_number}${ord.order_number ? ` · #${ord.order_number}` : ""}</div>
+    <div class="divider"></div>
+    <div class="label">Items</div>
+    ${itemRows}
+    <div class="divider-solid"></div>
+    <div class="row"><span style="font-weight:900">TOTAL</span><span class="total">$${(+ord.total).toFixed(2)}</span></div>
+    <div class="row"><span>Payment</span><span>${payLabel}</span></div>
+    <div class="row"><span>Date &amp; Time</span><span>${dateStr} · ${timeStr}</span></div>
+    <div class="divider"></div>
+    <div class="center footer">Thank you &amp; enjoy! ⚽<br>El Mundo Bar-Rest, Bonaire</div>
+    </div></body></html>`);
+    win.document.close(); win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 400);
   };
 
   const createGroupOrder = async (tableNumber) => {
@@ -660,12 +836,15 @@ export default function App() {
         await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", activeGroup.id);
       }
     } else {
-      // Unassign anyone who was counting on this user to pay for them
-      await supabase.from("group_order_members")
-        .update({ pay_for_user_id: null, payment_status: "pending" })
-        .eq("group_order_id", activeGroup.id).eq("pay_for_user_id", user.id);
-      await supabase.from("group_order_members").delete().eq("group_order_id", activeGroup.id).eq("user_id", user.id);
-      await supabase.from("group_order_items").delete().eq("group_order_id", activeGroup.id).eq("added_by_user_id", user.id);
+      // Only modify DB data if order hasn't been placed yet — preserve history for placed orders
+      if (activeGroup.status !== "placed") {
+        // Unassign anyone who was counting on this user to pay for them
+        await supabase.from("group_order_members")
+          .update({ pay_for_user_id: null, payment_status: "pending" })
+          .eq("group_order_id", activeGroup.id).eq("pay_for_user_id", user.id);
+        await supabase.from("group_order_members").delete().eq("group_order_id", activeGroup.id).eq("user_id", user.id);
+        await supabase.from("group_order_items").delete().eq("group_order_id", activeGroup.id).eq("added_by_user_id", user.id);
+      }
     }
     setActiveGroup(null); setGroupMembers([]); setGroupItems([]);
   };
@@ -743,7 +922,7 @@ export default function App() {
       return order.status === "placed";
     }
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
-    await supabase.from("orders").insert({
+    const { error: orderError } = await supabase.from("orders").insert({
       user_id: order.host_user_id,
       table_number: order.table_number,
       items: items.map(i => ({ id: i.item_id, name: i.item_name, price: i.price, qty: i.qty })),
@@ -751,7 +930,9 @@ export default function App() {
       payment_method: order.payment_mode === "host" ? "group_host" : "group_individual",
       status: "pending",
     });
-    await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId);
+    if (orderError) { toast$("Error placing group order — please contact staff", false); return false; }
+    const { error: statusError } = await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId);
+    if (statusError) { toast$("Order sent but status update failed — contact staff", false); return false; }
     // Immediately update local state — don't wait for realtime which can be slow
     setActiveGroup(prev => prev ? { ...prev, status: "placed" } : prev);
     return true;
@@ -830,6 +1011,7 @@ export default function App() {
   };
 
   return (
+    <LangContext.Provider value={{ lang, t, toggleLang }}>
     <div style={{ fontFamily:"'Outfit',sans-serif", background:"#000", minHeight:"100vh", color:"#fff" }}>
       <link href="https://fonts.googleapis.com/css2?family=Anton&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
       <style>{CSS}</style>
@@ -876,9 +1058,11 @@ export default function App() {
           payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
           handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
+          printOrderReceipt={printOrderReceipt}
         />
       )}
     </div>
+    </LangContext.Provider>
   );
 }
 
@@ -1176,6 +1360,7 @@ function StadiumSky() {
 
 /* ═══ AUTH ══════════════════════════════════════════════════════════════════ */
 function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard }) {
+  const { t } = useLang();
   const [showTV, setShowTV] = useState(false);
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(""); };
   const isLogin = tab === "login";
@@ -1197,24 +1382,24 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
         </div>
         <div className="auth-panel">
           <div className="auth-tabs">
-            <button className={`auth-tab ${isLogin?"atab-on":""}`} onClick={()=>{setTab("login");setErr("");}}>Sign In</button>
-            <button className={`auth-tab ${!isLogin?"atab-on":""}`} onClick={()=>{setTab("register");setErr("");}}>Register</button>
+            <button className={`auth-tab ${isLogin?"atab-on":""}`} onClick={()=>{setTab("login");setErr("");}}>{t('signIn')}</button>
+            <button className={`auth-tab ${!isLogin?"atab-on":""}`} onClick={()=>{setTab("register");setErr("");}}>{t('register')}</button>
           </div>
           <div className="auth-form">
             {!isLogin && <>
-              <FField label="Full Name"    val={form.name}     on={set("name")}     ph="John Doe"          />
-              <FField label="Phone Number" val={form.phone}    on={set("phone")}    ph="+599 700 0000"     />
+              <FField label={t('fullName')}  val={form.name}     on={set("name")}     ph="John Doe"          />
+              <FField label={t('phone')}    val={form.phone}    on={set("phone")}    ph="+599 700 0000"     />
             </>}
-            <FField label="Email Address"  val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
-            <FField label="Password"       val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
+            <FField label={t('email')}     val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
+            <FField label={t('password')}  val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
             {err && <div className="auth-err"><span className="auth-err-dot">!</span>{err}</div>}
             <button className="auth-cta" onClick={isLogin ? onLogin : onRegister}>
-              {isLogin ? "SIGN IN" : "CREATE ACCOUNT"}
+              {isLogin ? t('signInBtn') : t('registerBtn')}
             </button>
             <p className="auth-footer-text">
-              {isLogin ? "Don't have an account? " : "Already registered? "}
+              {isLogin ? t('dontHaveAccount') + " " : t('alreadyHaveAccount') + " "}
               <span className="auth-footer-link" onClick={()=>{setTab(isLogin?"register":"login");setErr("");}}>
-                {isLogin ? "Register here" : "Sign in"}
+                {isLogin ? t('registerHere') : t('signInHere')}
               </span>
             </p>
           </div>
@@ -1429,7 +1614,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
                 payGroupShareCredits, hostPayAllCredits,
                 handleGroupPayPalSuccess, calcMyGroupShare,
-                resetGroupToLobby }) {
+                resetGroupToLobby, printOrderReceipt }) {
+  const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
@@ -1437,12 +1623,12 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const switchTab = (id) => { setAnimKey(id); setAppTab(id); };
 
   const tabs = [
-    { id:"matches",     label:"Matches",  ico:<SoccerIco /> },
-    { id:"leaderboard", label:"Ranking",  ico:<TrophyIco /> },
-    { id:"menu",        label:"Menu",     ico:<MenuIco />   },
-    { id:"rules",       label:"Rules",    ico:<RulesIco />  },
-    { id:"profile",     label:"Profile",  ico:<PersonIco /> },
-    ...(isAdmin ? [{ id:"admin", label:"Admin", ico:<AdminIco /> }] : []),
+    { id:"matches",     label:t('matches'),     ico:<SoccerIco /> },
+    { id:"leaderboard", label:t('leaderboard'), ico:<TrophyIco /> },
+    { id:"menu",        label:t('menu'),        ico:<MenuIco />   },
+    { id:"rules",       label:t('rules'),       ico:<RulesIco />  },
+    { id:"profile",     label:t('profile'),     ico:<PersonIco /> },
+    ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
 
   return (
@@ -1473,6 +1659,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               </div>
             )}
             {isAdmin && <span className="admin-badge">ADMIN</span>}
+            <button className="lang-toggle" onClick={toggleLang} title="Switch language">
+              {lang === "en" ? "🇳🇱 NL" : "🇬🇧 EN"}
+            </button>
             <button className="hdr-out" onClick={onLogout} title="Log out"><LogoutIco /></button>
           </div>
         </div>
@@ -1489,6 +1678,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
             handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
             resetGroupToLobby={resetGroupToLobby}
+            printOrderReceipt={printOrderReceipt}
           />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
           {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} />}
@@ -1583,12 +1773,6 @@ function matchKickoff(m) {
     return new Date(`${m.date} ${year} ${m.time}:00 GMT-0400`);
   } catch { return null; }
 }
-function minsUntilKickoff(m) {
-  const ko = matchKickoff(m);
-  if (!ko) return Infinity;
-  return (ko - Date.now()) / 60000;
-}
-
 function useCountdown(m) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -1747,7 +1931,6 @@ const SoccerIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="no
 const TrophyIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 2 12 2 12 16"/><path d="M5 6H3a2 2 0 0 0-2 2v1a6 6 0 0 0 6 6h2"/><path d="M19 6h2a2 2 0 0 1 2 2v1a6 6 0 0 1-6 6h-2"/><rect x="8" y="16" width="8" height="2" rx="1"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="12" y1="18" x2="12" y2="22"/></svg>;
 const MenuIco   = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>;
 const RulesIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
-const StarIco   = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
 const PersonIco = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
 const AdminIco  = () => <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
 const LogoutIco = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
@@ -1868,56 +2051,13 @@ function RulesView({ rules }) {
 }
 
 /* ═══ SPONSORS VIEW ═════════════════════════════════════════════════════════ */
-function SponsorsView({ sponsors }) {
-  return (
-    <div>
-      <div className="section-banner">
-        <span className="section-banner-title">SPONSORS</span>
-        <span className="section-banner-sub">Thank you for making this event possible</span>
-      </div>
-      {sponsors[0] && (
-        <div className="sponsor-hero">
-          <div className="sponsor-hero-emoji">
-            {sponsors[0].logo
-              ? <img src={sponsors[0].logo} alt={sponsors[0].name} style={{width:80,height:80,objectFit:"contain"}} />
-              : sponsors[0].emoji}
-          </div>
-          <div className="sponsor-hero-role">{sponsors[0].role}</div>
-          <div className="sponsor-hero-name">{sponsors[0].name}</div>
-          <div className="sponsor-hero-detail">{sponsors[0].detail}</div>
-        </div>
-      )}
-      <div className="card-stack">
-        {sponsors.slice(1).map(s => (
-          <div key={s.id} className="sponsor-card">
-            <div className="sponsor-emoji">
-              {s.logo
-                ? <img src={s.logo} alt={s.name} style={{width:48,height:48,objectFit:"contain"}} />
-                : s.emoji}
-            </div>
-            <div className="sponsor-info">
-              <div className="sponsor-role">{s.role}</div>
-              <div className="sponsor-name">{s.name}</div>
-              {s.detail && <div className="sponsor-detail">{s.detail}</div>}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="sponsor-cta-box">
-        <div className="sponsor-cta-title">Become a Sponsor</div>
-        <div className="sponsor-cta-body">Contact El Mundo Bar-Rest to learn about sponsorship opportunities for the World Cup event.</div>
-      </div>
-    </div>
-  );
-}
-
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
 function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
-  const initials = user.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  const initials = (user.name || "?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   return (
     <div className="prof-wrap">
       <div className="prof-hero">
@@ -2005,12 +2145,12 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
   const TABS = [
     { id:"floorplan", label:"🗺 Floor Plan" },
+    { id:"menu",     label:"🍽 Menu"     },
+    { id:"tables",   label:"🪑 Tables"   },
+    { id:"credits",  label:"💳 Credits"  },
     { id:"matches",  label:"⚽ Matches"  },
     { id:"rules",    label:"📋 Rules"    },
     { id:"sponsors", label:"⭐ Sponsors" },
-    { id:"menu",     label:"🍽 Menu"     },
-    { id:"credits",  label:"💳 Credits"  },
-    { id:"tables",   label:"🪑 Tables"   },
   ];
 
   return (
@@ -2054,9 +2194,10 @@ function AdminTables() {
 
   const unlock = async (id, tableNum) => {
     if (!window.confirm(`Unlock table ${tableNum}? This will cancel the group order.`)) return;
+    // Cancel the order FIRST so members' realtime/poll transitions fire before their data disappears
+    await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", id);
     await supabase.from("group_order_members").delete().eq("group_order_id", id);
     await supabase.from("group_order_items").delete().eq("group_order_id", id);
-    await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", id);
     load();
   };
 
@@ -2138,7 +2279,7 @@ function AdminMatches({ matches, onUpdate, onAdd, onDelete }) {
     <div>
       <div className="admin-topbar">
         <div className="admin-section-lbl" style={{margin:0}}>MATCHES</div>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <button className="admin-add-btn" style={{background:sorted?"#22c55e":"",color:sorted?"#fff":""}} onClick={doSort}>
             {sorted ? "✓ Sorted!" : "↕ Sort by Date"}
           </button>
@@ -2348,6 +2489,8 @@ function GroupOrderView({
   const [copied, setCopied] = useState(false);
   const [takenTables, setTakenTables] = useState([]);
   const [cancelNote, setCancelNote] = useState(false);
+  const [goMenuOpen, setGoMenuOpen] = useState(false);
+  const [goMenuCat, setGoMenuCat] = useState("all");
 
   // Load taken tables whenever the create screen is shown
   useEffect(() => {
@@ -2414,7 +2557,8 @@ function GroupOrderView({
         if (result.success) await handleGroupPayPalSuccess(myShare, false);
         else alert("Payment failed: " + (result.error || "Unknown error"));
       },
-      onError: () => alert("PayPal error. Please try again."),
+      onCancel: () => toast$("Payment cancelled — you can try again", false),
+      onError: () => toast$("PayPal error. Please try again.", false),
     });
     if (btns.isEligible()) { btns.render(sharePaypalContainerRef.current); sharePaypalBtnsRef.current = btns; }
   }, [screen, paypalReady, myShare, myMember?.payment_status]);
@@ -2440,7 +2584,8 @@ function GroupOrderView({
         if (result.success) await handleGroupPayPalSuccess(groupTotal, true);
         else alert("Payment failed: " + (result.error || "Unknown error"));
       },
-      onError: () => alert("PayPal error. Please try again."),
+      onCancel: () => toast$("Payment cancelled — you can try again", false),
+      onError: () => toast$("PayPal error. Please try again.", false),
     });
     if (btns.isEligible()) { btns.render(hostPaypalContainerRef.current); hostPaypalBtnsRef.current = btns; }
   }, [screen, paypalReady, groupTotal, activeGroup?.payment_mode]);
@@ -2635,31 +2780,83 @@ function GroupOrderView({
         );
       })}
 
-      {/* Add items from menu — grouped by category */}
-      <div className="go-section-title" style={{padding:"16px 16px 8px"}}>ADD FROM MENU</div>
-      {(() => {
+      {/* Add items button */}
+      <div style={{padding:"12px 16px"}}>
+        <button className="go-open-menu-btn" onClick={() => { setGoMenuOpen(true); setGoMenuCat("all"); }}>
+          <span style={{fontSize:20,lineHeight:1}}>＋</span>
+          <span>ADD ITEMS TO ORDER</span>
+          {groupItems.length > 0 && (
+            <span className="go-open-menu-badge">{groupItems.reduce((s,i)=>s+i.qty,0)}</span>
+          )}
+        </button>
+      </div>
+
+      {/* Group Menu Modal — rendered via portal to escape any parent transforms */}
+      {goMenuOpen && createPortal((() => {
         const available = menuItems.filter(i => i.available);
-        const byCategory = available.reduce((acc, item) => {
-          const cat = item.category || "Other";
-          if (!acc[cat]) acc[cat] = [];
-          acc[cat].push(item);
-          return acc;
-        }, {});
-        return Object.entries(byCategory).map(([cat, items]) => (
-          <div key={cat}>
-            <div style={{padding:"8px 16px 4px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",letterSpacing:2,textTransform:"uppercase"}}>{cat}</div>
-            {items.map(item => (
-              <div key={item.id} className="go-menu-row">
-                <div>
-                  <div className="go-menu-name">{item.name}</div>
-                  <div className="go-menu-price">${(+item.price).toFixed(2)}</div>
-                </div>
-                <button className="go-add-btn" onClick={() => addGroupItem(item)}>+ ADD</button>
+        const cats = ["all", ...Array.from(new Set(available.map(i => i.category || "Other")))];
+        const filtered = goMenuCat === "all" ? available : available.filter(i => (i.category || "Other") === goMenuCat);
+        return (
+          <div className="go-modal-overlay" onClick={() => setGoMenuOpen(false)}>
+            <div className="go-modal-panel" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="go-modal-header">
+                <div className="go-modal-title">ADD ITEMS</div>
+                <button className="go-modal-close" onClick={() => setGoMenuOpen(false)}>✕</button>
               </div>
-            ))}
+              {/* Category pills */}
+              <div className="go-modal-cats">
+                {cats.map(c => (
+                  <button key={c} className={`go-modal-cat-pill${goMenuCat === c ? " go-modal-cat-on" : ""}`}
+                    onClick={() => setGoMenuCat(c)}>
+                    {c === "all" ? "ALL" : c.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              {/* Item count label */}
+              <div style={{padding:"8px 16px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",letterSpacing:1.5}}>
+                {filtered.length} ITEM{filtered.length !== 1 ? "S" : ""}
+              </div>
+              {/* Items list */}
+              <div className="go-modal-body">
+                {filtered.map(item => {
+                  const st = (item.serving_type || "").toLowerCase();
+                  const isBucket = st === "bucket" || (!st && /bucket/i.test(item.name + (item.description||"")));
+                  const isGlass  = st === "glass"  || (!st && /glass/i.test(item.name  + (item.description||"")));
+                  const isBottle = st === "bottle" || (!st && /bottle/i.test(item.name + (item.description||"")));
+                  const isDraft  = st === "draft"  || (!st && /draft/i.test(item.name  + (item.description||"")));
+                  const myQty = groupItems.filter(gi => gi.added_by_user_id === user.id && gi.item_id === item.id).reduce((s,gi)=>s+gi.qty,0);
+                  return (
+                    <div key={item.id} className="go-modal-item">
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
+                          <span className="go-menu-name">{item.name}</span>
+                          {isBucket && <span className="menu-badge menu-badge-gold">🪣 BUCKET</span>}
+                          {isGlass   && <span className="menu-badge menu-badge-blue">🍷 GLASS</span>}
+                          {isBottle  && <span className="menu-badge menu-badge-blue">🍾 BOTTLE</span>}
+                          {isDraft   && <span className="menu-badge menu-badge-amber">🍺 DRAFT</span>}
+                        </div>
+                        {item.description && <div className="go-menu-desc">{item.description}</div>}
+                        <div className="go-menu-price">${(+item.price).toFixed(2)}</div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0}}>
+                        <button className="go-modal-add-btn" onClick={() => addGroupItem(item)}>+ ADD</button>
+                        {myQty > 0 && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.45)"}}>×{myQty} added</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Done button */}
+              <div className="go-modal-footer">
+                <button className="go-btn-primary" onClick={() => setGoMenuOpen(false)}>
+                  DONE — {groupItems.reduce((s,i)=>s+i.qty,0)} item{groupItems.reduce((s,i)=>s+i.qty,0)!==1?"s":""} · ${groupTotal.toFixed(2)}
+                </button>
+              </div>
+            </div>
           </div>
-        ));
-      })()}
+        );
+      })(), document.body)}
 
       {/* Total + checkout */}
       <div className="go-footer">
@@ -2750,7 +2947,7 @@ function GroupOrderView({
               <div className="go-section-title" style={{marginBottom:12}}>PAY ${groupTotal.toFixed(2)}</div>
               <button className="go-btn-primary" style={{marginBottom:10}}
                 disabled={paying || myCredits < groupTotal}
-                onClick={async () => { setPaying(true); await hostPayAllCredits(); setPaying(false); }}>
+                onClick={async () => { setPaying(true); try { await hostPayAllCredits(); } finally { setPaying(false); } }}>
                 {paying ? "PROCESSING..." : `PAY WITH CREDITS · $${groupTotal.toFixed(2)}`}
               </button>
               {myCredits < groupTotal && (
@@ -2840,7 +3037,7 @@ function GroupOrderView({
 
               <button className="go-btn-primary" style={{marginBottom:10}}
                 disabled={paying || myCredits < myShare}
-                onClick={async () => { setPaying(true); await payGroupShareCredits(); setPaying(false); }}>
+                onClick={async () => { setPaying(true); try { await payGroupShareCredits(); } finally { setPaying(false); } }}>
                 {paying ? "PROCESSING..." : `PAY WITH CREDITS · $${myShare.toFixed(2)}`}
               </button>
               {myCredits < myShare && (
@@ -2892,7 +3089,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
   handleGroupPayPalSuccess, calcMyGroupShare,
-  resetGroupToLobby }) {
+  resetGroupToLobby, printOrderReceipt }) {
+  const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [tab,         setTab]         = useState("menu");
   const [table,       setTable]       = useState("");
@@ -2970,7 +3168,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
           alert("Something went wrong: " + e.message);
         }
       },
-      onError: (err) => alert("PayPal error: " + JSON.stringify(err)),
+      onCancel: () => toast$("Payment cancelled — you can try again", false),
+      onError: () => toast$("PayPal error. Please try again.", false),
     });
 
     if (buttons.isEligible()) {
@@ -2980,14 +3179,32 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
   }, [paypalReady, topupAmt]);
 
   const available  = menuItems.filter(i => i.available);
-  const [openCats, setOpenCats] = useState({});
-  const toggleCat = id => setOpenCats(s => ({ ...s, [id]: !s[id] }));
+  const [activeCat, setActiveCat] = useState(null);
+  const sectionRefs = useRef({});
+  const pillsRef    = useRef(null);
   // Group available items by category in defined order
   const menuSections = MENU_SECTIONS.map(s => ({
     ...s,
     cats: s.cats.map(c => ({ ...c, items: available.filter(i => i.category === c.id) }))
                .filter(c => c.items.length > 0),
   })).filter(s => s.cats.length > 0);
+  const allActiveCats = menuSections.flatMap(s => s.cats);
+
+  const scrollToSection = catId => {
+    setActiveCat(catId);
+    const el = sectionRefs.current[catId];
+    if (!el) return;
+    // Scroll with offset to account for sticky pill bar height
+    const scrollContainer = el.closest('.body') || document.querySelector('.body');
+    const pillH = (pillsRef.current?.offsetHeight || 48) + 4;
+    if (scrollContainer) {
+      const elTop = el.getBoundingClientRect().top;
+      const containerTop = scrollContainer.getBoundingClientRect().top;
+      scrollContainer.scrollTo({ top: scrollContainer.scrollTop + elTop - containerTop - pillH, behavior: "smooth" });
+    } else {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   const addToCart      = id => setCart(c => ({ ...c, [id]: (c[id]||0)+1 }));
   const removeFromCart = id => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
@@ -3058,7 +3275,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
           alert("Something went wrong. Please contact staff.");
         }
       },
-      onError: () => alert("PayPal encountered an error. Please try again."),
+      onCancel: () => toast$("Payment cancelled — you can try again", false),
+      onError: () => toast$("PayPal error. Please try again.", false),
     });
 
     if (buttons.isEligible()) {
@@ -3067,11 +3285,44 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
     }
   }, [paypalReady, payMethod, cartTotal]);
 
+  // ── Set initial active category when menu first loads ──
+  useEffect(() => {
+    if (allActiveCats.length > 0 && !activeCat) setActiveCat(allActiveCats[0].id);
+  }, [allActiveCats.length]);
+
+  // ── IntersectionObserver: highlight pill as user scrolls ──
+  useEffect(() => {
+    if (tab !== "menu" || allActiveCats.length === 0) return;
+    const scrollContainer = document.querySelector('.body');
+    const pillH = pillsRef.current?.offsetHeight || 48;
+    const observer = new IntersectionObserver(entries => {
+      // Pick the topmost intersecting entry
+      const visible = entries.filter(e => e.isIntersecting);
+      if (visible.length === 0) return;
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      const catId = visible[0].target.dataset.catId;
+      setActiveCat(catId);
+      // Scroll pill bar so active pill is centered — use scrollLeft, not scrollIntoView
+      const bar = pillsRef.current;
+      const pill = bar?.querySelector(`[data-pill="${catId}"]`);
+      if (bar && pill) {
+        const target = pill.offsetLeft - (bar.offsetWidth / 2) + (pill.offsetWidth / 2);
+        bar.scrollTo({ left: target, behavior: "smooth" });
+      }
+    }, {
+      root: scrollContainer || null,
+      rootMargin: `-${pillH + 2}px 0px -55% 0px`,
+      threshold: 0
+    });
+    Object.values(sectionRefs.current).forEach(el => { if (el) observer.observe(el); });
+    return () => observer.disconnect();
+  }, [tab, allActiveCats.length]);
+
   const handleOrder = async () => {
     if (!table.trim()) { setTableErr("Please select your table"); return; }
     const tableNum = parseInt(table.trim());
     if (!VALID_TABLES.includes(tableNum)) {
-      setTableErr(`Table ${table} doesn't exist. Valid tables: 1–27`); return;
+      setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
     }
     setTableErr("");
     // Double-submit guard — ref is synchronous unlike state
@@ -3097,91 +3348,116 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
       {/* ── WALLET HEADER ── */}
       <div className="wallet-header">
         <div className="wallet-left">
-          <div className="wallet-label">CREDIT BALANCE</div>
+          <div className="wallet-label">{t('creditBalance')}</div>
           <div className="wallet-balance">${(+myCredits).toFixed(2)}</div>
-          <div className="wallet-sub">Use credits to pay for orders</div>
+          <div className="wallet-sub">{t('useCredits')}</div>
         </div>
         <button className="wallet-topup-btn" onClick={()=>setTab("wallet")}>
-          + TOP UP
+          {t('topUp')}
         </button>
       </div>
 
       {/* Tabs */}
       <div className="admin-subtabs">
         {[
-          {id:"menu",   label:"🍽 Menu"},
-          {id:"cart",   label:`🛒 Cart${cartCount>0?` · ${cartCount}`:""}`},
-          {id:"orders", label:"📦 Orders"},
-          {id:"wallet", label:"💳 Wallet"},
-          {id:"group",  label:`👥 Group${activeGroup?" ·":""}`},
-        ].map(t=>(
-          <button key={t.id} className={`admin-subtab ${tab===t.id?"ast-on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
+          {id:"menu",   label:`🍽 ${t('menuTab')}`},
+          {id:"group",  label:`👥 ${t('groupTab')}${activeGroup?" ·":""}`},
+          {id:"cart",   label:`🛒 ${t('cartTab')}${cartCount>0?` · ${cartCount}`:""}`},
+          {id:"orders", label:`📦 ${t('ordersTab')}`},
+          {id:"wallet", label:`💳 ${t('walletTab')}`},
+        ].map(st=>(
+          <button key={st.id} className={`admin-subtab ${tab===st.id?"ast-on":""}`} onClick={()=>setTab(st.id)}>{st.label}</button>
         ))}
       </div>
 
       {/* ── MENU TAB ── */}
       {tab === "menu" && (
         <div style={{paddingBottom: cartCount > 0 ? 80 : 20}}>
+
+          {/* ── Sticky category pill bar ── */}
+          {allActiveCats.length > 0 && (
+            <div ref={pillsRef} className="menu-pills-bar">
+              {allActiveCats.map(cat => (
+                <button
+                  key={cat.id}
+                  data-pill={cat.id}
+                  className={`menu-cat-pill ${activeCat === cat.id ? "menu-cat-pill-on" : ""}`}
+                  onClick={() => scrollToSection(cat.id)}>
+                  <span style={{fontSize:14,lineHeight:1}}>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── Items grouped by category (flat — no collapse) ── */}
           {menuSections.map(sec => (
             <div key={sec.section}>
-              {/* Section divider */}
-              <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 16px 10px"}}>
-                <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"rgba(255,255,255,.25)"}}>{sec.section}</span>
-                <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
+              {/* Section divider: DRINKS / FOOD */}
+              <div className="menu-section-divider">
+                <div className="menu-section-line"/>
+                <span className="menu-section-label">{sec.section}</span>
+                <div className="menu-section-line"/>
               </div>
-              {sec.cats.map(cat => {
-                const isOpen = openCats[cat.id] !== false; // default open
-                return (
-                  <div key={cat.id} style={{marginBottom:2}}>
-                    {/* Category header — tap to collapse */}
-                    <button onClick={()=>toggleCat(cat.id)}
-                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"rgba(255,255,255,.03)",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",cursor:"pointer",textAlign:"left"}}>
-                      <span style={{fontSize:18,lineHeight:1}}>{cat.icon}</span>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"#fff",flex:1}}>{cat.label.toUpperCase()}</span>
-                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{cat.items.length}</span>
-                      <span style={{fontSize:10,color:"rgba(255,255,255,.3)",transform:isOpen?"rotate(0)":"rotate(-90deg)",transition:"transform .2s",marginLeft:4}}>▼</span>
-                    </button>
-                    {/* Items */}
-                    {isOpen && cat.items.map(item => {
-                      const isBucket = /bucket/i.test(item.name + (item.description||""));
-                      const isGlass  = /glass/i.test(item.name + (item.description||""));
-                      const isBottle = /bottle/i.test(item.name + (item.description||""));
-                      return (
-                        <div key={item.id} className="menu-item-row" style={{paddingLeft:22}}>
-                          <div className="menu-item-info">
-                            <div style={{display:"flex",alignItems:"center",gap:7}}>
-                              <div className="menu-item-name">{item.name}</div>
-                              {isBucket && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(251,191,36,.12)",color:"#fbbf24",border:"1px solid rgba(251,191,36,.3)",padding:"2px 6px"}}>🪣 BUCKET</span>}
-                              {isGlass  && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(147,197,253,.1)",color:"#93c5fd",border:"1px solid rgba(147,197,253,.25)",padding:"2px 6px"}}>🍷 GLASS</span>}
-                              {isBottle && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",letterSpacing:1,background:"rgba(147,197,253,.1)",color:"#93c5fd",border:"1px solid rgba(147,197,253,.25)",padding:"2px 6px"}}>🍾 BOTTLE</span>}
-                            </div>
-                            {item.description && <div className="menu-item-desc">{item.description}</div>}
-                            <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
-                          </div>
-                          <div className="menu-item-actions">
-                            {cart[item.id] ? (
-                              <div className="menu-qty-ctrl">
-                                <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
-                                <span className="menu-qty-val">{cart[item.id]}</span>
-                                <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
-                              </div>
-                            ) : (
-                              <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>ADD</button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+
+              {sec.cats.map(cat => (
+                <div key={cat.id}
+                  ref={el => { sectionRefs.current[cat.id] = el; }}
+                  data-cat-id={cat.id}>
+
+                  {/* Category header */}
+                  <div className="menu-cat-header">
+                    <span className="menu-cat-header-icon">{cat.icon}</span>
+                    <div className="menu-cat-header-text">
+                      <span>{cat.label.toUpperCase()}</span>
+                      <span className="menu-cat-header-count">{cat.items.length} items</span>
+                    </div>
                   </div>
-                );
-              })}
+
+                  {/* Items */}
+                  {cat.items.map(item => {
+                    const st = (item.serving_type || "").toLowerCase();
+                    const isBucket = st === "bucket" || (!st && /bucket/i.test(item.name + (item.description||"")));
+                    const isGlass  = st === "glass"  || (!st && /glass/i.test(item.name  + (item.description||"")));
+                    const isBottle = st === "bottle" || (!st && /bottle/i.test(item.name + (item.description||"")));
+                    const isDraft  = st === "draft"  || (!st && /draft/i.test(item.name  + (item.description||"")));
+                    return (
+                      <div key={item.id} className="menu-item-row">
+                        <div className="menu-item-info">
+                          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                            <div className="menu-item-name">{item.name}</div>
+                            {isBucket && <span className="menu-badge menu-badge-gold">🪣 BUCKET</span>}
+                            {isGlass   && <span className="menu-badge menu-badge-blue">🍷 GLASS</span>}
+                            {isBottle  && <span className="menu-badge menu-badge-blue">🍾 BOTTLE</span>}
+                            {isDraft   && <span className="menu-badge menu-badge-amber">🍺 DRAFT</span>}
+                          </div>
+                          {item.description && <div className="menu-item-desc">{item.description}</div>}
+                          <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
+                        </div>
+                        <div className="menu-item-actions">
+                          {cart[item.id] ? (
+                            <div className="menu-qty-ctrl">
+                              <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
+                              <span className="menu-qty-val">{cart[item.id]}</span>
+                              <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                            </div>
+                          ) : (
+                            <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>{t('addToCart')}</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           ))}
-          {available.length === 0 && <div className="empty">Menu not available right now</div>}
+
+          {available.length === 0 && <div className="empty">{t('noMenu')}</div>}
+
           {cartCount > 0 && (
             <div className="cart-fab" onClick={()=>setTab("cart")}>
-              View Cart · {cartCount} item{cartCount>1?"s":""} · ${cartTotal.toFixed(2)} →
+              {t('viewCart')} · {cartCount} {t('itemsLabel')} · ${cartTotal.toFixed(2)} →
             </div>
           )}
         </div>
@@ -3194,7 +3470,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
             <div className="empty" style={{padding:"60px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
               <div style={{fontSize:40}}>🛒</div>
               <div>Your cart is empty</div>
-              <button className="menu-add-btn" style={{padding:"10px 24px",marginTop:8}} onClick={()=>setTab("menu")}>BROWSE MENU</button>
+              <button className="menu-add-btn" style={{padding:"10px 24px",marginTop:8}} onClick={()=>setTab("menu")}>{t('browseMenu')}</button>
             </div>
           ) : (
             <>
@@ -3210,12 +3486,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
                 </div>
               ))}
               <div className="cart-total-row">
-                <span className="cart-total-label">TOTAL</span>
+                <span className="cart-total-label">{t('total')}</span>
                 <span className="cart-total-val">${cartTotal.toFixed(2)}</span>
               </div>
               <div style={{padding:"0 16px"}}>
                 <div className="afield" style={{marginBottom:14}}>
-                  <label className="afield-lbl">SELECT YOUR TABLE</label>
+                  <label className="afield-lbl">{t('selectTable')}</label>
                   <div className="table-picker-grid">
                     {VALID_TABLES.map(n => (
                       <button key={n}
@@ -3226,21 +3502,21 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
                     ))}
                   </div>
                   {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{tableErr}</div>}
-                  {table && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginTop:8,fontWeight:600}}>Selected: Table {table}</div>}
+                  {table && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginTop:8,fontWeight:600}}>{t('selectedTable')} {table}</div>}
                 </div>
                 <div className="afield" style={{marginBottom:20}}>
-                  <label className="afield-lbl">PAYMENT</label>
+                  <label className="afield-lbl">{t('payment')}</label>
                   {/* Payment method toggle */}
                   <div style={{display:"flex",gap:8,marginTop:10,marginBottom:12}}>
                     <button
                       onClick={()=>setPayMethod("credits")}
                       style={{flex:1,padding:"10px 8px",background:payMethod==="credits"?"#fff":"transparent",color:payMethod==="credits"?"#000":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="credits"?"#fff":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
-                      💳 CREDITS
+                      {t('payWithCredits')}
                     </button>
                     <button
                       onClick={()=>setPayMethod("paypal")}
                       style={{flex:1,padding:"10px 8px",background:payMethod==="paypal"?"#0070ba":"transparent",color:payMethod==="paypal"?"#fff":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="paypal"?"#0070ba":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
-                      PAYPAL
+                      {t('payWithPaypal')}
                     </button>
                   </div>
                   {/* Credits section */}
@@ -3279,7 +3555,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
                   <button className="order-place-btn"
                     disabled={placing||cartTotal>myCredits}
                     onClick={handleOrder}>
-                    {placing ? "PLACING ORDER..." : `PLACE ORDER · $${cartTotal.toFixed(2)}`}
+                    {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
                   </button>
                 )}
               </div>
@@ -3292,7 +3568,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
       {tab === "orders" && (
         <div>
           {myOrders.length === 0 && (
-            <div className="empty" style={{padding:"60px 0"}}>No orders yet</div>
+            <div className="empty" style={{padding:"60px 0"}}>{t('noOrders')}</div>
           )}
           {myOrders.map(ord => (
             <div key={ord.id} className="order-card">
@@ -3312,6 +3588,9 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
                 ))}
               </div>
               <div className="order-card-total">Total ${(+ord.total).toFixed(2)} · {ord.payment_method==="credits"?"Credits":"Card"}</div>
+              <button className="receipt-print-btn" onClick={() => printOrderReceipt(ord, user.name)}>
+                🖨 {t('printReceipt')}
+              </button>
             </div>
           ))}
         </div>
@@ -3447,8 +3726,18 @@ function MenuItemForm({ item, onClose, onSave }) {
       <div className="admin-form-title">{f.id ? "EDIT ITEM" : "NEW ITEM"}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
         <AField label="Name" val={f.name} on={set("name")} ph="e.g. Caribe Beer" />
-        <AField label="Description" val={f.description||""} on={set("description")} ph="e.g. Bucket available · Glass / Bottle prices" />
+        <AField label="Description" val={f.description||""} on={set("description")} ph="e.g. Cold draft on tap" />
         <AField label="Price ($)" val={f.price} on={set("price")} ph="e.g. 3.50" />
+        <div className="afield">
+          <label className="afield-lbl">SERVING TYPE</label>
+          <select className="afield-inp" value={f.serving_type||""} onChange={set("serving_type")}>
+            <option value="">— None —</option>
+            <option value="glass">🍷 Glass</option>
+            <option value="bottle">🍾 Bottle</option>
+            <option value="bucket">🪣 Bucket</option>
+            <option value="draft">🍺 Draft</option>
+          </select>
+        </div>
         <div className="afield">
           <label className="afield-lbl">CATEGORY</label>
           <select className="afield-inp" value={f.category} onChange={set("category")}>
@@ -3473,7 +3762,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
   const [editItem,   setEditItem]   = useState(null);
   const [addMode,    setAddMode]    = useState(false);
   const [filterCat,  setFilterCat]  = useState("all");
-  const blank = { name:"", description:"", price:"", category:"Beer", available:true, sort_order:0 };
+  const blank = { name:"", description:"", price:"", category:"Beer", available:true, sort_order:0, serving_type:"" };
 
   // Get all categories that actually have items
   const activeCats = ALL_MENU_CATS.filter(c => menuItems.some(i => i.category === c));
@@ -3544,251 +3833,6 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
       {menuItems.length === 0 && (
         <div style={{padding:"40px 20px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>
           No items yet — add your first item above
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Admin: Orders dashboard ── */
-function AdminOrders({ allOrders, onLoad, onUpdateStatus }) {
-  const [loaded,  setLoaded]  = useState(false);
-  const [page,    setPage]    = useState("live"); // "live" | "history"
-  const [search,  setSearch]  = useState("");
-
-  // Auto-refresh every 8s when on live page
-  useEffect(() => {
-    onLoad(); setLoaded(true);
-    const iv = setInterval(() => { if (page === "live") onLoad(); }, 8000);
-    return () => clearInterval(iv);
-  }, [page]);
-
-  const statusColor = s =>
-    s==="pending"   ? "#f59e0b" :
-    s==="confirmed" ? "#22c55e" :
-    s==="ready"     ? "#fff"    :
-    s==="delivered" ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.4)";
-
-  const statusBg = s =>
-    s==="pending"   ? "rgba(245,158,11,.12)"  :
-    s==="confirmed" ? "rgba(34,197,94,.1)"    :
-    s==="ready"     ? "rgba(255,255,255,.1)"  : "transparent";
-
-  const nextStatus = s => s==="pending"?"confirmed":s==="confirmed"?"ready":s==="ready"?"delivered":null;
-  const nextLabel  = s => s==="pending"?"✓ CONFIRM":s==="confirmed"?"🔔 MARK READY":s==="ready"?"✓ CLEAR TABLE":null;
-
-  // Live = pending + confirmed + ready (not delivered, not completed)
-  const liveOrders = allOrders
-    .filter(o => o.status !== "delivered" && o.status !== "completed")
-    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at)); // oldest first
-
-  // History = all orders, searchable
-  const historyOrders = allOrders
-    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); // newest first
-
-  const filterHistory = arr => {
-    if (!search.trim()) return arr;
-    const s = search.toLowerCase();
-    return arr.filter(o =>
-      String(o.order_number||"").includes(s) ||
-      o.user_name?.toLowerCase().includes(s) ||
-      String(o.table_number||"").includes(s)
-    );
-  };
-
-  const pendingCount    = liveOrders.filter(o=>o.status==="pending").length;
-  const confirmedCount  = liveOrders.filter(o=>o.status==="confirmed").length;
-  const readyCount      = liveOrders.filter(o=>o.status==="ready").length;
-
-  const LiveCard = ({ ord }) => (
-    <div className="live-order-card" style={{borderLeft:`4px solid ${statusColor(ord.status)}`}}>
-      {/* Status badge */}
-      <div className="live-order-status-row" style={{background:statusBg(ord.status)}}>
-        <span className="live-order-status-dot" style={{background:statusColor(ord.status)}} />
-        <span className="live-order-status-txt" style={{color:statusColor(ord.status)}}>
-          {ord.status.toUpperCase()}
-        </span>
-        <span className="live-order-time">
-          {new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-        </span>
-        {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
-      </div>
-      {/* Table + customer */}
-      <div className="live-order-hero">
-        <div>
-          <div className="live-order-table">TABLE {ord.table_number}</div>
-          <div className="live-order-name">{ord.user_name}</div>
-        </div>
-        <div className="live-order-total">${(+ord.total).toFixed(2)}</div>
-      </div>
-      {/* Items */}
-      <div className="live-order-items">
-        {ord.items.map((it,i) => (
-          <div key={i} className="live-order-item">
-            <span className="live-order-qty">{it.qty}×</span>
-            <span className="live-order-item-name">{it.name}</span>
-          </div>
-        ))}
-      </div>
-      {/* Action button */}
-      {nextStatus(ord.status) && (
-        <button className="live-order-action-btn"
-          style={{borderColor:statusColor(nextStatus(ord.status)),color:statusColor(nextStatus(ord.status))}}
-          onClick={()=>onUpdateStatus(ord.id, nextStatus(ord.status))}>
-          {nextLabel(ord.status)}
-        </button>
-      )}
-    </div>
-  );
-
-  return (
-    <div>
-      {/* Page selector */}
-      <div className="orders-page-tabs">
-        <button className={`orders-page-tab ${page==="live"?"orders-page-tab-on":""}`} onClick={()=>setPage("live")}>
-          <span className="orders-page-tab-label">🔴 LIVE ORDERS</span>
-          {liveOrders.length > 0 && <span className="orders-live-badge">{liveOrders.length}</span>}
-        </button>
-        <button className={`orders-page-tab ${page==="history"?"orders-page-tab-on":""}`} onClick={()=>setPage("history")}>
-          <span className="orders-page-tab-label">📋 HISTORY</span>
-        </button>
-      </div>
-
-      {/* ── LIVE PAGE ── */}
-      {page === "live" && (
-        <div>
-          {/* Stats bar */}
-          <div className="live-stats-bar">
-            <div className="live-stat">
-              <span className="live-stat-val" style={{color:"#f59e0b"}}>{pendingCount}</span>
-              <span className="live-stat-lbl">PENDING</span>
-            </div>
-            <div className="live-stat-divider"/>
-            <div className="live-stat">
-              <span className="live-stat-val" style={{color:"#22c55e"}}>{confirmedCount}</span>
-              <span className="live-stat-lbl">CONFIRMED</span>
-            </div>
-            <div className="live-stat-divider"/>
-            <div className="live-stat">
-              <span className="live-stat-val" style={{color:"#fff"}}>{readyCount}</span>
-              <span className="live-stat-lbl">READY</span>
-            </div>
-            <div className="live-stat-divider"/>
-            <div className="live-stat">
-              <span className="live-stat-val">{liveOrders.length}</span>
-              <span className="live-stat-lbl">TOTAL</span>
-            </div>
-          </div>
-
-          {liveOrders.length === 0 ? (
-            <div className="empty" style={{padding:"80px 0"}}>
-              <div style={{fontSize:40,marginBottom:12}}>✓</div>
-              <div>No active orders right now</div>
-            </div>
-          ) : (
-            <div className="live-orders-grid">
-              {/* Pending first */}
-              {liveOrders.filter(o=>o.status==="pending").map(o => <LiveCard key={o.id} ord={o} />)}
-              {/* Then confirmed */}
-              {liveOrders.filter(o=>o.status==="confirmed").map(o => <LiveCard key={o.id} ord={o} />)}
-              {/* Then ready to pick up */}
-              {liveOrders.filter(o=>o.status==="ready").map(o => <LiveCard key={o.id} ord={o} />)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── HISTORY PAGE ── */}
-      {page === "history" && (
-        <div>
-          <div style={{padding:"12px 14px 4px"}}>
-            <input className="afield-inp" placeholder="Search by name, #order or table..."
-              value={search} onChange={e=>setSearch(e.target.value)}
-              style={{width:"100%",boxSizing:"border-box"}} />
-          </div>
-
-          {(() => {
-            const results = filterHistory(historyOrders);
-            if (results.length === 0) return (
-              <div className="empty" style={{padding:"60px 0"}}>{search ? "No orders found" : "No delivered orders yet"}</div>
-            );
-
-            // When searching by name — group by person
-            const isNameSearch = search.trim().length > 0 &&
-              !search.trim().startsWith("#") &&
-              isNaN(search.trim());
-
-            if (isNameSearch) {
-              // Group results by user_name
-              const grouped = results.reduce((acc, o) => {
-                const key = o.user_name || "Unknown";
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(o);
-                return acc;
-              }, {});
-
-              return Object.entries(grouped).map(([name, orders]) => {
-                const totalSpent = orders.reduce((s,o) => s + (+o.total), 0);
-                const orderCount = orders.length;
-                return (
-                  <div key={name} style={{marginBottom:20}}>
-                    {/* Person header */}
-                    <div className="history-person-header">
-                      <div>
-                        <div className="history-person-name">{name}</div>
-                        <div className="history-person-meta">{orderCount} order{orderCount>1?"s":""} · Total spent: <strong>${totalSpent.toFixed(2)}</strong></div>
-                      </div>
-                    </div>
-                    {/* Their orders */}
-                    {orders.map(ord => (
-                      <div key={ord.id} className="history-order-row">
-                        <div className="history-order-row-left">
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
-                            <span className="history-order-table">Table {ord.table_number}</span>
-                          </div>
-                          <div className="history-order-items-inline">
-                            {ord.items.map((it,i) => `${it.qty}× ${it.name}`).join(" · ")}
-                          </div>
-                          <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
-                        </div>
-                        <div className="history-order-amount">${(+ord.total).toFixed(2)}</div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              });
-            }
-
-            // Default flat list (searching by # or table)
-            return (
-              <>
-                <div className="admin-section-lbl">
-                  {search ? "RESULTS" : "ORDER HISTORY"}
-                  <span className="admin-count">{results.length}</span>
-                </div>
-                {results.map(ord => (
-                  <div key={ord.id} className="order-card" style={{margin:"0 14px 8px",borderLeft:"3px solid rgba(255,255,255,.1)"}}>
-                    <div className="order-card-top">
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <div className="order-card-table">Table {ord.table_number}</div>
-                          {ord.order_number && <div className="order-id-chip">#{ord.order_number}</div>}
-                        </div>
-                        <div className="order-card-date">{ord.user_name} · {new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
-                      </div>
-                      <div className="order-card-total" style={{marginBottom:0,borderTop:"none",paddingTop:0,fontSize:16,color:"rgba(255,255,255,.6)"}}>${(+ord.total).toFixed(2)}</div>
-                    </div>
-                    <div className="order-card-items">
-                      {ord.items.map((it,i) => (
-                        <div key={i} className="order-item-line">{it.qty}× {it.name}<span>${(it.price*it.qty).toFixed(2)}</span></div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </>
-            );
-          })()}
         </div>
       )}
     </div>
@@ -4582,6 +4626,14 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       ${(+ord.total).toFixed(2)}
                     </span>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <button
+                        title="Print receipt"
+                        style={{padding:"10px 12px",background:"transparent",color:"rgba(255,255,255,.5)",border:"1px solid rgba(255,255,255,.15)",cursor:"pointer",fontSize:14,transition:"all .15s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.4)";e.currentTarget.style.color="#fff";}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.15)";e.currentTarget.style.color="rgba(255,255,255,.5)"}}
+                        onClick={()=>printReceipt({...ord, table_number: selectedTable})}>
+                        🖨
+                      </button>
                       {(nextStatus(ord.status) || ord.status === "ready") && (
                         <button
                           style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
@@ -4589,7 +4641,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                             if (ord.status === "ready") {
                               onDeleteOrder(ord.id); onLoad();
                             } else {
-                              if (ord.status === "pending") printReceipt({...ord, table_number: selectedTable});
                               onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad();
                             }
                           }}>
@@ -4819,6 +4870,8 @@ const CSS = `
   .hdr-badge-rank{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.55)}
   .admin-badge{font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:3px;border:1px solid rgba(255,255,255,.15);padding:6px 12px;color:rgba(255,255,255,.55)}
   .hdr-out{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.28);cursor:pointer;transition:all .15s;background:transparent}
+  .lang-toggle{padding:5px 10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1.5px;transition:all .15s}
+  .lang-toggle:hover{background:rgba(255,255,255,.08);color:#fff}
   .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
   .body{flex:1;overflow-y:auto;padding-bottom:64px}
   .body-inner{max-width:900px;margin:0 auto}
@@ -5244,15 +5297,33 @@ const CSS = `
   .wallet-topup-btn{padding:14px 24px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;transition:opacity .15s;flex-shrink:0}
   .wallet-topup-btn:hover{opacity:.85}
 
-  .menu-cat-header{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:6px;color:rgba(255,255,255,.5);padding:28px 16px 10px;text-transform:uppercase;display:flex;align-items:center;gap:12px;background:transparent;margin-top:0}
-  .menu-cat-header::before{content:"";flex:0 0 3px;height:18px;background:#fff;display:block}
-  .menu-cat-header::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.1)}
-  .menu-item-row{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
+  /* Sticky category pill bar */
+  .menu-pills-bar{position:sticky;top:0;z-index:20;display:flex;gap:8px;padding:10px 16px;background:#000;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0}
+  .menu-pills-bar::-webkit-scrollbar{display:none}
+  .menu-cat-pill{display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.55);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1.5px;cursor:pointer;white-space:nowrap;transition:all .2s;flex-shrink:0}
+  .menu-cat-pill:hover{background:rgba(255,255,255,.1);color:#fff}
+  .menu-cat-pill-on{background:#fff !important;color:#000 !important;border-color:#fff !important}
+  /* Section divider */
+  .menu-section-divider{display:flex;align-items:center;gap:12px;padding:20px 16px 8px}
+  .menu-section-line{flex:1;height:1px;background:rgba(255,255,255,.08)}
+  .menu-section-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:4px;color:rgba(255,255,255,.2)}
+  /* Category header */
+  .menu-cat-header{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:4px;color:#fff;padding:18px 16px 16px;text-transform:uppercase;display:flex;align-items:center;gap:12px;background:linear-gradient(90deg,#111 0%,#0d0d0d 60%,#0a0a0a 100%);border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.06);margin-top:4px;position:sticky;top:51px;z-index:15;overflow:hidden}
+  .menu-cat-header::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#fff 0%,rgba(255,255,255,.3) 100%)}
+  .menu-cat-header-icon{font-size:26px;line-height:1;filter:drop-shadow(0 0 8px rgba(255,255,255,.3))}
+  .menu-cat-header-text{flex:1;display:flex;align-items:baseline;gap:10px}
+  .menu-cat-header-count{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.3);font-weight:700;letter-spacing:0}
+  /* Item badges */
+  .menu-badge{font-size:9px;font-family:'Anton',sans-serif;letter-spacing:1px;padding:2px 6px;flex-shrink:0}
+  .menu-badge-gold{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+  .menu-badge-blue{background:rgba(147,197,253,.1);color:#93c5fd;border:1px solid rgba(147,197,253,.25)}
+  .menu-badge-amber{background:rgba(251,191,36,.12);color:#c76300;border:1px solid rgba(255,68,0,.3)}
+  .menu-item-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
   .menu-item-row:hover{background:rgba(255,255,255,.025)}
   .menu-item-info{flex:1;min-width:0}
-  .menu-item-name{font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:.5px;margin-bottom:4px}
-  .menu-item-desc{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.55);margin-bottom:6px;line-height:1.5}
-  .menu-item-price{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.8);letter-spacing:1px}
+  .menu-item-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;margin-bottom:4px}
+  .menu-item-desc{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-bottom:5px;line-height:1.4}
+  .menu-item-price{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.8);letter-spacing:1px}
   .menu-add-btn{padding:11px 20px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;transition:opacity .15s;flex-shrink:0}
   .menu-add-btn:hover{opacity:.85}
   .menu-qty-ctrl{display:flex;align-items:center;border:1px solid rgba(255,255,255,.2);flex-shrink:0}
@@ -5405,11 +5476,36 @@ const CSS = `
   .go-item-price{font-family:'Anton',sans-serif;font-size:13px;color:#fff;min-width:48px;text-align:right}
   .go-member-subtotal{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.35);text-align:right;margin-top:4px}
   .go-member-items{padding-left:4px}
-  .go-menu-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.05)}
-  .go-menu-name{font-family:'Outfit',sans-serif;font-size:14px;color:#fff;font-weight:600}
-  .go-menu-price{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin-top:2px}
+  .go-menu-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
+  .go-menu-row:hover{background:rgba(255,255,255,.025)}
+  .go-menu-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px}
+  .go-menu-desc{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-bottom:5px;line-height:1.4}
+  .go-menu-price{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.8);letter-spacing:1px}
   .go-add-btn{padding:8px 14px;background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .15s;white-space:nowrap}
   .go-add-btn:hover{border-color:#fff;color:#fff}
+  /* Open menu button */
+  .go-open-menu-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);color:#fff;font-family:'Anton',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all .2s;position:relative}
+  .go-open-menu-btn:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.4)}
+  .go-open-menu-badge{position:absolute;right:16px;top:50%;transform:translateY(-50%);background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:12px;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center}
+  /* Group menu modal */
+  .go-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px}
+  .go-modal-panel{width:100%;max-width:480px;max-height:80vh;background:#141414;border:1px solid rgba(255,255,255,.12);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.8)}
+  .go-modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .go-modal-title{font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:2px}
+  .go-modal-close{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);width:34px;height:34px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .go-modal-close:hover{border-color:#fff;color:#fff}
+  .go-modal-cats{display:flex;gap:8px;padding:14px 16px 10px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+  .go-modal-cats::-webkit-scrollbar{display:none}
+  .go-modal-cat-pill{padding:7px 16px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+  .go-modal-cat-pill:hover{border-color:rgba(255,255,255,.5);color:rgba(255,255,255,.8)}
+  .go-modal-cat-on{background:#fff !important;color:#000 !important;border-color:#fff !important}
+  .go-modal-body{flex:1;overflow-y:auto;overscroll-behavior:contain}
+  .go-modal-item{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
+  .go-modal-item:hover{background:rgba(255,255,255,.025)}
+  .go-modal-add-btn{padding:9px 16px;background:transparent;border:1.5px solid rgba(255,255,255,.3);color:#fff;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;cursor:pointer;transition:all .15s;white-space:nowrap;border-radius:2px}
+  .go-modal-add-btn:hover{background:#fff;color:#000;border-color:#fff}
+  .go-modal-add-btn:active{transform:scale(.96)}
+  .go-modal-footer{padding:16px;border-top:1px solid rgba(255,255,255,.1);flex-shrink:0}
   .go-footer{padding:16px}
   .go-footer-total{display:flex;justify-content:space-between;align-items:center;font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:1px;padding:12px 0;border-top:1px solid rgba(255,255,255,.15);border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:4px}
   .go-pay-mode-card{display:flex;align-items:center;gap:14px;padding:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:all .15s;margin-bottom:4px}
