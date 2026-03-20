@@ -495,11 +495,13 @@ export default function App() {
     if (item.id) {
       const { error } = await supabase.from("menu_items").update(item).eq("id", item.id);
       if (error) { toast$("Error saving item", false); return; }
+      // optimistic update for edits (realtime also fires but upserts safely)
       setMenuItems(m => m.map(x => x.id === item.id ? { ...x, ...item } : x));
     } else {
-      const { data, error } = await supabase.from("menu_items").insert(item).select().single();
+      // For new items: do NOT manually add to state — realtime INSERT event will add it
+      // This prevents the race condition where both manual add + realtime fire together
+      const { error } = await supabase.from("menu_items").insert(item);
       if (error) { toast$("Error adding item", false); return; }
-      setMenuItems(m => [...m, data]);
     }
     toast$("Menu item saved ✓");
   };
@@ -3400,7 +3402,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
 /* ── Menu category definitions ─────────────────────────────────────────────── */
 const MENU_SECTIONS = [
   { section:"DRINKS", cats:[
-    { id:"Coffee",        icon:"☕", label:"Coffee"         },
+    { id:"Hot Drinks",        icon:"☕", label:"Hot Drinks"         },
     { id:"Special Coffee",icon:"✨", label:"Special Coffee" },
     { id:"Beer",          icon:"🍺", label:"Beer"           },
     { id:"Cocktails",     icon:"🍹", label:"Cocktails"      },
@@ -3429,41 +3431,49 @@ const ALL_MENU_CATS = MENU_SECTIONS.flatMap(s => s.cats.map(c => c.id));
 const catMeta = id => MENU_SECTIONS.flatMap(s=>s.cats).find(c=>c.id===id) || { icon:"🍽", label:id };
 
 /* ── Admin: Menu management ── */
+function MenuItemForm({ item, onClose, onSave }) {
+  const [f, setF] = useState(item);
+  const [saving, setSaving] = useState(false);
+  const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
+  const handleSave = async () => {
+    if (!f.name.trim() || !f.price) return;
+    setSaving(true);
+    await onSave({ ...f, price: +f.price, sort_order: +f.sort_order });
+    setSaving(false);
+    onClose();
+  };
+  return (
+    <div className="admin-form-card" style={{margin:"0 14px 16px"}}>
+      <div className="admin-form-title">{f.id ? "EDIT ITEM" : "NEW ITEM"}</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+        <AField label="Name" val={f.name} on={set("name")} ph="e.g. Caribe Beer" />
+        <AField label="Description" val={f.description||""} on={set("description")} ph="e.g. Bucket available · Glass / Bottle prices" />
+        <AField label="Price ($)" val={f.price} on={set("price")} ph="e.g. 3.50" />
+        <div className="afield">
+          <label className="afield-lbl">CATEGORY</label>
+          <select className="afield-inp" value={f.category} onChange={set("category")}>
+            {MENU_SECTIONS.map(s => (
+              <optgroup key={s.section} label={`── ${s.section} ──`}>
+                {s.cats.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <AField label="Sort Order" val={f.sort_order} on={set("sort_order")} ph="0" />
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button className="admin-save-btn" style={{flex:1,opacity:saving?0.6:1}} disabled={saving} onClick={handleSave}>{saving ? "Saving…" : "Save ✓"}</button>
+        <button className="modal-cancel-btn" style={{flex:1}} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
   const [editItem,   setEditItem]   = useState(null);
   const [addMode,    setAddMode]    = useState(false);
   const [filterCat,  setFilterCat]  = useState("all");
   const blank = { name:"", description:"", price:"", category:"Beer", available:true, sort_order:0 };
-
-  const Form = ({ item, onClose }) => {
-    const [f, setF] = useState(item);
-    const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
-    return (
-      <div className="admin-form-card" style={{margin:"0 14px 16px"}}>
-        <div className="admin-form-title">{f.id ? "EDIT ITEM" : "NEW ITEM"}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
-          <AField label="Name" val={f.name} on={set("name")} ph="e.g. Caribe Beer" />
-          <AField label="Description" val={f.description||""} on={set("description")} ph="e.g. Bucket available · Glass / Bottle prices" />
-          <AField label="Price ($)" val={f.price} on={set("price")} ph="e.g. 3.50" />
-          <div className="afield">
-            <label className="afield-lbl">CATEGORY</label>
-            <select className="afield-inp" value={f.category} onChange={set("category")}>
-              {MENU_SECTIONS.map(s => (
-                <optgroup key={s.section} label={`── ${s.section} ──`}>
-                  {s.cats.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <AField label="Sort Order" val={f.sort_order} on={set("sort_order")} ph="0" />
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="admin-save-btn" style={{flex:1}} onClick={()=>{onSave({...f,price:+f.price,sort_order:+f.sort_order});onClose();}}>Save ✓</button>
-          <button className="modal-cancel-btn" style={{flex:1}} onClick={onClose}>Cancel</button>
-        </div>
-      </div>
-    );
-  };
 
   // Get all categories that actually have items
   const activeCats = ALL_MENU_CATS.filter(c => menuItems.some(i => i.category === c));
@@ -3493,7 +3503,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
         <button className="admin-save-btn" style={{padding:"8px 18px",fontSize:9,letterSpacing:2}} onClick={()=>{setAddMode(true);setEditItem(null);}}>+ ADD ITEM</button>
       </div>
 
-      {addMode && <Form item={blank} onClose={()=>setAddMode(false)} />}
+      {addMode && <MenuItemForm item={blank} onClose={()=>setAddMode(false)} onSave={onSave} />}
 
       {/* Grouped list */}
       {grouped.map(({ cat, items }) => {
@@ -3507,7 +3517,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
             </div>
             {items.map(item => (
               <div key={item.id}>
-                {editItem===item.id && <Form item={item} onClose={()=>setEditItem(null)} />}
+                {editItem===item.id && <MenuItemForm item={item} onClose={()=>setEditItem(null)} onSave={onSave} />}
                 <div className="admin-row" style={{opacity:item.available?1:.4}}>
                   <div style={{flex:1}}>
                     <div className="admin-row-teams">{item.name}</div>
