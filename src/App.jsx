@@ -2956,18 +2956,19 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
             }
           );
           const result = await res.json();
+          console.log("Topup result:", result);
           if (result.newBalance !== undefined) {
             onPayPalTopup(result.newBalance, +amount);
             setTopupAmt("");
             setTab("menu");
           } else {
-            alert("Payment failed: " + (result.error || "Unknown error"));
+            alert("Payment failed: " + (result.error || JSON.stringify(result)));
           }
-        } catch {
-          alert("Something went wrong. Please contact staff.");
+        } catch(e) {
+          alert("Something went wrong: " + e.message);
         }
       },
-      onError: () => alert("PayPal encountered an error. Please try again."),
+      onError: (err) => alert("PayPal error: " + JSON.stringify(err)),
     });
 
     if (buttons.isEligible()) {
