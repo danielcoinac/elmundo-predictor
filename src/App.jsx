@@ -27,7 +27,7 @@ const TRANSLATIONS = {
     // Cart
     yourCart:"Your cart", emptyCart:"Your cart is empty",
     selectTable:"SELECT YOUR TABLE", payment:"PAYMENT",
-    payWithCredits:"💳 CREDITS", payWithPaypal:"PAYPAL",
+    payWithCredits:"💳 CREDITS",
     placeOrder:"PLACE ORDER", placing:"PLACING...",
     total:"TOTAL", selectedTable:"Selected: Table",
     // Orders
@@ -35,7 +35,7 @@ const TRANSLATIONS = {
     ready:"🔔 Ready!", delivered:"Delivered", printReceipt:"PRINT RECEIPT",
     // Wallet
     creditBalance:"CREDIT BALANCE", topUp:"+ TOP UP", useCredits:"Use credits to pay for orders",
-    selectAmount:"SELECT AMOUNT", topUpWith:"TOP UP WITH PAYPAL",
+    selectAmount:"SELECT AMOUNT",
     // Group
     groupOrder:"GROUP ORDER", orderTogether:"Order together, pay your way",
     startGroup:"+ START GROUP ORDER", joinWithCode:"JOIN WITH CODE",
@@ -75,7 +75,7 @@ const TRANSLATIONS = {
     // Cart
     yourCart:"Uw winkelwagen", emptyCart:"Uw winkelwagen is leeg",
     selectTable:"KIES UW TAFEL", payment:"BETALING",
-    payWithCredits:"💳 CREDITS", payWithPaypal:"PAYPAL",
+    payWithCredits:"💳 CREDITS",
     placeOrder:"BESTELLING PLAATSEN", placing:"BEZIG...",
     total:"TOTAAL", selectedTable:"Geselecteerd: Tafel",
     // Orders
@@ -83,7 +83,7 @@ const TRANSLATIONS = {
     ready:"🔔 Klaar!", delivered:"Bezorgd", printReceipt:"BON AFDRUKKEN",
     // Wallet
     creditBalance:"CREDITSALDO", topUp:"+ OPLADEN", useCredits:"Gebruik credits om te betalen",
-    selectAmount:"KIES BEDRAG", topUpWith:"OPLADEN MET PAYPAL",
+    selectAmount:"KIES BEDRAG",
     // Group
     groupOrder:"GROEPSBESTELLING", orderTogether:"Samen bestellen, op jouw manier betalen",
     startGroup:"+ GROEPSBESTELLING STARTEN", joinWithCode:"DEELNEMEN MET CODE",
@@ -736,11 +736,6 @@ export default function App() {
     if (data) setAllOrders(data);
   };
 
-  const handlePayPalTopup = (newBalance, amount) => {
-    setMyCredits(newBalance);
-    toast$(`$${(+amount).toFixed(2)} credits added! 🎉`);
-  };
-
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
     const win = window.open("", "_blank", "width=340,height=500");
@@ -978,22 +973,6 @@ export default function App() {
     return true;
   };
 
-  const handleGroupPayPalSuccess = async (capturedAmount, isHost) => {
-    if (!activeGroup) return;
-    if (isHost) {
-      await supabase.from("group_order_members").update({ payment_status: "paid" }).eq("group_order_id", activeGroup.id);
-    } else {
-      // Fetch fresh members from DB to avoid stale state bugs with assignments
-      const { data: freshMembers } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
-      const assignedToMe = (freshMembers || groupMembers).filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
-      await supabase.from("group_order_members").update({ payment_status: "paid" })
-        .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
-    }
-    const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
-    if (data) setGroupMembers(data);
-    await checkAndPlaceGroupOrder(activeGroup.id);
-  };
-
   const resetGroupToLobby = async () => {
     if (!activeGroup) return;
     // Reset all members back to pending and clear any payment assignments
@@ -1042,7 +1021,7 @@ export default function App() {
           adminSaveRules={adminSaveRules}
           adminSaveSponsors={adminSaveSponsors}
           menuItems={menuItems} myCredits={myCredits} myOrders={myOrders}
-          placeOrder={placeOrder} onPayPalTopup={handlePayPalTopup}
+          placeOrder={placeOrder}
           saveMenuItem={saveMenuItem} deleteMenuItem={deleteMenuItem}
           toggleMenuItemAvail={toggleMenuItemAvail}
           adminAddCredits={adminAddCredits}
@@ -1056,7 +1035,7 @@ export default function App() {
           addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
           setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
           payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
-          handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+          calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
           printOrderReceipt={printOrderReceipt}
         />
@@ -1605,7 +1584,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 users,
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
                 adminSaveRules, adminSaveSponsors,
-                menuItems, myCredits, myOrders, placeOrder, onPayPalTopup,
+                menuItems, myCredits, myOrders, placeOrder,
                 saveMenuItem, deleteMenuItem, toggleMenuItemAvail,
                 adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded,
                 activeGroup, groupMembers, groupItems,
@@ -1613,7 +1592,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 addGroupItem, removeGroupItem,
                 setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
                 payGroupShareCredits, hostPayAllCredits,
-                handleGroupPayPalSuccess, calcMyGroupShare,
+                calcMyGroupShare,
                 resetGroupToLobby, printOrderReceipt }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
@@ -1670,13 +1649,13 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} />}
           {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
-          {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder} onPayPalTopup={onPayPalTopup}
+          {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
             createGroupOrder={createGroupOrder} joinGroupOrder={joinGroupOrder} leaveGroupOrder={leaveGroupOrder}
             addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
             setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
             payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
-            handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+            calcMyGroupShare={calcMyGroupShare}
             resetGroupToLobby={resetGroupToLobby}
             printOrderReceipt={printOrderReceipt}
           />}
@@ -2476,7 +2455,7 @@ function GroupOrderView({
   addGroupItem, removeGroupItem,
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
-  handleGroupPayPalSuccess, calcMyGroupShare,
+  calcMyGroupShare,
   resetGroupToLobby,
 }) {
   const [screen, setScreen] = useState("start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
@@ -2484,7 +2463,6 @@ function GroupOrderView({
   const [tableInput, setTableInput] = useState("");
   const [tableErr, setTableErr] = useState("");
   const [joinErr, setJoinErr] = useState("");
-  const [paypalReady, setPaypalReady] = useState(!!window.paypal);
   const [paying, setPaying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [takenTables, setTakenTables] = useState([]);
@@ -2499,12 +2477,6 @@ function GroupOrderView({
       .in("status", ["open", "awaiting_payment"])
       .then(({ data }) => setTakenTables(data ? data.map(r => String(r.table_number)) : []));
   }, [screen]);
-  const sharePaypalBtnsRef = useRef(null);
-  const sharePaypalContainerRef = useRef(null);
-  const hostPaypalBtnsRef = useRef(null);
-  const hostPaypalContainerRef = useRef(null);
-  const paypalConfigured = !!(import.meta.env.VITE_PAYPAL_CLIENT_ID) &&
-    import.meta.env.VITE_PAYPAL_CLIENT_ID !== "PLACEHOLDER";
 
   const isHost = activeGroup?.host_user_id === user.id;
   const myMember = groupMembers.find(m => m.user_id === user.id);
@@ -2524,71 +2496,6 @@ function GroupOrderView({
     if (activeGroup.status === "awaiting_payment") { setScreen("payment"); return; }
     setScreen("lobby");
   }, [activeGroup?.status]);
-
-  // Load PayPal SDK
-  useEffect(() => {
-    if (!paypalConfigured || window.paypal) { if (window.paypal) setPaypalReady(true); return; }
-    if (document.getElementById("paypal-sdk-script")) return;
-    const s = document.createElement("script");
-    s.id = "paypal-sdk-script";
-    s.src = `https://www.paypal.com/sdk/js?client-id=${import.meta.env.VITE_PAYPAL_CLIENT_ID}&currency=USD&locale=en_US`;
-    s.onload = () => setPaypalReady(true);
-    document.body.appendChild(s);
-  }, []);
-
-  // Render "my share" PayPal buttons
-  useEffect(() => {
-    if (screen !== "payment" || !paypalReady || !sharePaypalContainerRef.current) return;
-    if (myMember?.payment_status === "paid" || myMember?.payment_status === "assigned") return;
-    if (sharePaypalBtnsRef.current) { try { sharePaypalBtnsRef.current.close(); } catch {} sharePaypalBtnsRef.current = null; }
-    sharePaypalContainerRef.current.innerHTML = "";
-    if (myShare <= 0) return;
-    const btns = window.paypal.Buttons({
-      style: { layout:"vertical", color:"blue", shape:"rect", label:"pay", height:42 },
-      createOrder: (_d, a) => a.order.create({ purchase_units:[{ amount:{ value: myShare.toFixed(2), currency_code:"USD" } }] }),
-      onApprove: async (data) => {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`, {
-          method:"POST",
-          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token}` },
-          body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: myShare, skipCredits: true }),
-        });
-        const result = await res.json();
-        if (result.success) await handleGroupPayPalSuccess(myShare, false);
-        else alert("Payment failed: " + (result.error || "Unknown error"));
-      },
-      onCancel: () => toast$("Payment cancelled — you can try again", false),
-      onError: () => toast$("PayPal error. Please try again.", false),
-    });
-    if (btns.isEligible()) { btns.render(sharePaypalContainerRef.current); sharePaypalBtnsRef.current = btns; }
-  }, [screen, paypalReady, myShare, myMember?.payment_status]);
-
-  // Render "host pays all" PayPal buttons
-  useEffect(() => {
-    if (screen !== "payment" || !paypalReady || !hostPaypalContainerRef.current) return;
-    if (!isHost || activeGroup?.payment_mode !== "host") return;
-    if (hostPaypalBtnsRef.current) { try { hostPaypalBtnsRef.current.close(); } catch {} hostPaypalBtnsRef.current = null; }
-    hostPaypalContainerRef.current.innerHTML = "";
-    if (groupTotal <= 0) return;
-    const btns = window.paypal.Buttons({
-      style: { layout:"vertical", color:"blue", shape:"rect", label:"pay", height:42 },
-      createOrder: (_d, a) => a.order.create({ purchase_units:[{ amount:{ value: groupTotal.toFixed(2), currency_code:"USD" } }] }),
-      onApprove: async (data) => {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`, {
-          method:"POST",
-          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token}` },
-          body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: groupTotal, skipCredits: true }),
-        });
-        const result = await res.json();
-        if (result.success) await handleGroupPayPalSuccess(groupTotal, true);
-        else alert("Payment failed: " + (result.error || "Unknown error"));
-      },
-      onCancel: () => toast$("Payment cancelled — you can try again", false),
-      onError: () => toast$("PayPal error. Please try again.", false),
-    });
-    if (btns.isEligible()) { btns.render(hostPaypalContainerRef.current); hostPaypalBtnsRef.current = btns; }
-  }, [screen, paypalReady, groupTotal, activeGroup?.payment_mode]);
 
   const handleCreate = async () => {
     if (!tableInput.trim() || isNaN(+tableInput) || +tableInput < 1 || +tableInput > 26) {
@@ -2955,12 +2862,6 @@ function GroupOrderView({
                   Not enough credits (balance: ${myCredits.toFixed(2)})
                 </div>
               )}
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",textAlign:"center",margin:"8px 0",letterSpacing:1}}>— OR —</div>
-              {paypalReady ? (
-                <div ref={hostPaypalContainerRef} />
-              ) : (
-                <div className="paypal-hint">{paypalConfigured ? "Loading PayPal…" : "PayPal not configured"}</div>
-              )}
             </>
           )}
         </div>
@@ -3045,12 +2946,6 @@ function GroupOrderView({
                   Not enough credits (balance: ${myCredits.toFixed(2)})
                 </div>
               )}
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",textAlign:"center",margin:"8px 0",letterSpacing:1}}>— OR —</div>
-              {paypalReady ? (
-                <div ref={sharePaypalContainerRef} />
-              ) : (
-                <div className="paypal-hint">{paypalConfigured ? "Loading PayPal…" : "PayPal not configured"}</div>
-              )}
             </>
           )}
 
@@ -3082,13 +2977,13 @@ function GroupOrderView({
   return null;
 }
 
-function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPalTopup,
+function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   activeGroup, groupMembers, groupItems,
   createGroupOrder, joinGroupOrder, leaveGroupOrder,
   addGroupItem, removeGroupItem,
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
-  handleGroupPayPalSuccess, calcMyGroupShare,
+  calcMyGroupShare,
   resetGroupToLobby, printOrderReceipt }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
@@ -3097,86 +2992,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
   const [placing,     setPlacing]     = useState(false);
   const [tableErr,    setTableErr]    = useState("");
   const [topupAmt,    setTopupAmt]    = useState("");
-  const [paypalReady, setPaypalReady] = useState(false);
-  const [payMethod,   setPayMethod]   = useState("credits"); // "credits" | "paypal"
-  const paypalBtnsRef      = useRef(null);
-  const paypalContainerRef = useRef(null);
-  const cartPaypalBtnsRef      = useRef(null);
-  const cartPaypalContainerRef = useRef(null);
-  const paypalConfigured = !!(import.meta.env.VITE_PAYPAL_CLIENT_ID) &&
-    import.meta.env.VITE_PAYPAL_CLIENT_ID !== "PLACEHOLDER";
-
-  // Load PayPal JS SDK once when wallet tab or cart PayPal is opened
-  useEffect(() => {
-    const needsPayPal = tab === "wallet" || (tab === "cart" && payMethod === "paypal");
-    if (!needsPayPal) return;
-    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-    if (!clientId || clientId === "PLACEHOLDER") return;
-    if (window.paypal) { setPaypalReady(true); return; }
-    if (document.getElementById("paypal-sdk-script")) return; // already loading
-    const script = document.createElement("script");
-    script.id = "paypal-sdk-script";
-    script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&locale=en_US`;
-    script.onload = () => setPaypalReady(true);
-    document.body.appendChild(script);
-  }, [tab, payMethod]);
-
-  // Render / re-render PayPal buttons whenever SDK is ready or amount changes
-  useEffect(() => {
-    const container = paypalContainerRef.current;
-    if (!paypalReady || !container) return;
-
-    // Close previous render
-    if (paypalBtnsRef.current) {
-      try { paypalBtnsRef.current.close(); } catch {}
-      paypalBtnsRef.current = null;
-    }
-    container.innerHTML = "";
-
-    if (!topupAmt || +topupAmt < 1) return;
-
-    const amount = (+topupAmt).toFixed(2);
-    const buttons = window.paypal.Buttons({
-      style: { layout: "vertical", color: "blue", shape: "rect", label: "pay", height: 45 },
-      createOrder: (_data, actions) => actions.order.create({
-        purchase_units: [{ amount: { value: amount, currency_code: "USD" } }],
-      }),
-      onApprove: async (data) => {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const res = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${session?.access_token}`,
-              },
-              body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: +amount }),
-            }
-          );
-          const result = await res.json();
-          console.log("Topup result:", result);
-          if (result.newBalance !== undefined) {
-            onPayPalTopup(result.newBalance, +amount);
-            setTopupAmt("");
-            setTab("menu");
-          } else {
-            alert("Payment failed: " + (result.error || JSON.stringify(result)));
-          }
-        } catch(e) {
-          alert("Something went wrong: " + e.message);
-        }
-      },
-      onCancel: () => toast$("Payment cancelled — you can try again", false),
-      onError: () => toast$("PayPal error. Please try again.", false),
-    });
-
-    if (buttons.isEligible()) {
-      buttons.render(container);
-      paypalBtnsRef.current = buttons;
-    }
-  }, [paypalReady, topupAmt]);
 
   const available  = menuItems.filter(i => i.available);
   const [activeCat, setActiveCat] = useState(null);
@@ -3221,69 +3036,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
   // All valid table numbers in the bar
   const VALID_TABLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
   const placingRef = useRef(false); // ref guard prevents double submit
-
-  // Render / re-render PayPal buttons for cart checkout (placed after cartTotal/cartItems/VALID_TABLES)
-  useEffect(() => {
-    const container = cartPaypalContainerRef.current;
-    if (!paypalReady || !container) return;
-
-    if (cartPaypalBtnsRef.current) {
-      try { cartPaypalBtnsRef.current.close(); } catch {}
-      cartPaypalBtnsRef.current = null;
-    }
-    container.innerHTML = "";
-
-    if (payMethod !== "paypal" || cartTotal <= 0) return;
-
-    const amount = cartTotal.toFixed(2);
-    const buttons = window.paypal.Buttons({
-      style: { layout: "vertical", color: "blue", shape: "rect", label: "pay", height: 45 },
-      createOrder: (_data, actions) => actions.order.create({
-        purchase_units: [{ amount: { value: amount, currency_code: "USD" } }],
-      }),
-      onApprove: async (data) => {
-        if (!table.trim() || !VALID_TABLES.includes(parseInt(table))) {
-          setTableErr("Please select your table first");
-          return;
-        }
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const res = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-order`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${session?.access_token}`,
-              },
-              body: JSON.stringify({ orderId: data.orderID, userId: user.id, expectedAmount: +amount }),
-            }
-          );
-          const result = await res.json();
-          if (result.success) {
-            const ok = await onPlaceOrder({
-              tableNumber: table,
-              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
-              total: +amount,
-              paymentMethod: "paypal",
-            });
-            if (ok) { clearCart(); setTab("orders"); setPayMethod("credits"); }
-          } else {
-            alert("Payment failed: " + (result.error || "Unknown error"));
-          }
-        } catch {
-          alert("Something went wrong. Please contact staff.");
-        }
-      },
-      onCancel: () => toast$("Payment cancelled — you can try again", false),
-      onError: () => toast$("PayPal error. Please try again.", false),
-    });
-
-    if (buttons.isEligible()) {
-      buttons.render(container);
-      cartPaypalBtnsRef.current = buttons;
-    }
-  }, [paypalReady, payMethod, cartTotal]);
 
   // ── Set initial active category when menu first loads ──
   useEffect(() => {
@@ -3506,58 +3258,27 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
                 </div>
                 <div className="afield" style={{marginBottom:20}}>
                   <label className="afield-lbl">{t('payment')}</label>
-                  {/* Payment method toggle */}
-                  <div style={{display:"flex",gap:8,marginTop:10,marginBottom:12}}>
-                    <button
-                      onClick={()=>setPayMethod("credits")}
-                      style={{flex:1,padding:"10px 8px",background:payMethod==="credits"?"#fff":"transparent",color:payMethod==="credits"?"#000":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="credits"?"#fff":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
-                      {t('payWithCredits')}
-                    </button>
-                    <button
-                      onClick={()=>setPayMethod("paypal")}
-                      style={{flex:1,padding:"10px 8px",background:payMethod==="paypal"?"#0070ba":"transparent",color:payMethod==="paypal"?"#fff":"rgba(255,255,255,.5)",border:"1px solid",borderColor:payMethod==="paypal"?"#0070ba":"rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}>
-                      {t('payWithPaypal')}
-                    </button>
-                  </div>
-                  {/* Credits section */}
-                  {payMethod === "credits" && (
-                    <>
-                      <div style={{padding:"12px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div>
-                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",letterSpacing:.5}}>💳 Credits</div>
-                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)",marginTop:3,fontWeight:600}}>Your balance: <span style={{color:"#fff"}}>${(+myCredits).toFixed(2)}</span></div>
-                        </div>
-                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color: cartTotal > myCredits ? "#f87171" : "#4ade80"}}>
-                          ${cartTotal.toFixed(2)}
-                        </div>
-                      </div>
-                      {cartTotal > myCredits && (
-                        <div className="wallet-warning">
-                          ⚠ Not enough credits — you need ${(cartTotal - myCredits).toFixed(2)} more.
-                          <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {/* PayPal section */}
-                  {payMethod === "paypal" && (
+                  <div style={{padding:"12px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
                     <div>
-                      {!paypalReady && (
-                        <div className="paypal-hint">
-                          {paypalConfigured ? "Loading PayPal…" : "PayPal not configured yet"}
-                        </div>
-                      )}
-                      <div ref={cartPaypalContainerRef} style={{minHeight: paypalReady ? 55 : 0}} />
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",letterSpacing:.5}}>💳 Credits</div>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)",marginTop:3,fontWeight:600}}>Your balance: <span style={{color:"#fff"}}>${(+myCredits).toFixed(2)}</span></div>
+                    </div>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color: cartTotal > myCredits ? "#f87171" : "#4ade80"}}>
+                      ${cartTotal.toFixed(2)}
+                    </div>
+                  </div>
+                  {cartTotal > myCredits && (
+                    <div className="wallet-warning">
+                      ⚠ Not enough credits — you need ${(cartTotal - myCredits).toFixed(2)} more.
+                      <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
                     </div>
                   )}
                 </div>
-                {payMethod === "credits" && (
-                  <button className="order-place-btn"
-                    disabled={placing||cartTotal>myCredits}
-                    onClick={handleOrder}>
-                    {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
-                  </button>
-                )}
+                <button className="order-place-btn"
+                  disabled={placing||cartTotal>myCredits}
+                  onClick={handleOrder}>
+                  {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
+                </button>
               </div>
             </>
           )}
@@ -3640,18 +3361,10 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
             </div>
           </div>
 
-          {/* PayPal top-up */}
-          <div style={{marginBottom:16}}>
-            <div className="wallet-section-title" style={{marginBottom:10}}>OR PAY ONLINE</div>
-            {(!topupAmt || +topupAmt < 1) && (
-              <div className="paypal-hint">Select an amount above to pay with PayPal</div>
-            )}
-            {topupAmt && +topupAmt >= 1 && !paypalReady && (
-              <div className="paypal-hint">
-                {paypalConfigured ? "Loading PayPal…" : "PayPal not configured yet"}
-              </div>
-            )}
-            <div ref={paypalContainerRef} style={{minHeight: topupAmt && +topupAmt >= 1 ? 55 : 0}} />
+          {/* Cash/card top-up info */}
+          <div style={{marginBottom:16,padding:"14px 16px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.6)",textAlign:"center",lineHeight:1.6}}>
+            💵 Top up at the bar — cash or card accepted.<br/>
+            <span style={{fontSize:12,color:"rgba(255,255,255,.4)"}}>Staff will add credits to your account instantly.</span>
           </div>
 
           {/* How credits work */}
@@ -3670,7 +3383,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
           addGroupItem={addGroupItem} removeGroupItem={removeGroupItem}
           setGroupPaymentMode={setGroupPaymentMode} assignMyPaymentTo={assignMyPaymentTo} unassignMyPayment={unassignMyPayment}
           payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
-          handleGroupPayPalSuccess={handleGroupPayPalSuccess} calcMyGroupShare={calcMyGroupShare}
+          calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
         />
       )}
@@ -4626,14 +4339,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       ${(+ord.total).toFixed(2)}
                     </span>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <button
-                        title="Print receipt"
-                        style={{padding:"10px 12px",background:"transparent",color:"rgba(255,255,255,.5)",border:"1px solid rgba(255,255,255,.15)",cursor:"pointer",fontSize:14,transition:"all .15s"}}
-                        onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.4)";e.currentTarget.style.color="#fff";}}
-                        onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,.15)";e.currentTarget.style.color="rgba(255,255,255,.5)"}}
-                        onClick={()=>printReceipt({...ord, table_number: selectedTable})}>
-                        🖨
-                      </button>
                       {(nextStatus(ord.status) || ord.status === "ready") && (
                         <button
                           style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
@@ -4641,6 +4346,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                             if (ord.status === "ready") {
                               onDeleteOrder(ord.id); onLoad();
                             } else {
+                              if (ord.status === "pending") printReceipt({...ord, table_number: selectedTable});
                               onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad();
                             }
                           }}>
@@ -5363,7 +5069,6 @@ const CSS = `
   .wallet-amt-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
   .wallet-amt-on{background:rgba(255,255,255,.1);border-color:#fff;color:#fff}
   .topup-desk-box{margin:0 0 16px;padding:20px 18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.15);text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
-  .paypal-hint{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:14px 0;letter-spacing:.3px}
   .topup-desk-icon{font-size:32px;line-height:1}
   .topup-desk-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:#fff}
   .topup-desk-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.8;max-width:300px;text-align:left}
