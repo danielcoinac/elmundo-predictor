@@ -2386,7 +2386,7 @@ function GroupOrderView({
     if (document.getElementById("paypal-sdk-script")) return;
     const s = document.createElement("script");
     s.id = "paypal-sdk-script";
-    s.src = `https://www.paypal.com/sdk/js?client-id=${import.meta.env.VITE_PAYPAL_CLIENT_ID}&currency=USD`;
+    s.src = `https://www.paypal.com/sdk/js?client-id=${import.meta.env.VITE_PAYPAL_CLIENT_ID}&currency=USD&locale=en_US`;
     s.onload = () => setPaypalReady(true);
     document.body.appendChild(s);
   }, []);
@@ -2916,7 +2916,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onPayPal
     if (document.getElementById("paypal-sdk-script")) return; // already loading
     const script = document.createElement("script");
     script.id = "paypal-sdk-script";
-    script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD`;
+    script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&locale=en_US`;
     script.onload = () => setPaypalReady(true);
     document.body.appendChild(script);
   }, [tab, payMethod]);
