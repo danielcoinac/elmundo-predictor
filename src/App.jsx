@@ -184,7 +184,7 @@ export default function App() {
               .from("group_orders")
               .select("*")
               .eq("id", memRow.group_order_id)
-              .in("status", ["open", "awaiting_payment"])
+              .in("status", ["open", "awaiting_payment", "placed"])
               .maybeSingle();
             if (grpRow) {
               setActiveGroup(grpRow);
@@ -330,9 +330,39 @@ export default function App() {
         }).subscribe();
     const oSub = supabase.channel(`go-order-${gid}`)
       .on("postgres_changes", { event:"UPDATE", schema:"public", table:"group_orders", filter:`id=eq.${gid}` },
-        payload => { if (payload.new) setActiveGroup(prev => ({ ...prev, ...payload.new })); }).subscribe();
+        async (payload) => {
+          const fresh = payload.new && Object.keys(payload.new).length > 1
+            ? payload.new
+            : (await supabase.from("group_orders").select("*").eq("id", gid).maybeSingle()).data;
+          if (fresh) setActiveGroup(prev => ({ ...prev, ...fresh }));
+        }).subscribe();
     return () => { supabase.removeChannel(mSub); supabase.removeChannel(iSub); supabase.removeChannel(oSub); };
   }, [activeGroup?.id]);
+
+  // ─── GROUP ORDER POLLING FALLBACK ────────────────────────────────────────────
+  // Supabase realtime postgres_changes requires REPLICA IDENTITY FULL + publication
+  // to deliver to ALL subscribers. This poll every 4s is the safety net so members
+  // always see status changes (checkout → payment, who paid, order placed) even if
+  // realtime doesn't fire for them.
+  useEffect(() => {
+    if (!activeGroup?.id) return;
+    if (activeGroup.status === "placed" || activeGroup.status === "cancelled") return;
+    const gid = activeGroup.id;
+    const iv = setInterval(async () => {
+      const [grpRes, memsRes, itemsRes] = await Promise.all([
+        supabase.from("group_orders").select("*").eq("id", gid).maybeSingle(),
+        supabase.from("group_order_members").select("*").eq("group_order_id", gid),
+        supabase.from("group_order_items").select("*").eq("group_order_id", gid),
+      ]);
+      if (grpRes.data) setActiveGroup(prev => {
+        if (!prev || JSON.stringify(prev) === JSON.stringify(grpRes.data)) return prev;
+        return grpRes.data;
+      });
+      if (memsRes.data) setGroupMembers(memsRes.data);
+      if (itemsRes.data) setGroupItems(itemsRes.data);
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [activeGroup?.id, activeGroup?.status]);
 
   const toast$ = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3200); };
 
@@ -705,7 +735,11 @@ export default function App() {
     const { data: order } = await supabase.from("group_orders").select("*").eq("id", groupId).maybeSingle();
     if (!items || !order) return false;
     // Guard against race condition: only place if still awaiting_payment (not already placed)
-    if (order.status !== "awaiting_payment") return false;
+    if (order.status !== "awaiting_payment") {
+      // Order was already placed by another member — just update local state so this user transitions too
+      setActiveGroup(prev => prev ? { ...prev, status: order.status } : prev);
+      return order.status === "placed";
+    }
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
     await supabase.from("orders").insert({
       user_id: order.host_user_id,
@@ -729,12 +763,16 @@ export default function App() {
 
   const payGroupShareCredits = async () => {
     if (!activeGroup) return false;
-    const myShare = calcMyGroupShare(user.id, groupMembers, groupItems);
+    // Fetch fresh members from DB — don't rely on potentially stale React state
+    const { data: freshMembers } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    const { data: freshItems } = await supabase.from("group_order_items").select("*").eq("group_order_id", activeGroup.id);
+    const myShare = calcMyGroupShare(user.id, freshMembers || groupMembers, freshItems || groupItems);
     if (myCredits < myShare) { toast$("Not enough credits", false); return false; }
     const newBal = +(myCredits - myShare).toFixed(2);
     await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
     setMyCredits(newBal);
-    const assignedToMe = groupMembers.filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
+    // Mark me and anyone assigned to me as paid (fresh from DB to avoid stale state bugs)
+    const assignedToMe = (freshMembers || groupMembers).filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
     await supabase.from("group_order_members").update({ payment_status: "paid" })
       .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
     const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
@@ -762,7 +800,9 @@ export default function App() {
     if (isHost) {
       await supabase.from("group_order_members").update({ payment_status: "paid" }).eq("group_order_id", activeGroup.id);
     } else {
-      const assignedToMe = groupMembers.filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
+      // Fetch fresh members from DB to avoid stale state bugs with assignments
+      const { data: freshMembers } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+      const assignedToMe = (freshMembers || groupMembers).filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
       await supabase.from("group_order_members").update({ payment_status: "paid" })
         .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
     }
@@ -773,12 +813,18 @@ export default function App() {
 
   const resetGroupToLobby = async () => {
     if (!activeGroup) return;
+    // Reset all members back to pending and clear any payment assignments
+    await supabase.from("group_order_members")
+      .update({ payment_status: "pending", pay_for_user_id: null })
+      .eq("group_order_id", activeGroup.id);
     const { data } = await supabase.from("group_orders")
       .update({ status: "open", payment_mode: null })
       .eq("id", activeGroup.id)
       .select()
       .single();
     if (data) setActiveGroup(data);
+    const { data: mems } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
+    if (mems) setGroupMembers(mems);
   };
 
   return (
