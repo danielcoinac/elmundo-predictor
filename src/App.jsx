@@ -1205,8 +1205,8 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
               <FField label="Full Name"    val={form.name}     on={set("name")}     ph="John Doe"          />
               <FField label="Phone Number" val={form.phone}    on={set("phone")}    ph="+599 700 0000"     />
             </>}
-            <FField label="Email Address"  val={form.email}    on={set("email")}    ph="you@email.com"     type="email"    />
-            <FField label="Password"       val={form.password} on={set("password")} ph="Min. 6 characters" type="password" />
+            <FField label="Email Address"  val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
+            <FField label="Password"       val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
             {err && <div className="auth-err"><span className="auth-err-dot">!</span>{err}</div>}
             <button className="auth-cta" onClick={isLogin ? onLogin : onRegister}>
               {isLogin ? "SIGN IN" : "CREATE ACCOUNT"}
