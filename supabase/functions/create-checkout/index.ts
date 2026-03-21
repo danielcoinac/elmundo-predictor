@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { type, amount, userId, userEmail, orderId, items, total, successUrl, cancelUrl } = body;
+    const { type, amount, userId, userEmail, orderId, groupOrderId, items, total, successUrl, cancelUrl } = body;
 
     if (type === "topup") {
       // ── TOP UP ──
@@ -74,8 +74,33 @@ Deno.serve(async (req) => {
 
       return json({ url: session.url });
 
+    } else if (type === "group_host_payment" || type === "group_individual_payment") {
+      // ── GROUP ORDER PAYMENT ──
+      if (!groupOrderId || !userId || !items || !total) return json({ error: "Missing group order fields" }, 400);
+
+      const lineItems = items.map((item: { name: string; qty: number; price: number }) => ({
+        price_data: {
+          currency: "usd",
+          product_data: { name: item.name },
+          unit_amount: Math.round(item.price * 100),
+        },
+        quantity: item.qty,
+      }));
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: lineItems,
+        mode: "payment",
+        success_url: `${successUrl}?stripe=group_success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${cancelUrl}?stripe=cancelled`,
+        customer_email: userEmail,
+        metadata: { type, userId, groupOrderId, total: String(total) },
+      });
+
+      return json({ url: session.url });
+
     } else {
-      return json({ error: "Invalid type — must be 'topup' or 'order'" }, 400);
+      return json({ error: "Invalid type" }, 400);
     }
 
   } catch (err) {

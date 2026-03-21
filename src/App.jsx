@@ -316,6 +316,9 @@ export default function App() {
           } else if (stripeResult === "order_success") {
             window.history.replaceState({}, "", window.location.pathname);
             setTimeout(() => toast$("Payment confirmed! Your order is being prepared 🍺"), 600);
+          } else if (stripeResult === "group_success") {
+            window.history.replaceState({}, "", window.location.pathname);
+            setTimeout(() => toast$("Group payment confirmed! Your order is being prepared 🍺"), 600);
           } else if (stripeResult === "cancelled") {
             window.history.replaceState({}, "", window.location.pathname);
             setTimeout(() => toast$("Payment cancelled", false), 600);
@@ -2641,6 +2644,7 @@ function GroupOrderView({
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
   resetGroupToLobby,
+  stripeCheckout, onToast,
 }) {
   const [screen, setScreen] = useState("start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
   const [joinCode, setJoinCode] = useState("");
@@ -3049,6 +3053,18 @@ function GroupOrderView({
                   Not enough credits (balance: ${myCredits.toFixed(2)})
                 </div>
               )}
+              <button className="go-btn-primary stripe-pay-btn" style={{marginBottom:10}}
+                disabled={paying}
+                onClick={() => stripeCheckout({
+                  type: "group_host_payment",
+                  groupOrderId: activeGroup.id,
+                  userId: user.id,
+                  userEmail: user.email,
+                  items: [{ name: "Group Order", qty: 1, price: groupTotal }],
+                  total: groupTotal,
+                })}>
+                PAY VIA CARD · ${groupTotal.toFixed(2)}
+              </button>
             </>
           )}
         </div>
@@ -3133,6 +3149,18 @@ function GroupOrderView({
                   Not enough credits (balance: ${myCredits.toFixed(2)})
                 </div>
               )}
+              <button className="go-btn-primary stripe-pay-btn" style={{marginBottom:10}}
+                disabled={paying}
+                onClick={() => stripeCheckout({
+                  type: "group_individual_payment",
+                  groupOrderId: activeGroup.id,
+                  userId: user.id,
+                  userEmail: user.email,
+                  items: [{ name: "My Group Share", qty: 1, price: myShare }],
+                  total: myShare,
+                })}>
+                PAY MY SHARE VIA CARD · ${myShare.toFixed(2)}
+              </button>
             </>
           )}
 
@@ -3633,6 +3661,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
           payGroupShareCredits={payGroupShareCredits} hostPayAllCredits={hostPayAllCredits}
           calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
+          stripeCheckout={stripeCheckout} onToast={onToast}
         />
       )}
     </div>

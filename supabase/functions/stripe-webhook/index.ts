@@ -14,6 +14,30 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function placeGroupOrderIfReady(db: any, groupOrderId: string) {
+  const { data: members } = await db.from("group_order_members").select("*").eq("group_order_id", groupOrderId);
+  if (!members?.every((m: { payment_status: string }) => m.payment_status === "paid")) return;
+
+  const { data: items } = await db.from("group_order_items").select("*").eq("group_order_id", groupOrderId);
+  const { data: groupOrder } = await db.from("group_orders").select("*").eq("id", groupOrderId).maybeSingle();
+  if (!items || !groupOrder || groupOrder.status !== "awaiting_payment") return;
+
+  const total = items.reduce((s: number, i: { price: number; qty: number }) => s + i.price * i.qty, 0);
+  await db.from("orders").insert({
+    user_id:        groupOrder.host_user_id,
+    table_number:   groupOrder.table_number,
+    items:          items.map((i: { item_id: string; item_name: string; price: number; qty: number }) => ({
+      id: i.item_id, name: i.item_name, price: i.price, qty: i.qty,
+    })),
+    total:          +total.toFixed(2),
+    payment_method: groupOrder.payment_mode === "host" ? "group_host" : "group_individual",
+    status:         "pending",
+  });
+  await db.from("group_orders").update({ status: "placed" }).eq("id", groupOrderId);
+  console.log(`Group order ${groupOrderId} placed`);
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -82,11 +106,44 @@ Deno.serve(async (req) => {
         .update({
           payment_method:    "card",
           stripe_session_id: session.id,
-          status:            "pending", // bar still needs to confirm
+          status:            "pending",
         })
         .eq("id", orderId);
 
       console.log(`Order ${orderId} marked as card-paid`);
+
+    } else if (type === "group_host_payment") {
+      // ── Group order: host pays full bill via card ──
+      const groupOrderId = meta.groupOrderId;
+      if (!groupOrderId || !userId) throw new Error("Missing groupOrderId or userId in metadata");
+
+      // Mark all members as paid
+      await db.from("group_order_members")
+        .update({ payment_status: "paid" })
+        .eq("group_order_id", groupOrderId);
+
+      await placeGroupOrderIfReady(db, groupOrderId);
+      console.log(`Group order ${groupOrderId} host paid via card`);
+
+    } else if (type === "group_individual_payment") {
+      // ── Group order: member pays their share via card ──
+      const groupOrderId = meta.groupOrderId;
+      if (!groupOrderId || !userId) throw new Error("Missing groupOrderId or userId in metadata");
+
+      // Mark this user + anyone assigned to them as paid
+      const { data: members } = await db.from("group_order_members")
+        .select("*").eq("group_order_id", groupOrderId);
+      const assignedToMe = (members || [])
+        .filter((m: { pay_for_user_id: string }) => m.pay_for_user_id === userId)
+        .map((m: { user_id: string }) => m.user_id);
+
+      await db.from("group_order_members")
+        .update({ payment_status: "paid" })
+        .eq("group_order_id", groupOrderId)
+        .in("user_id", [userId, ...assignedToMe]);
+
+      await placeGroupOrderIfReady(db, groupOrderId);
+      console.log(`Group order ${groupOrderId} member ${userId} paid via card`);
     }
 
     return json({ received: true });
