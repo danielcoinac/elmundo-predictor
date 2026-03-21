@@ -303,6 +303,24 @@ export default function App() {
           }
 
           setPage("app");
+
+          // ── Handle Stripe return URL ──────────────────────────────────────
+          const sp = new URLSearchParams(window.location.search);
+          const stripeResult = sp.get("stripe");
+          if (stripeResult === "topup_success") {
+            // Webhook already added credits — reload balance and show toast
+            window.history.replaceState({}, "", window.location.pathname);
+            const { data: cr } = await supabase.from("user_credits").select("balance").eq("user_id", profRow.id).maybeSingle();
+            if (cr) setMyCredits(cr.balance);
+            setTimeout(() => toast$("Payment successful! Credits added to your account ✓"), 600);
+          } else if (stripeResult === "order_success") {
+            window.history.replaceState({}, "", window.location.pathname);
+            setTimeout(() => toast$("Payment confirmed! Your order is being prepared 🍺"), 600);
+          } else if (stripeResult === "cancelled") {
+            window.history.replaceState({}, "", window.location.pathname);
+            setTimeout(() => toast$("Payment cancelled", false), 600);
+          }
+
           return;
         }
       }
@@ -641,6 +659,20 @@ export default function App() {
   const toggleMenuItemAvail = async (id, available) => {
     await supabase.from("menu_items").update({ available }).eq("id", id);
     setMenuItems(m => m.map(x => x.id === id ? { ...x, available } : x));
+  };
+
+  // ─── STRIPE CHECKOUT ────────────────────────────────────────────────────────
+  const stripeCheckout = async (payload) => {
+    const origin = window.location.origin;
+    try {
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: { ...payload, successUrl: origin, cancelUrl: origin },
+      });
+      if (error || !data?.url) throw new Error(error?.message || "No checkout URL");
+      window.location.href = data.url;
+    } catch (e) {
+      toast$("Payment error: " + e.message, false);
+    }
   };
 
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
@@ -3143,6 +3175,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   const [placing,     setPlacing]     = useState(false);
   const [tableErr,    setTableErr]    = useState("");
   const [topupAmt,    setTopupAmt]    = useState("");
+  const [cartPayMethod, setCartPayMethod] = useState("credits"); // "credits" | "card"
 
   const available  = menuItems.filter(i => i.available);
   const [activeCat, setActiveCat] = useState(null);
@@ -3228,7 +3261,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
       setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
     }
     setTableErr("");
-    // Double-submit guard — ref is synchronous unlike state
     if (placingRef.current) return;
     placingRef.current = true;
     setPlacing(true);
@@ -3241,6 +3273,41 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
     if (ok) { clearCart(); setTab("orders"); }
     placingRef.current = false;
     setPlacing(false);
+  };
+
+  const handleStripeOrder = async () => {
+    if (!table.trim()) { setTableErr("Please select your table"); return; }
+    const tableNum = parseInt(table.trim());
+    if (!VALID_TABLES.includes(tableNum)) {
+      setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
+    }
+    setTableErr("");
+    if (placingRef.current) return;
+    placingRef.current = true;
+    setPlacing(true);
+    // Insert a pending order first so we have an ID for the webhook
+    const { data: newOrder, error } = await supabase.from("orders").insert({
+      user_id: user.id,
+      user_name: user.name,
+      table_number: String(tableNum),
+      items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty })),
+      total: +cartTotal.toFixed(2),
+      payment_method: "card_pending",
+      status: "pending",
+    }).select().single();
+    placingRef.current = false;
+    setPlacing(false);
+    if (error || !newOrder) { toast$("Error creating order", false); return; }
+    clearCart();
+    // Redirect to Stripe
+    stripeCheckout({
+      type: "order",
+      orderId: newOrder.id,
+      userId: user.id,
+      userEmail: user.email,
+      items: cartItems.map(i => ({ name:i.name, qty:i.qty, price:i.price })),
+      total: +cartTotal.toFixed(2),
+    });
   };
 
   const statusColor = s => s==="pending"?"rgba(251,191,36,.9)":s==="confirmed"?"rgba(74,222,128,.8)":s==="ready"?"#fff":"rgba(255,255,255,.4)";
@@ -3409,27 +3476,46 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                 </div>
                 <div className="afield" style={{marginBottom:20}}>
                   <label className="afield-lbl">{t('payment')}</label>
-                  <div style={{padding:"12px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
-                    <div>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",letterSpacing:.5}}>💳 Credits</div>
-                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)",marginTop:3,fontWeight:600}}>Your balance: <span style={{color:"#fff"}}>${(+myCredits).toFixed(2)}</span></div>
-                    </div>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color: cartTotal > myCredits ? "#f87171" : "#4ade80"}}>
-                      ${cartTotal.toFixed(2)}
-                    </div>
+                  <div className="cart-pay-options">
+                    <button
+                      className={`cart-pay-opt ${cartPayMethod==="credits"?"cart-pay-opt-on":""}`}
+                      onClick={() => setCartPayMethod("credits")}>
+                      <span style={{fontSize:18}}>🪙</span>
+                      <div>
+                        <div className="cart-pay-opt-title">Credits</div>
+                        <div className="cart-pay-opt-sub">Balance: ${(+myCredits).toFixed(2)}</div>
+                      </div>
+                    </button>
+                    <button
+                      className={`cart-pay-opt ${cartPayMethod==="card"?"cart-pay-opt-on":""}`}
+                      onClick={() => setCartPayMethod("card")}>
+                      <span style={{fontSize:18}}>💳</span>
+                      <div>
+                        <div className="cart-pay-opt-title">Card / Online</div>
+                        <div className="cart-pay-opt-sub">Pay securely via Stripe</div>
+                      </div>
+                    </button>
                   </div>
-                  {cartTotal > myCredits && (
+                  {cartPayMethod === "credits" && cartTotal > myCredits && (
                     <div className="wallet-warning">
                       ⚠ Not enough credits — you need ${(cartTotal - myCredits).toFixed(2)} more.
                       <button className="wallet-warning-link" onClick={()=>setTab("wallet")}>Top up →</button>
                     </div>
                   )}
                 </div>
-                <button className="order-place-btn"
-                  disabled={placing||cartTotal>myCredits}
-                  onClick={handleOrder}>
-                  {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
-                </button>
+                {cartPayMethod === "credits" ? (
+                  <button className="order-place-btn"
+                    disabled={placing || cartTotal > myCredits}
+                    onClick={handleOrder}>
+                    {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
+                  </button>
+                ) : (
+                  <button className="order-place-btn stripe-pay-btn"
+                    disabled={placing}
+                    onClick={handleStripeOrder}>
+                    {placing ? "PROCESSING…" : `💳 PAY WITH CARD · $${cartTotal.toFixed(2)}`}
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -3499,23 +3585,30 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
               style={{flex:1,fontSize:18,letterSpacing:2}} />
           </div>
 
+          {/* Pay online with card */}
+          <button
+            className="stripe-topup-btn"
+            disabled={!topupAmt || +topupAmt <= 0}
+            onClick={() => stripeCheckout({
+              type: "topup",
+              amount: +topupAmt,
+              userId: user.id,
+              userEmail: user.email,
+            })}
+          >
+            <span className="stripe-topup-btn-ico">💳</span>
+            <span className="stripe-topup-btn-text">PAY ONLINE · ${topupAmt ? (+topupAmt).toFixed(2) : "0.00"}</span>
+          </button>
+
+          <div className="topup-divider"><span>OR</span></div>
+
           {/* Top-up desk info */}
           <div className="topup-desk-box">
             <div className="topup-desk-icon">🏧</div>
-            <div className="topup-desk-title">HOW TO TOP UP</div>
+            <div className="topup-desk-title">TOP UP AT THE BAR</div>
             <div className="topup-desk-body">
-              1. Select your amount above<br/>
-              2. Go to a <strong>Top-Up Desk</strong> in the restaurant<br/>
-              3. Pay by <strong>cash or card</strong><br/>
-              4. Staff adds credits to your account instantly<br/>
-              5. Come back and order! 🍺
+              Visit the <strong>Top-Up Desk</strong> and pay by cash or card — staff will add credits to your account instantly.
             </div>
-          </div>
-
-          {/* Cash/card top-up info */}
-          <div style={{marginBottom:16,padding:"14px 16px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.6)",textAlign:"center",lineHeight:1.6}}>
-            💵 Top up at the bar — cash or card accepted.<br/>
-            <span style={{fontSize:12,color:"rgba(255,255,255,.4)"}}>Staff will add credits to your account instantly.</span>
           </div>
 
           {/* How credits work */}
@@ -5236,6 +5329,24 @@ const CSS = `
   .wallet-info-box{margin-top:12px;padding:16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
   .wallet-info-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1px;color:rgba(255,255,255,.5);margin-bottom:6px}
   .wallet-info-body{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);line-height:1.6}
+
+  /* Stripe top-up button */
+  .stripe-topup-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:4px;border-radius:10px;transition:all .15s;margin-bottom:8px}
+  .stripe-topup-btn:hover:not(:disabled){opacity:.88;transform:translateY(-1px)}
+  .stripe-topup-btn:disabled{opacity:.35;cursor:default}
+  .stripe-topup-btn-ico{font-size:20px}
+  .topup-divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:rgba(255,255,255,.3);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px}
+  .topup-divider::before,.topup-divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.1)}
+
+  /* Cart payment options */
+  .cart-pay-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .cart-pay-opt{display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;text-align:left;transition:all .15s}
+  .cart-pay-opt:hover{background:rgba(255,255,255,.07)}
+  .cart-pay-opt-on{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.07)}
+  .cart-pay-opt-title{font-family:'Anton',sans-serif;font-size:13px;color:#fff;letter-spacing:.5px}
+  .cart-pay-opt-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.45);margin-top:3px;font-weight:500}
+  .stripe-pay-btn{background:#635bff !important;color:#fff !important}
+  .stripe-pay-btn:hover:not(:disabled){background:#7a73ff !important}
 
   .order-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);padding:16px;margin:0 0 10px}
   .order-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
