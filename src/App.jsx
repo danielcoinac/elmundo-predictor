@@ -162,7 +162,7 @@ const flag = t => FLAGS[t] || "⚽";
 /* ─── SVG Logos ─────────────────────────────────────────────────────────── */
 const Logo = ({ w = 160 }) => (
   <svg width={w} height={w} viewBox="0 0 200 200">
-    <rect width="200" height="200" fill="#000"/>
+    <rect width="200" height="200" fill="transparent"/>
     <text x="100" y="58"  textAnchor="middle" fill="#fff" fontFamily="'Anton',sans-serif" fontSize="44">EL MUNDO</text>
     <text x="100" y="85"  textAnchor="middle" fill="#fff" fontFamily="'Anton',sans-serif" fontSize="21" letterSpacing="5">BAR-REST</text>
     <rect x="16" y="93" width="168" height="44" fill="none" stroke="#fff" strokeWidth="2.2" rx="2"/>
@@ -191,7 +191,7 @@ const HeaderLogo = () => (
    ROOT
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [page,     setPage]     = useState("splash");
+  const [page,     setPage]     = useState("loading");
   const [authTab,  setAuthTab]  = useState("login");
   const [appTab,   setAppTab]   = useState("matches");
   const [user,     setUser]     = useState(null);
@@ -302,13 +302,11 @@ export default function App() {
             }
           }
 
-          // Show splash briefly (ball smash moment ~3.5s), then go to app
-          setTimeout(() => setPage("app"), 3500);
+          setPage("app");
           return;
         }
       }
-      // Not logged in — show splash until ball hits then go to auth
-      setTimeout(() => setPage("auth"), 3500);
+      setPage("auth");
     })();
   }, []);
 
@@ -551,15 +549,22 @@ export default function App() {
   };
 
   const getPred = id => preds[`${user?.id}__${id}`] || null;
+  const predSavingRef = useRef(new Set());
   const savePred = async (id, h, a) => {
-    const { error } = await supabase.from("predictions").upsert(
-      { user_id: user.id, match_id: id, home_pred: +h, away_pred: +a },
-      { onConflict: "user_id,match_id" }
-    );
-    if (error) { toast$("Error saving prediction", false); return; }
-    const k = `${user.id}__${id}`;
-    setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
-    toast$("Prediction saved ⚽");
+    if (predSavingRef.current.has(id)) return;
+    predSavingRef.current.add(id);
+    try {
+      const { error } = await supabase.from("predictions").upsert(
+        { user_id: user.id, match_id: id, home_pred: +h, away_pred: +a },
+        { onConflict: "user_id,match_id" }
+      );
+      if (error) { toast$("Error saving prediction", false); return; }
+      const k = `${user.id}__${id}`;
+      setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
+      toast$("Prediction saved ⚽");
+    } finally {
+      predSavingRef.current.delete(id);
+    }
   };
 
   const adminUpdateMatch = async (updated) => {
@@ -664,6 +669,7 @@ export default function App() {
   };
 
   const adminAddCredits = async (userId, amount, userName) => {
+    if (!amount || +amount <= 0) { toast$("Enter a valid amount", false); return; }
     const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
     const newBal = +((cur?.balance || 0) + amount).toFixed(2);
     await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
@@ -746,7 +752,7 @@ export default function App() {
     const itemRows = (ord.items || []).map(it =>
       `<div class="row"><span>${it.qty}× ${it.name}</span><span>$${(it.price*it.qty).toFixed(2)}</span></div>`
     ).join("");
-    const payLabel = ord.payment_method === "credits" ? "Credits" : ord.payment_method === "paypal" ? "PayPal" : "Cash/Card";
+    const payLabel = ord.payment_method === "credits" ? "Credits" : "Cash / Card";
     win.document.write(`<!DOCTYPE html><html><head><title>Order Receipt</title>
     <style>
       @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm}
@@ -1000,7 +1006,7 @@ export default function App() {
           <span className="notif-msg">{toast.msg}</span>
         </div>
       )}
-      {page === "splash" && <Splash onSkip={() => setPage(user ? "app" : "auth")} />}
+      {page === "loading" && <div style={{position:"fixed",inset:0,background:"#000",zIndex:999}} />}
       {page === "auth"   && (
         <Auth tab={authTab} setTab={setAuthTab} form={form} setForm={setForm}
               err={formErr} setErr={setFormErr} onLogin={doLogin} onRegister={doRegister}
@@ -1072,15 +1078,15 @@ function Splash({ onSkip }) {
     const T = [];
     const at = (ms, fn) => T.push(setTimeout(fn, ms));
 
-    // Progress bar ticks: 0→100 over ~20s
+    // Progress bar ticks: 0→100 over ~6.5s to match auto-transition
     let prog = 0;
     const progInt = setInterval(() => {
-      prog = Math.min(100, prog + 0.6);
+      prog = Math.min(100, prog + 1.7);
       setProgress(prog);
-    }, 120);
+    }, 110);
     T.push(progInt); // store interval handle (clearTimeout works for intervals too — using explicit var)
 
-    at(600, () => setTapHint(true));
+    at(400, () => setTapHint(true));
 
     at(3000, () => {
       setBallHit(true);
@@ -1091,7 +1097,7 @@ function Splash({ onSkip }) {
       setTimeout(() => setSparks(false), 1400);
       if (glowRef.current) glowRef.current.style.animation = 'glowBurst 1.8s ease forwards';
     });
-    at(3700, () => { setShowBall(false); setShowSign(true); setTapHint(false); });
+    at(3700, () => { setShowBall(false); setShowSign(true); });
     at(5200, () => {
       if (mainRef.current) mainRef.current.style.animation = 'neonWhiteOn 3s ease forwards';
       if (sub2Ref.current) sub2Ref.current.style.animation = 'subWhiteOn 1s ease 1.8s forwards';
@@ -1191,139 +1197,201 @@ function StadiumSky() {
     resize();
     window.addEventListener("resize", resize);
 
-    const particles = Array.from({ length: 120 }, () => ({
+    // Rain streaks
+    const RAIN_COUNT = 160;
+    const rain = Array.from({ length: RAIN_COUNT }, () => ({
       x: Math.random(),
-      y: 0.1 + Math.random() * 0.9,
-      vy: -(0.00015 + Math.random() * 0.0003),
-      vx: (Math.random() - 0.5) * 0.0001,
-      size: 0.5 + Math.random() * 1.8,
-      alpha: 0.08 + Math.random() * 0.38,
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.3 + Math.random() * 0.8,
+      y: Math.random(),
+      len: 0.012 + Math.random() * 0.022,
+      speed: 0.0018 + Math.random() * 0.0024,
+      alpha: 0.06 + Math.random() * 0.18,
     }));
 
-    const sweeps = Array.from({ length: 3 }, (_, i) => ({
-      y: 0.55 + i * 0.18,
+    // Confetti / ticker — World Cup flag colours bursting from top
+    const CONF_COUNT = 55;
+    const conf = Array.from({ length: CONF_COUNT }, () => ({
       x: Math.random(),
-      vx: 0.0003 + Math.random() * 0.0004,
-      width: 0.08 + Math.random() * 0.12,
-      alpha: 0.035 + Math.random() * 0.03,
-      phase: Math.random() * Math.PI * 2,
+      y: -Math.random() * 0.3,
+      vy: 0.0004 + Math.random() * 0.0007,
+      vx: (Math.random() - 0.5) * 0.0006,
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.04,
+      w: 0.008 + Math.random() * 0.012,
+      h: 0.004 + Math.random() * 0.005,
+      col: [
+        [255,210,0],   // gold
+        [220,30,30],   // red
+        [255,255,255], // white
+        [0,148,68],    // green
+        [0,82,180],    // blue
+      ][Math.floor(Math.random() * 5)],
+      alpha: 0.55 + Math.random() * 0.45,
     }));
 
     let t = 0;
 
+    // Draw a glowing pitch line
+    const pitchLine = (fn, glow = true) => {
+      if (glow) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = "rgba(80,255,130,0.07)";
+        ctx.lineWidth = 7;
+        fn();
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.strokeStyle = "rgba(220,255,230,0.55)";
+      ctx.lineWidth = 1.4;
+      fn();
+      ctx.stroke();
+      ctx.restore();
+    };
+
     const draw = () => {
-      const W = canvas.width;
-      const H = canvas.height;
-      t += 0.008;
+      const W = canvas.width, H = canvas.height;
+      t += 0.0018;
 
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, W, H);
+      // ── BASE: very dark green pitch ──────────────────────────────
+      ctx.fillStyle = "#060e07"; ctx.fillRect(0, 0, W, H);
 
-      // Green pitch glow from bottom
-      const pitchGlow = ctx.createRadialGradient(W*0.5, H*1.1, 0, W*0.5, H*1.1, W*0.85);
-      pitchGlow.addColorStop(0,    "rgba(18,38,12,0.5)");
-      pitchGlow.addColorStop(0.4,  "rgba(8,20,6,0.2)");
-      pitchGlow.addColorStop(0.75, "rgba(3,8,3,0.07)");
-      pitchGlow.addColorStop(1,    "transparent");
-      ctx.fillStyle = pitchGlow;
-      ctx.fillRect(0, 0, W, H);
+      // Alternating grass stripes (subtle) — horizontal bands
+      const stripes = 10;
+      for (let i = 0; i < stripes; i++) {
+        const y0 = (i / stripes) * H;
+        const y1 = ((i + 1) / stripes) * H;
+        ctx.fillStyle = i % 2 === 0 ? "rgba(12,28,14,0.55)" : "rgba(8,20,10,0.55)";
+        ctx.fillRect(0, y0, W, y1 - y0);
+      }
 
-      // Side vignette
-      [[0, W*0.35], [W, W*0.65]].forEach(([x0, x1]) => {
-        const g = ctx.createLinearGradient(x0, 0, x1, 0);
-        g.addColorStop(0, "rgba(6,10,18,0.55)");
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, W, H);
+      // ── STADIUM FLOODLIGHTS — four corners, warm wash ────────────
+      [
+        { cx: 0.0, cy: 0.0 }, { cx: 1.0, cy: 0.0 },
+        { cx: 0.0, cy: 1.0 }, { cx: 1.0, cy: 1.0 },
+      ].forEach(({ cx, cy }) => {
+        const lx = cx * W, ly = cy * H;
+        const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.72);
+        lg.addColorStop(0,   "rgba(255,245,195,0.18)");
+        lg.addColorStop(0.25,"rgba(255,240,175,0.07)");
+        lg.addColorStop(0.6, "rgba(200,240,160,0.03)");
+        lg.addColorStop(1,   "transparent");
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H); ctx.restore();
       });
 
-      // Horizontal sweep glows
-      sweeps.forEach(s => {
-        s.x += s.vx;
-        if (s.x > 1.2) s.x = -0.2;
-        const pulse = 0.7 + 0.3 * Math.sin(t * 0.5 + s.phase);
-        const sx = s.x * W, sy = s.y * H, sw = s.width * W;
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sw);
-        grad.addColorStop(0,   `rgba(200,220,255,${s.alpha * pulse})`);
-        grad.addColorStop(0.45,`rgba(180,205,255,${s.alpha * 0.35 * pulse})`);
-        grad.addColorStop(1,   "transparent");
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = grad;
+      // Soft green glow at center of pitch
+      const cg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W * 0.38);
+      cg.addColorStop(0,   "rgba(20,80,30,0.22)");
+      cg.addColorStop(0.5, "rgba(10,40,15,0.09)");
+      cg.addColorStop(1,   "transparent");
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H); ctx.restore();
+
+      // ── PITCH MARKINGS ───────────────────────────────────────────
+      // Pitch border (inset slightly)
+      const px = W * 0.06, py = H * 0.08, pw = W * 0.88, ph2 = H * 0.84;
+      pitchLine(() => ctx.strokeRect(px, py, pw, ph2));
+
+      // Center line (vertical)
+      pitchLine(() => { ctx.beginPath(); ctx.moveTo(W*0.5, py); ctx.lineTo(W*0.5, py + ph2); });
+
+      // Center circle
+      const cr = Math.min(W, H) * 0.14;
+      pitchLine(() => { ctx.beginPath(); ctx.arc(W*0.5, H*0.5, cr, 0, Math.PI*2); });
+
+      // Center spot
+      ctx.save(); ctx.fillStyle = "rgba(220,255,230,0.7)";
+      ctx.beginPath(); ctx.arc(W*0.5, H*0.5, 3, 0, Math.PI*2); ctx.fill(); ctx.restore();
+
+      // Left penalty box
+      const pbW = W * 0.18, pbH = H * 0.44;
+      const pbLx = px, pbLy = H*0.5 - pbH*0.5;
+      pitchLine(() => ctx.strokeRect(pbLx, pbLy, pbW, pbH));
+
+      // Left goal box
+      const gbW = W * 0.07, gbH = H * 0.22;
+      pitchLine(() => ctx.strokeRect(px, H*0.5 - gbH*0.5, gbW, gbH));
+
+      // Left penalty spot
+      ctx.save(); ctx.fillStyle = "rgba(220,255,230,0.7)";
+      ctx.beginPath(); ctx.arc(px + W*0.13, H*0.5, 3, 0, Math.PI*2); ctx.fill(); ctx.restore();
+
+      // Left penalty arc (outside penalty box)
+      pitchLine(() => {
         ctx.beginPath();
-        ctx.ellipse(sx, sy, sw, sw * 0.15, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(px + W*0.13, H*0.5, cr * 0.68, -Math.PI*0.36, Math.PI*0.36);
+      }, false);
+
+      // Right penalty box
+      pitchLine(() => ctx.strokeRect(px + pw - pbW, pbLy, pbW, pbH));
+
+      // Right goal box
+      pitchLine(() => ctx.strokeRect(px + pw - gbW, H*0.5 - gbH*0.5, gbW, gbH));
+
+      // Right penalty spot
+      ctx.save(); ctx.fillStyle = "rgba(220,255,230,0.7)";
+      ctx.beginPath(); ctx.arc(px + pw - W*0.13, H*0.5, 3, 0, Math.PI*2); ctx.fill(); ctx.restore();
+
+      // Right penalty arc
+      pitchLine(() => {
+        ctx.beginPath();
+        ctx.arc(px + pw - W*0.13, H*0.5, cr * 0.68, Math.PI - Math.PI*0.36, Math.PI + Math.PI*0.36);
+      }, false);
+
+      // Corner arcs
+      const cAr = W * 0.022;
+      [[px, py, 0, Math.PI*0.5], [px+pw, py, Math.PI*0.5, Math.PI],
+       [px, py+ph2, -Math.PI*0.5, 0], [px+pw, py+ph2, Math.PI, Math.PI*1.5]
+      ].forEach(([cx, cy, a0, a1]) => {
+        pitchLine(() => { ctx.beginPath(); ctx.arc(cx, cy, cAr, a0, a1); }, false);
+      });
+
+      // ── CONFETTI ─────────────────────────────────────────────────
+      conf.forEach(c => {
+        c.y += c.vy;
+        c.x += c.vx;
+        c.rot += c.rotV;
+        if (c.y > 1.1) { c.y = -0.05; c.x = Math.random(); }
+        const cx2 = c.x * W, cy2 = c.y * H;
+        const cw2 = c.w * W, ch2 = c.h * H;
+        const [r, g, b] = c.col;
+        ctx.save();
+        ctx.translate(cx2, cy2);
+        ctx.rotate(c.rot);
+        ctx.globalAlpha = c.alpha * (0.5 + 0.5 * Math.sin(t * 1.5 + c.x * 10));
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(-cw2/2, -ch2/2, cw2, ch2);
         ctx.restore();
       });
 
-      // Floating dust particles
-      particles.forEach(p => {
-        p.y += p.vy;
-        p.x += p.vx + Math.sin(t * p.speed + p.phase) * 0.00008;
-        if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
-        const flicker = 0.45 + 0.55 * Math.sin(t * p.speed * 3 + p.phase);
-        const fadeTop = Math.min(1, p.y / 0.12);
-        const finalAlpha = p.alpha * flicker * fadeTop;
-        if (finalAlpha < 0.012) return;
-        const px = p.x * W, py = p.y * H;
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        const pg = ctx.createRadialGradient(px, py, 0, px, py, p.size * 3);
-        pg.addColorStop(0, `rgba(210,228,255,${finalAlpha})`);
-        pg.addColorStop(1, "transparent");
-        ctx.fillStyle = pg;
-        ctx.beginPath();
-        ctx.arc(px, py, p.size * 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+      // ── RAIN ─────────────────────────────────────────────────────
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      rain.forEach(r2 => {
+        r2.y += r2.speed;
+        r2.x += r2.speed * 0.22; // slight diagonal
+        if (r2.y > 1.05) { r2.y = -0.02; r2.x = Math.random(); }
+        if (r2.x > 1.05) r2.x -= 1;
+        const rx = r2.x * W, ry = r2.y * H;
+        const rdx = r2.len * W * 0.22, rdy = r2.len * H;
+        const rg2 = ctx.createLinearGradient(rx, ry, rx + rdx, ry + rdy);
+        rg2.addColorStop(0, "transparent");
+        rg2.addColorStop(1, `rgba(180,220,255,${r2.alpha})`);
+        ctx.strokeStyle = rg2; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + rdx, ry + rdy); ctx.stroke();
       });
+      ctx.restore();
 
-      // Two minimal corner lights
-      [[W * 0.11, 0], [W * 0.89, 0]].forEach(([lx, ly], idx) => {
-        const tilt = idx === 0 ? -0.2 : 0.2;
-        const pulse = 0.88 + 0.12 * Math.sin(t * 0.6 + idx * 2.1);
+      // ── VIGNETTE — deep around all edges ─────────────────────────
+      const vig = ctx.createRadialGradient(W*0.5, H*0.5, H*0.18, W*0.5, H*0.5, H*0.85);
+      vig.addColorStop(0, "transparent"); vig.addColorStop(1, "rgba(0,0,0,0.82)");
+      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
 
-        // Bulb glow
-        const src = ctx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.055);
-        src.addColorStop(0,   `rgba(235,245,255,${0.22 * pulse})`);
-        src.addColorStop(0.35,`rgba(215,232,255,${0.08 * pulse})`);
-        src.addColorStop(1,   "transparent");
-        ctx.save(); ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = src; ctx.beginPath();
-        ctx.arc(lx, ly, W * 0.055, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-
-        // Single tight beam
-        const bLen = H * 1.5;
-        const la = tilt - 0.018, ra = tilt + 0.018;
-        const bg = ctx.createRadialGradient(lx, ly, 0, lx, ly, bLen * 0.45);
-        bg.addColorStop(0,   `rgba(215,232,255,${0.14 * pulse})`);
-        bg.addColorStop(0.25,`rgba(200,225,255,${0.06 * pulse})`);
-        bg.addColorStop(0.6, `rgba(185,215,255,${0.015 * pulse})`);
-        bg.addColorStop(1,   "transparent");
-        ctx.save(); ctx.globalCompositeOperation = "lighter";
-        ctx.beginPath(); ctx.moveTo(lx, ly);
-        ctx.lineTo(lx + Math.sin(la)*bLen, ly + Math.cos(Math.abs(la))*bLen);
-        ctx.lineTo(lx + Math.sin(ra)*bLen, ly + Math.cos(Math.abs(ra))*bLen);
-        ctx.closePath(); ctx.fillStyle = bg; ctx.fill(); ctx.restore();
-
-        // Small bulb cluster dots
-        const dots = idx === 0
-          ? [{dx:-0.04,dy:0.002},{dx:-0.025,dy:-0.012},{dx:-0.010,dy:-0.016},{dx:0.006,dy:-0.013},{dx:0.018,dy:-0.005}]
-          : [{dx:0.04,dy:0.002},{dx:0.025,dy:-0.012},{dx:0.010,dy:-0.016},{dx:-0.006,dy:-0.013},{dx:-0.018,dy:-0.005}];
-        dots.forEach((d, di) => {
-          const bp = pulse * (0.85 + 0.15 * Math.sin(t * 1.2 + di * 0.8));
-          const dx = lx + d.dx * W, dy = ly + d.dy * H;
-          const cg = ctx.createRadialGradient(dx, dy, 0, dx, dy, W * 0.012);
-          cg.addColorStop(0,   `rgba(255,255,255,${0.9 * bp})`);
-          cg.addColorStop(0.3, `rgba(235,245,255,${0.5 * bp})`);
-          cg.addColorStop(1,   "transparent");
-          ctx.save(); ctx.globalCompositeOperation = "lighter";
-          ctx.fillStyle = cg; ctx.beginPath();
-          ctx.arc(dx, dy, W * 0.012, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-        });
-      });
+      // Extra dark top bar — so logo/text sits on black
+      const topFade = ctx.createLinearGradient(0, 0, 0, H * 0.38);
+      topFade.addColorStop(0, "rgba(0,0,0,0.88)");
+      topFade.addColorStop(1, "transparent");
+      ctx.fillStyle = topFade; ctx.fillRect(0, 0, W, H * 0.38);
 
       rafRef.current = requestAnimationFrame(draw);
     };
@@ -1337,20 +1405,100 @@ function StadiumSky() {
   );
 }
 
+
 /* ═══ AUTH ══════════════════════════════════════════════════════════════════ */
 function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard }) {
   const { t } = useLang();
-  const [showTV, setShowTV] = useState(false);
+  const [showTV,  setShowTV]  = useState(false);
+  const [phase,   setPhase]   = useState(0); // 0=hidden 1=logo-in 2=text-neon 3=settle 4=done
+  const timersRef = useRef([]);
+
+  const skipIntro = () => {
+    timersRef.current.forEach(clearTimeout);
+    setPhase(4);
+  };
+
+  useEffect(() => {
+    const at = (ms, fn) => { const id = setTimeout(fn, ms); timersRef.current.push(id); return id; };
+    at(200,  () => setPhase(1));   // logo scales in
+    at(1100, () => setPhase(2));   // neon text flickers on
+    at(4200, () => setPhase(3));   // overlay dissolves, form rises
+    at(5800, () => setPhase(4));   // intro fully done
+    return () => timersRef.current.forEach(clearTimeout);
+  }, []);
+
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(""); };
   const isLogin = tab === "login";
+  const introActive = phase < 3;
 
   if (showTV) return <TVLeaderboard board={publicBoard} onBack={() => setShowTV(false)} />;
 
   return (
     <div className="auth-root">
       <StadiumSky />
-      <div className="auth-grid-bg" />
-      <div className="auth-wrap">
+      <div className="auth-grid-bg" style={{opacity: phase >= 3 ? 1 : 0, transition:"opacity 2s ease 0.4s"}} />
+
+      {/* ── CINEMATIC INTRO OVERLAY ── */}
+      {phase < 4 && (
+        <div
+          onClick={introActive ? skipIntro : undefined}
+          style={{
+            position:"fixed", inset:0, zIndex:80,
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+            background:"#000",
+            opacity: phase >= 3 ? 0 : 1,
+            transition: phase >= 3 ? "opacity 1.6s ease" : "none",
+            pointerEvents: phase >= 3 ? "none" : "auto",
+          }}
+        >
+          {/* Logo */}
+          <div style={{
+            opacity: phase >= 1 ? 1 : 0,
+            transform: phase >= 1 ? "scale(1) translateY(0)" : "scale(0.88) translateY(24px)",
+            transition: "opacity 1s cubic-bezier(.16,1,.3,1), transform 1s cubic-bezier(.16,1,.3,1)",
+            filter: "none",
+          }}>
+            <Logo w={240} />
+          </div>
+
+          {/* Neon text */}
+          <div style={{
+            marginTop: 32,
+            display:"flex", alignItems:"center", gap:18,
+            opacity: phase >= 2 ? 1 : 0,
+            transition:"opacity 0.4s ease",
+          }}>
+            <span style={{height:1,width:44,background:"rgba(255,200,50,.35)",display:"block"}} />
+            <span style={{
+              fontFamily:"'Anton',sans-serif", fontSize:14, letterSpacing:7,
+              color:"rgba(255,200,50,.18)", textTransform:"uppercase", whiteSpace:"nowrap",
+              animation: phase >= 2 ? "neonGoldOn 3.2s ease forwards" : "none",
+            }}>
+              WORLD CUP EVENT 2026
+            </span>
+            <span style={{height:1,width:44,background:"rgba(255,200,50,.35)",display:"block"}} />
+          </div>
+
+          {/* TAP TO SKIP */}
+          <div style={{
+            position:"absolute", bottom:44,
+            fontFamily:"'Anton',sans-serif", fontSize:10, letterSpacing:5,
+            color:"rgba(255,255,255,.28)", border:"1px solid rgba(255,255,255,.1)",
+            padding:"7px 18px", whiteSpace:"nowrap",
+            opacity: phase >= 1 ? 1 : 0,
+            transition:"opacity 0.6s ease 0.6s",
+            animation:"tapHintPulse 1.8s ease-in-out infinite",
+          }}>TAP TO SKIP</div>
+        </div>
+      )}
+
+      {/* ── AUTH CONTENT ── */}
+      <div className="auth-wrap" style={{
+        opacity: phase >= 3 ? 1 : 0,
+        transform: phase >= 3 ? "scale(1) translateY(0)" : "scale(0.97) translateY(28px)",
+        transition: phase >= 3 ? "opacity 1.4s cubic-bezier(.16,1,.3,1) .5s, transform 1.4s cubic-bezier(.16,1,.3,1) .5s" : "none",
+        pointerEvents: phase >= 3 ? "auto" : "none",
+      }}>
         <div className="auth-hero">
           <Logo w={220} />
           <div className="auth-event">
@@ -1359,7 +1507,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
             <span className="auth-event-rule" />
           </div>
         </div>
-        <div className="auth-panel">
+        <div className="auth-panel" style={{animation: phase >= 3 ? "fadeUp .7s cubic-bezier(.16,1,.3,1) .25s both" : "none"}}>
           <div className="auth-tabs">
             <button className={`auth-tab ${isLogin?"atab-on":""}`} onClick={()=>{setTab("login");setErr("");}}>{t('signIn')}</button>
             <button className={`auth-tab ${!isLogin?"atab-on":""}`} onClick={()=>{setTab("register");setErr("");}}>{t('register')}</button>
@@ -1383,7 +1531,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
             </p>
           </div>
         </div>
-        <button className="tv-lb-btn" onClick={() => setShowTV(true)}>
+        <button className="tv-lb-btn" style={{animation: phase >= 3 ? "fadeUp .7s cubic-bezier(.16,1,.3,1) .4s both" : "none"}} onClick={() => setShowTV(true)}>
           <span className="tv-lb-btn-ico">📺</span>
           <div className="tv-lb-btn-inner">
             <span className="tv-lb-btn-text">VIEW LEADERBOARD</span>
@@ -1771,7 +1919,7 @@ function useCountdown(m) {
   if (totalMins > 1440) { label = `${Math.floor(totalMins/1440)}d left`; urgency = "green"; }
   else if (totalMins > 120) { label = `${h}h ${min}m left`; urgency = "green"; }
   else if (totalMins > 60) { label = `${h}h ${min}m left`; urgency = "yellow"; }
-  else if (totalMins > 10) { label = `${min}m ${sec}s left`; urgency = "red"; }
+  else if (totalMins > 10) { label = `${min}m ${sec}s left`; urgency = "yellow"; }
   else { label = `${min}m ${sec}s`; urgency = "red"; }
   return { minsLeft: totalMins, label, urgency };
 }
@@ -2464,6 +2612,7 @@ function GroupOrderView({
   const [tableErr, setTableErr] = useState("");
   const [joinErr, setJoinErr] = useState("");
   const [paying, setPaying] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [takenTables, setTakenTables] = useState([]);
   const [cancelNote, setCancelNote] = useState(false);
@@ -2502,13 +2651,15 @@ function GroupOrderView({
       setTableErr("Enter a valid table number (1–26)"); return;
     }
     setTableErr("");
-    await createGroupOrder(tableInput.trim());
+    setBusy(true);
+    try { await createGroupOrder(tableInput.trim()); } finally { setBusy(false); }
   };
 
   const handleJoin = async () => {
     if (joinCode.trim().length < 4) { setJoinErr("Enter the join code"); return; }
     setJoinErr("");
-    await joinGroupOrder(joinCode.trim());
+    setBusy(true);
+    try { await joinGroupOrder(joinCode.trim()); } finally { setBusy(false); }
   };
 
   const handleCopyCode = () => {
@@ -2588,8 +2739,8 @@ function GroupOrderView({
       )}
       {tableInput && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:8,fontWeight:600}}>Selected: Table {tableInput}</div>}
       {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{tableErr}</div>}
-      <button className="go-btn-primary" style={{marginTop:8}} disabled={!tableInput} onClick={handleCreate}>
-        CREATE GROUP ORDER
+      <button className="go-btn-primary" style={{marginTop:8}} disabled={!tableInput || busy} onClick={handleCreate}>
+        {busy ? "CREATING…" : "CREATE GROUP ORDER"}
       </button>
     </div>
   );
@@ -2606,8 +2757,8 @@ function GroupOrderView({
         value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
         style={{width:"100%",fontSize:28,textAlign:"center",padding:"14px",letterSpacing:8,marginBottom:8}} />
       {joinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{joinErr}</div>}
-      <button className="go-btn-primary" style={{marginTop:8}} onClick={handleJoin}>
-        JOIN ORDER
+      <button className="go-btn-primary" style={{marginTop:8}} disabled={busy} onClick={handleJoin}>
+        {busy ? "JOINING…" : "JOIN ORDER"}
       </button>
     </div>
   );
@@ -3560,6 +3711,13 @@ function AdminCredits({ users, onAddCredits }) {
   const [search,    setSearch]    = useState("");
   const [amounts,   setAmounts]   = useState({});
   const [confirm,   setConfirm]   = useState(null); // {userId, amount, name}
+
+  // Auto-lock after 15 minutes of inactivity
+  useEffect(() => {
+    if (!unlocked) return;
+    const t = setTimeout(() => { setUnlocked(false); setPinInput(""); }, 15 * 60 * 1000);
+    return () => clearTimeout(t);
+  }, [unlocked]);
 
   // Admin re-auth via Supabase — confirm their own password before adding credits
   const handleUnlock = async () => {
@@ -4542,23 +4700,23 @@ const CSS = `
   .auth-event{display:flex;align-items:center;gap:16px;margin-top:24px}
   .auth-event-rule{flex-shrink:0;height:1px;width:44px;background:rgba(255,255,255,.25)}
   .auth-event-text{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:5px;color:rgba(255,255,255,.7);white-space:nowrap}
-  .auth-panel{width:100%;background:#000;border:1px solid rgba(255,255,255,.14);animation:fadeUp .7s cubic-bezier(.16,1,.3,1) .12s both}
-  .auth-tabs{display:flex}
-  .auth-tab{flex:1;padding:18px 0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.08);font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;color:rgba(255,255,255,.45);cursor:pointer;transition:all .2s;position:relative}
-  .atab-on{color:#fff;border-bottom-color:transparent;background:rgba(255,255,255,.02)}
-  .atab-on::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:#fff}
+  .auth-panel{width:100%;background:rgba(10,10,10,0.72);border:1px solid rgba(255,255,255,.15);border-radius:20px;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 24px 80px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.04) inset,0 1px 0 rgba(255,255,255,.1) inset;overflow:hidden;animation:fadeUp .7s cubic-bezier(.16,1,.3,1) .12s both}
+  .auth-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.08)}
+  .auth-tab{flex:1;padding:20px 0;background:transparent;border:none;font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:3px;color:rgba(255,255,255,.32);cursor:pointer;transition:all .25s;position:relative}
+  .atab-on{color:#fff;background:rgba(255,255,255,.05)}
+  .atab-on::after{content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;background:#fff;border-radius:2px 2px 0 0}
   .auth-form{padding:32px 28px 28px;display:flex;flex-direction:column;gap:0}
   .ffield{margin-bottom:18px}
-  .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.6);margin-bottom:8px}
-  .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:'Outfit',sans-serif;font-size:16px;font-weight:500;transition:all .2s;outline:none;border-radius:0}
-  .ffield-inp::placeholder{color:rgba(255,255,255,.35)}
-  .ffield-inp:focus{border-color:rgba(255,255,255,.6);background:rgba(255,255,255,.09)}
-  .auth-err{display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#fca5a5;margin-bottom:18px;background:rgba(239,68,68,.06);border-left:2px solid #ef4444}
+  .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.45);margin-bottom:8px}
+  .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;font-family:'Outfit',sans-serif;font-size:16px;font-weight:500;transition:all .2s;outline:none;border-radius:10px}
+  .ffield-inp::placeholder{color:rgba(255,255,255,.25)}
+  .ffield-inp:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.09);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
+  .auth-err{display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#fca5a5;margin-bottom:18px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;border-radius:6px}
   .auth-err-dot{font-family:'Anton',sans-serif;font-size:15px;color:#ef4444}
-  .auth-cta{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11.5px;letter-spacing:5px;transition:opacity .15s;margin-bottom:22px;margin-top:6px}
-  .auth-cta:hover{opacity:.88}
-  .auth-footer-text{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);text-align:center}
-  .auth-footer-link{color:rgba(255,255,255,.85);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .auth-cta{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11.5px;letter-spacing:5px;transition:all .15s;margin-bottom:22px;margin-top:6px;border-radius:10px}
+  .auth-cta:hover{opacity:.88;transform:translateY(-1px)}
+  .auth-footer-text{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.45);text-align:center}
+  .auth-footer-link{color:rgba(255,255,255,.8);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
   /* ── SHELL ── */
   .shell{display:flex;flex-direction:column;height:100vh;background:#000;max-width:100%;margin:0 auto;position:relative}
@@ -4710,11 +4868,11 @@ const CSS = `
 
   /* ── PROFILE ── */
   .prof-wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column}
-  .prof-hero{background:#fff;padding:40px 24px 32px;text-align:center;width:100%}
-  .prof-av{width:72px;height:72px;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:24px;letter-spacing:2px;margin:0 auto 20px}
-  .prof-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:8px}
-  .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(0,0,0,.65);margin-bottom:3px}
-  .prof-leader-badge{margin-top:18px;display:inline-block;background:#000;color:#fff;padding:10px 24px;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;text-transform:uppercase}
+  .prof-hero{background:linear-gradient(160deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.09);padding:44px 24px 36px;text-align:center;width:100%}
+  .prof-av{width:76px;height:76px;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;margin:0 auto 20px;border-radius:50%}
+  .prof-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:1px;color:#fff;text-transform:uppercase;margin-bottom:8px}
+  .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);margin-bottom:3px}
+  .prof-leader-badge{margin-top:18px;display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:10px 24px;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;text-transform:uppercase;border-radius:6px}
   .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.08);width:100%}
   .scard{background:#111;padding:24px 20px}
   .sval{font-family:'Anton',sans-serif;font-size:44px;color:#fff;line-height:1}
@@ -4835,8 +4993,8 @@ const CSS = `
   .chat-send-btn:disabled{opacity:.25;cursor:not-allowed}
 
   /* ── TV LEADERBOARD BUTTON ── */
-  .tv-lb-btn{display:flex;align-items:center;gap:14px;width:100%;max-width:440px;margin-top:16px;padding:16px 20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:all .2s;text-align:left}
-  .tv-lb-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3)}
+  .tv-lb-btn{display:flex;align-items:center;gap:14px;width:100%;max-width:440px;margin-top:16px;padding:16px 20px;background:rgba(10,10,10,.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.12);border-radius:16px;cursor:pointer;transition:all .2s;text-align:left}
+  .tv-lb-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3);transform:translateY(-1px)}
   .tv-lb-btn-ico{font-size:26px;flex-shrink:0;line-height:1}
   .tv-lb-btn-inner{display:flex;flex-direction:column;gap:3px}
   .tv-lb-btn-text{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:#fff}
