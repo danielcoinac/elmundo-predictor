@@ -1076,6 +1076,8 @@ export default function App() {
           calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
           printOrderReceipt={printOrderReceipt}
+          stripeCheckout={stripeCheckout}
+          onToast={toast$}
         />
       )}
     </div>
@@ -1773,7 +1775,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
                 payGroupShareCredits, hostPayAllCredits,
                 calcMyGroupShare,
-                resetGroupToLobby, printOrderReceipt }) {
+                resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
@@ -1838,6 +1840,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             calcMyGroupShare={calcMyGroupShare}
             resetGroupToLobby={resetGroupToLobby}
             printOrderReceipt={printOrderReceipt}
+            stripeCheckout={stripeCheckout}
+            onToast={onToast}
           />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
           {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} />}
@@ -3167,7 +3171,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
-  resetGroupToLobby, printOrderReceipt }) {
+  resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [tab,         setTab]         = useState("menu");
@@ -3297,7 +3301,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
     }).select().single();
     placingRef.current = false;
     setPlacing(false);
-    if (error || !newOrder) { toast$("Error creating order", false); return; }
+    if (error || !newOrder) { onToast("Error creating order", false); return; }
     clearCart();
     // Redirect to Stripe
     stripeCheckout({
