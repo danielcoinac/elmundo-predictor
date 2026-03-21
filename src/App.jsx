@@ -1290,15 +1290,15 @@ function StadiumSky() {
       const W = canvas.width, H = canvas.height;
       t += 0.0018;
 
-      // ── BASE: very dark green pitch ──────────────────────────────
-      ctx.fillStyle = "#060e07"; ctx.fillRect(0, 0, W, H);
+      // ── BASE: dark green pitch ──────────────────────────────
+      ctx.fillStyle = "#0a1f0b"; ctx.fillRect(0, 0, W, H);
 
-      // Alternating grass stripes (subtle) — horizontal bands
+      // Alternating grass stripes — horizontal bands
       const stripes = 10;
       for (let i = 0; i < stripes; i++) {
         const y0 = (i / stripes) * H;
         const y1 = ((i + 1) / stripes) * H;
-        ctx.fillStyle = i % 2 === 0 ? "rgba(12,28,14,0.55)" : "rgba(8,20,10,0.55)";
+        ctx.fillStyle = i % 2 === 0 ? "rgba(20,55,22,0.6)" : "rgba(12,38,14,0.6)";
         ctx.fillRect(0, y0, W, y1 - y0);
       }
 
@@ -1309,18 +1309,18 @@ function StadiumSky() {
       ].forEach(({ cx, cy }) => {
         const lx = cx * W, ly = cy * H;
         const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.72);
-        lg.addColorStop(0,   "rgba(255,245,195,0.18)");
-        lg.addColorStop(0.25,"rgba(255,240,175,0.07)");
-        lg.addColorStop(0.6, "rgba(200,240,160,0.03)");
+        lg.addColorStop(0,   "rgba(255,245,195,0.28)");
+        lg.addColorStop(0.25,"rgba(255,240,175,0.12)");
+        lg.addColorStop(0.6, "rgba(200,240,160,0.05)");
         lg.addColorStop(1,   "transparent");
         ctx.save(); ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H); ctx.restore();
       });
 
       // Soft green glow at center of pitch
-      const cg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W * 0.38);
-      cg.addColorStop(0,   "rgba(20,80,30,0.22)");
-      cg.addColorStop(0.5, "rgba(10,40,15,0.09)");
+      const cg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W * 0.45);
+      cg.addColorStop(0,   "rgba(30,110,40,0.35)");
+      cg.addColorStop(0.5, "rgba(15,60,20,0.15)");
       cg.addColorStop(1,   "transparent");
       ctx.save(); ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H); ctx.restore();
