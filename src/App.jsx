@@ -648,9 +648,9 @@ export default function App() {
     const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`;
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
-    // Auto-assign next player number
-    const { count } = await supabase.from("profiles").select("*", { count:"exact", head:true });
-    const playerNumber = (count || 0) + 1;
+    // Auto-assign next player number — use MAX to avoid duplicates from race conditions
+    const { data: maxRow } = await supabase.from("profiles").select("player_number").order("player_number", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const playerNumber = (maxRow?.player_number || 0) + 1;
     await supabase.from("profiles").upsert({ id: data.user.id, name: fullName, phone: form.phone, player_number: playerNumber });
     setUser({ ...data.user, name: fullName, phone: form.phone, is_admin: false, player_number: playerNumber });
     setPage("app");
@@ -8456,13 +8456,13 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const foodReadyOrders = activeOrders.filter(o => o.kitchen_status === "food_ready");
 
   // Shared completion check — used by both TableDetail and notification panel
+  // Receipt is NOT printed here — it's printed on first confirm action in doUpdate
   const completeIfDone = async (ordId) => {
     const { data: fresh } = await supabase.from("orders").select("*").eq("id", ordId).maybeSingle();
     if (!fresh) return;
     const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
     const fDone = (fresh.items||[]).filter(i=> FOOD_CATS.has(i.category)).length === 0 || fresh.kitchen_status === "food_done";
     if (dDone && fDone) {
-      try { printReceipt({ ...fresh, table_number: fresh.table_number }); } catch(e) { console.error("printReceipt error", e); }
       await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
       onToast("Order #" + (fresh.order_number || ordId.slice(0,6)) + " completed ✓");
     }
@@ -8666,7 +8666,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
     // Perform update + reload.
     // Auto-kitchen: if confirming drinks on an order that has food and food hasn't been sent yet → send to kitchen now.
-    // Auto-complete: when drinks="ready" AND food="food_done" (or no drinks/food) → print receipt + complete.
+    // Receipt prints on FIRST confirm (drinks confirmed or food sent to kitchen), not at end.
+    // Auto-complete: when drinks="ready" AND food="food_done" (or no drinks/food) → complete (no receipt — already printed).
     const doUpdate = async (ordId, updates) => {
       setBusy(p => ({...p, [ordId]: true}));
       const ord = orders.find(o => o.id === ordId);
@@ -8674,8 +8675,16 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       if (ord && updates.drink_status && fItems(ord).length > 0 && !ord.kitchen_status) {
         updates.kitchen_status = "food_pending";
       }
+      // Print receipt on first confirm action (drinks confirmed or food-only sent to kitchen)
+      if (ord) {
+        const isFirstDrinkConfirm = updates.drink_status === "confirmed" && !ord.drink_status;
+        const isFoodOnlySend = updates.kitchen_status === "food_pending" && !updates.drink_status && !ord.kitchen_status;
+        if (isFirstDrinkConfirm || isFoodOnlySend) {
+          try { printReceipt({ ...ord, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
+        }
+      }
       await supabase.from("orders").update(updates).eq("id", ordId);
-      // Check completion via shared function
+      // Check completion via shared function (no receipt — already printed on confirm)
       await completeIfDone(ordId);
       await onLoad();
       setBusy(p => ({...p, [ordId]: false}));
