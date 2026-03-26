@@ -4341,7 +4341,6 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
       tabs: [
         { id:"dashboard", label:"Dashboard" },
-        { id:"floorplan", label:"Floor Plan" },
       ]
     },
     {
@@ -4378,7 +4377,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
   const goGroup = (g) => { setSection(g.tabs[0].id); };
 
   return (
-    <div className={section === "floorplan" ? "" : "vpad"}>
+    <div className="vpad">
       {/* ── Level 1: Group nav ── */}
       <div style={{display:"flex",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.07)",gap:0}}>
         {GROUPS.map(g => {
@@ -4436,7 +4435,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
       {/* ── Content ── */}
       {section === "dashboard"  && <AdminDashboard allOrders={allOrders} users={users} board={board} />}
-      {section === "floorplan"  && <FloorPlan allOrders={allOrders} onLoad={onLoadAllOrders} onUpdateStatus={onUpdateOrderStatus} onDeleteOrder={onDeleteOrder} />}
+
       {section === "matches"    && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
       {section === "rules"      && <AdminRules    rules={rules}       onSave={onSaveRules} />}
       {section === "sponsors"   && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
