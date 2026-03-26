@@ -12,6 +12,9 @@
   "dependencies": {
     "@stripe/stripe-js": "^8.10.0",
     "@supabase/supabase-js": "^2.99.1",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "jsqr": "^1.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
@@ -24,6 +27,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^0.19.8"
   }
 }
