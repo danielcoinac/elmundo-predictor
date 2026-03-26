@@ -8626,10 +8626,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                             {isBusy ? "…" : "✓ FOOD DELIVERED — CLEAR"}
                           </button>
                         ) : (
-                          /* null state — auto-send to kitchen when bar confirms order */
-                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.15)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.4)",textAlign:"center",boxSizing:"border-box"}}>
-                            🍳 ROUTES TO KITCHEN ON CONFIRM
-                          </div>
+                          /* null state — food-only: direct button; mixed order: auto-routes when drinks confirmed */
+                          !hasDrinks ? (
+                            <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{kitchen_status:"food_pending",status:"confirmed"})}
+                              style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#c084fc",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s"}}>
+                              {isBusy ? "…" : "🍳 SEND TO KITCHEN"}
+                            </button>
+                          ) : (
+                            <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.15)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.4)",textAlign:"center",boxSizing:"border-box"}}>
+                              🍳 ROUTES TO KITCHEN ON CONFIRM
+                            </div>
+                          )
                         )
                       )}
                     </>)}
