@@ -231,17 +231,19 @@ export default function App() {
   const [sponsorGifts, setSponsorGifts] = useState([]);
   const [showWinner,   setShowWinner]   = useState(false);
   const [winnerData,   setWinnerData]   = useState(null);
-  const [appSettings, setAppSettings] = useState(() => {
-    try {
-      const s = localStorage.getItem("em_app_settings");
-      const def = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false };
-      return s ? { ...def, ...JSON.parse(s) } : def;
-    } catch { return { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }; }
-  });
-  const saveAppSettings = (updates) => {
+  const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false };
+  const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
+  // Load global app settings from Supabase (shared for all users)
+  useEffect(() => {
+    (async () => {
+      const saved = await sget("em_app_settings");
+      if (saved) setAppSettings(prev => ({ ...APP_SETTINGS_DEF, ...saved }));
+    })();
+  }, []);
+  const saveAppSettings = async (updates) => {
     const n = { ...appSettings, ...updates };
     setAppSettings(n);
-    localStorage.setItem("em_app_settings", JSON.stringify(n));
+    await sset("em_app_settings", n);
   };
 
   useEffect(() => {
