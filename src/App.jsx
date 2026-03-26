@@ -2119,9 +2119,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
           {appTab === "vip" && user?.sponsor_tier && (
             <SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} />
           )}
-          {appTab === "kitchen" && user?.kitchen_access && <KitchenView user={user} />}
+          {appTab === "kitchen" && user?.kitchen_access && <KitchenView user={user} onToast={onToast} />}
           {appTab === "floorplan" && user?.floorplan_access && (
-            <FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} />
+            <FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} />
           )}
           {appTab === "admin" && isAdmin && (
             <AdminView
@@ -8121,7 +8121,7 @@ const FP_DEFAULT = [
 ];
 
 /* ═══ KITCHEN DISPLAY SYSTEM ════════════════════════════════════════════════ */
-function KitchenView({ user }) {
+function KitchenView({ user, onToast = ()=>{} }) {
   const [orders,    setOrders]    = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [markingId, setMarkingId] = useState(null);
@@ -8133,6 +8133,7 @@ function KitchenView({ user }) {
       .select("*")
       .in("kitchen_status", ["food_pending", "food_ready"])
       .neq("status", "completed")
+      .neq("status", "cancelled")
       .order("created_at", { ascending: true });
     if (data) setOrders(data);
     setLoading(false);
@@ -8171,13 +8172,15 @@ function KitchenView({ user }) {
   const markReady = async (orderId) => {
     if (markingId) return;
     setMarkingId(orderId);
-    await supabase.from("orders").update({ kitchen_status:"food_ready" }).eq("id", orderId);
+    const { error } = await supabase.from("orders").update({ kitchen_status:"food_ready" }).eq("id", orderId);
+    if (error) { onToast("Failed to update — check connection", false); setMarkingId(null); return; }
     setOrders(prev => prev.map(o => o.id===orderId ? {...o, kitchen_status:"food_ready"} : o));
     setMarkingId(null);
   };
 
   const dismiss = async (orderId) => {
-    await supabase.from("orders").update({ kitchen_status:"food_done" }).eq("id", orderId);
+    const { error } = await supabase.from("orders").update({ kitchen_status:"food_done" }).eq("id", orderId);
+    if (error) { onToast("Failed to dismiss — check connection", false); return; }
     setOrders(prev => prev.filter(o => o.id !== orderId));
   };
 
@@ -8186,8 +8189,10 @@ function KitchenView({ user }) {
   const timerColor = (mins) => mins < 5 ? "#4ade80" : mins < 10 ? "#fbbf24" : "#f87171";
   const timerLabel = (mins) => mins < 1 ? "<1m" : `${mins}m`;
 
-  const pending = orders.filter(o => o.kitchen_status === "food_pending");
-  const ready   = orders.filter(o => o.kitchen_status === "food_ready");
+  // Sort rush orders first, then by created_at (oldest first)
+  const sortKds = (a,b) => (b.is_rush?1:0) - (a.is_rush?1:0) || new Date(a.created_at) - new Date(b.created_at);
+  const pending = orders.filter(o => o.kitchen_status === "food_pending").sort(sortKds);
+  const ready   = orders.filter(o => o.kitchen_status === "food_ready").sort(sortKds);
 
   // Live clock for header
   const clockStr = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
@@ -8257,9 +8262,15 @@ function KitchenView({ user }) {
                   <div key={order.id} className={`kds2-ticket${urgent ? " kds2-ticket-urgent" : ""}`} style={{"--ticket-color": col}}>
                     {/* Ticket top */}
                     <div className="kds2-ticket-head">
-                      <div className="kds2-ticket-table">T{order.table_number}</div>
-                      <div className="kds2-ticket-timer" style={{color: col, borderColor: col}}>
-                        {timerLabel(mins)}
+                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                        <div className="kds2-ticket-table">T{order.table_number}</div>
+                        {order.order_number && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:700}}>#{order.order_number}</span>}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        {order.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.5)",padding:"2px 7px",animation:"kds-urgent-blink 1s ease-in-out infinite"}}>⚡ RUSH</span>}
+                        <div className="kds2-ticket-timer" style={{color: col, borderColor: col}}>
+                          {timerLabel(mins)}
+                        </div>
                       </div>
                     </div>
                     {/* Customer */}
@@ -8311,8 +8322,14 @@ function KitchenView({ user }) {
                 return (
                   <div key={order.id} className="kds2-ticket kds2-ticket-ready">
                     <div className="kds2-ticket-head">
-                      <div className="kds2-ticket-table" style={{color:"#4ade80"}}>T{order.table_number}</div>
-                      <div className="kds2-ticket-ready-badge">READY ✓</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                        <div className="kds2-ticket-table" style={{color:"#4ade80"}}>T{order.table_number}</div>
+                        {order.order_number && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)",fontWeight:700}}>#{order.order_number}</span>}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        {order.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.5)",padding:"2px 7px"}}>⚡</span>}
+                        <div className="kds2-ticket-ready-badge">READY ✓</div>
+                      </div>
                     </div>
                     <div className="kds2-ticket-customer">{order.user_name}</div>
                     <div className="kds2-ticket-sep"/>
@@ -8339,7 +8356,7 @@ function KitchenView({ user }) {
   );
 }
 
-function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
+function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
   const loadSaved = () => { try { const s = localStorage.getItem(FP_KEY); return s ? JSON.parse(s) : FP_DEFAULT; } catch { return FP_DEFAULT; } };
   const [selectedTable, setSelectedTable] = useState(null);
   const [now,       setNow      ] = useState(Date.now());
@@ -8435,6 +8452,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
   }, [allOrders]);
 
   const foodReadyOrders = activeOrders.filter(o => o.kitchen_status === "food_ready");
+
+  // Shared completion check — used by both TableDetail and notification panel
+  const completeIfDone = async (ordId) => {
+    const { data: fresh } = await supabase.from("orders").select("*").eq("id", ordId).maybeSingle();
+    if (!fresh) return;
+    const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
+    const fDone = (fresh.items||[]).filter(i=> FOOD_CATS.has(i.category)).length === 0 || fresh.kitchen_status === "food_done";
+    if (dDone && fDone) {
+      try { printReceipt({ ...fresh, table_number: fresh.table_number }); } catch(e) { console.error("printReceipt error", e); }
+      await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
+      onToast("Order #" + (fresh.order_number || ordId.slice(0,6)) + " completed ✓");
+    }
+  };
+
   const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
   const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
 
@@ -8642,16 +8673,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
         updates.kitchen_status = "food_pending";
       }
       await supabase.from("orders").update(updates).eq("id", ordId);
-      // Check completion
-      const { data: fresh } = await supabase.from("orders").select("*").eq("id", ordId).maybeSingle();
-      if (fresh) {
-        const dDone = dItems(fresh).length === 0 || fresh.drink_status === "ready";
-        const fDone = fItems(fresh).length === 0 || fresh.kitchen_status === "food_done";
-        if (dDone && fDone) {
-          try { printReceipt({ ...fresh, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
-          await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
-        }
-      }
+      // Check completion via shared function
+      await completeIfDone(ordId);
       await onLoad();
       setBusy(p => ({...p, [ordId]: false}));
     };
@@ -8711,6 +8734,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:"rgba(255,255,255,.55)"}}>{ord.user_name}</span>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {ord.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.4)",padding:"2px 6px"}}>⚡ RUSH</span>}
                       {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
                     </div>
@@ -8749,8 +8773,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       {/* Food button — auto-routed to kitchen on first confirm, bar only clears when ready */}
                       {ks !== "food_done" && (
                         ks === "food_pending" ? (
-                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.5)",textAlign:"center",boxSizing:"border-box"}}>
-                            ⏳ KITCHEN PREPARING…
+                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.5)",textAlign:"center",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                            <span>⏳ KITCHEN PREPARING…</span>
+                            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:"rgba(192,132,252,.7)",background:"rgba(192,132,252,.12)",padding:"2px 6px",borderRadius:3}}>{(() => { const m = Math.floor((Date.now() - new Date(ord.created_at).getTime()) / 60000); return m < 1 ? "<1m" : m + "m"; })()}</span>
                           </div>
                         ) : ks === "food_ready" ? (
                           <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{kitchen_status:"food_done"})}
@@ -8773,12 +8798,31 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       )}
                     </>)}
 
-                    {/* Total + print */}
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0 10px",borderTop:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
+                    {/* Total + actions */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0 6px",borderTop:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
                       <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#fff"}}>${(+ord.total).toFixed(2)}</span>
                       <button onClick={()=>printReceipt({...ord,table_number:selectedTable})}
                         style={{padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.45)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}>
                         🖨 PRINT
+                      </button>
+                    </div>
+                    {/* Rush + Cancel row */}
+                    <div style={{display:"flex",gap:8,paddingBottom:10}}>
+                      <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{is_rush:!ord.is_rush})}
+                        style={{flex:1,padding:"9px",border:"1px solid",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:isBusy?"not-allowed":"pointer",
+                          background:ord.is_rush?"rgba(245,158,11,.12)":"transparent",
+                          borderColor:ord.is_rush?"rgba(245,158,11,.5)":"rgba(255,255,255,.1)",
+                          color:ord.is_rush?"#f59e0b":"rgba(255,255,255,.35)",
+                        }}>
+                        {ord.is_rush ? "⚡ RUSH ON" : "⚡ RUSH"}
+                      </button>
+                      <button disabled={isBusy} onClick={async()=>{
+                        if(!window.confirm("Cancel this order? This cannot be undone.")) return;
+                        await supabase.from("orders").update({status:"cancelled"}).eq("id",ord.id);
+                        await onLoad();
+                      }}
+                        style={{padding:"9px 14px",border:"1px solid rgba(239,68,68,.3)",background:"transparent",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(239,68,68,.6)",cursor:isBusy?"not-allowed":"pointer"}}>
+                        ✕ CANCEL
                       </button>
                     </div>
                     {/* Manual close — shown when everything is served but order wasn't auto-completed */}
@@ -8918,14 +8962,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                   <button
                     onClick={async()=>{
                       await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id);
-                      const { data: fresh } = await supabase.from("orders").select("*").eq("id",ord.id).maybeSingle();
-                      if (fresh) {
-                        const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
-                        if (dDone) {
-                          try { printReceipt({ ...fresh, table_number: fresh.table_number }); } catch(e) { console.error("printReceipt error", e); }
-                          await supabase.from("orders").update({ status: "completed" }).eq("id",ord.id);
-                        }
-                      }
+                      await completeIfDone(ord.id);
                       await onLoad();
                     }}
                     style={{width:"100%",padding:"11px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#000",cursor:"pointer",transition:"opacity .15s"}}
