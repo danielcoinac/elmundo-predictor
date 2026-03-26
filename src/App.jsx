@@ -231,6 +231,18 @@ export default function App() {
   const [sponsorGifts, setSponsorGifts] = useState([]);
   const [showWinner,   setShowWinner]   = useState(false);
   const [winnerData,   setWinnerData]   = useState(null);
+  const [appSettings, setAppSettings] = useState(() => {
+    try {
+      const s = localStorage.getItem("em_app_settings");
+      const def = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false };
+      return s ? { ...def, ...JSON.parse(s) } : def;
+    } catch { return { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }; }
+  });
+  const saveAppSettings = (updates) => {
+    const n = { ...appSettings, ...updates };
+    setAppSettings(n);
+    localStorage.setItem("em_app_settings", JSON.stringify(n));
+  };
 
   useEffect(() => {
     (async () => {
@@ -890,6 +902,13 @@ export default function App() {
     toast$(grant ? "Kitchen access granted ✓" : "Kitchen access removed ✓");
   };
 
+  const adminSetFloorplanAccess = async (userId, grant) => {
+    const { error } = await supabase.from("profiles").update({ floorplan_access: grant }).eq("id", userId);
+    if (error) { toast$("DB error — run: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS floorplan_access BOOLEAN DEFAULT FALSE", false); return; }
+    setUsers(u => ({ ...u, [userId]: { ...u[userId], floorplan_access: grant } }));
+    toast$(grant ? "Floor plan access granted ✓" : "Floor plan access removed ✓");
+  };
+
   const adminSaveSponsorGifts = async (gifts) => {
     const { data: existing } = await supabase.from("sponsor_gifts").select("id");
     if (existing?.length) {
@@ -1312,6 +1331,9 @@ export default function App() {
           adminSaveSponsorGifts={adminSaveSponsorGifts}
           adminBanUsers={adminBanUsers}
           adminSetKitchenAccess={adminSetKitchenAccess}
+          adminSetFloorplanAccess={adminSetFloorplanAccess}
+          appSettings={appSettings}
+          onSaveAppSettings={saveAppSettings}
           newOrderAlert={newOrderAlert} setNewOrderAlert={setNewOrderAlert}
           showWinner={showWinner} setShowWinner={setShowWinner}
           winnerData={winnerData} setWinnerData={setWinnerData}
@@ -2017,7 +2039,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 payGroupShareCredits, hostPayAllCredits,
                 calcMyGroupShare,
                 resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast,
-                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetKitchenAccess = () => {},
+                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetKitchenAccess = () => {}, adminSetFloorplanAccess = () => {},
+                appSettings = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }, onSaveAppSettings = () => {},
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 qrTable = "" }) {
@@ -2029,13 +2052,14 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const switchTab = (id) => { setAnimKey(id); setAppTab(id); if (id === "admin" && setNewOrderAlert) setNewOrderAlert(false); };
 
   const tabs = [
-    { id:"matches",     label:t('matches'),     ico:<SoccerIco /> },
-    { id:"leaderboard", label:t('leaderboard'), ico:<TrophyIco /> },
-    { id:"moments",     label:"MUNDOGRAM",      ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> },
-    { id:"menu",        label:t('menu'),        ico:<MenuIco />   },
-    { id:"profile",     label:t('profile'),     ico:<PersonIco /> },
+    ...(!appSettings.noEventMode && appSettings.showMatches  !== false ? [{ id:"matches",     label:t('matches'),     ico:<SoccerIco /> }] : []),
+    ...(!appSettings.noEventMode && appSettings.showLeaderboard !== false ? [{ id:"leaderboard", label:t('leaderboard'), ico:<TrophyIco /> }] : []),
+    ...(appSettings.showMundogram !== false ? [{ id:"moments", label:"MUNDOGRAM", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> }] : []),
+    ...(appSettings.showMenu !== false ? [{ id:"menu", label:t('menu'), ico:<MenuIco /> }] : []),
+    { id:"profile", label:t('profile'), ico:<PersonIco /> },
     ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
     ...(user?.kitchen_access ? [{ id:"kitchen", label:"KITCHEN", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6z"/><line x1="6" y1="17" x2="18" y2="17"/></svg> }] : []),
+    ...((user?.floorplan_access || isAdmin) ? [{ id:"floorplan", label:"FLOOR", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
 
@@ -2096,6 +2120,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} />
           )}
           {appTab === "kitchen" && user?.kitchen_access && <KitchenView user={user} />}
+          {appTab === "floorplan" && (user?.floorplan_access || isAdmin) && (
+            <FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} />
+          )}
           {appTab === "admin" && isAdmin && (
             <AdminView
               matches={matches} rules={rules} sponsors={sponsors}
@@ -2112,6 +2139,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSaveSponsorGifts={adminSaveSponsorGifts}
               onBanUsers={adminBanUsers}
               onSetKitchenAccess={adminSetKitchenAccess}
+              onSetFloorplanAccess={adminSetFloorplanAccess}
+              appSettings={appSettings}
+              onSaveAppSettings={onSaveAppSettings}
               onAnnounceWinner={() => { setWinnerData(board[0]||null); setShowWinner(true); }}
               board={board}
             />
@@ -4301,7 +4331,7 @@ function AdminDashboard({ allOrders, users, board }) {
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetKitchenAccess }) {
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetKitchenAccess, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{} }) {
   const [section, setSection] = useState("dashboard");
 
   const GROUPS = [
@@ -4319,11 +4349,13 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       label: "SERVICE",
       ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
       tabs: [
-        { id:"menu",    label:"Menu"     },
-        { id:"tables",  label:"Tables"   },
-        { id:"tableqr", label:"Table QR" },
-        { id:"credits", label:"Credits"  },
-        { id:"kitchen", label:"Kitchen"  },
+        { id:"menu",        label:"Menu"        },
+        { id:"tables",      label:"Tables"      },
+        { id:"tableqr",     label:"Table QR"    },
+        { id:"credits",     label:"Credits"     },
+        { id:"kitchen",     label:"Kitchen"     },
+        { id:"fpAccess",    label:"Floor Plan"  },
+        { id:"appSettings", label:"App Settings"},
       ]
     },
     {
@@ -4415,6 +4447,107 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
       {section === "kitchen"    && <AdminKitchenAccess users={users} onSetAccess={onSetKitchenAccess} />}
+      {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
+      {section === "appSettings" && <AdminAppSettings appSettings={appSettings} onSave={onSaveAppSettings} />}
+    </div>
+  );
+}
+
+/* ── Admin: App Settings ── */
+function AdminAppSettings({ appSettings = {}, onSave }) {
+  const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, ...appSettings };
+  const Toggle = ({ label, desc, val, onToggle }) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"rgba(255,255,255,.03)",border:`1px solid ${val?"rgba(255,255,255,.12)":"rgba(255,255,255,.06)"}`,marginBottom:8}}>
+      <div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,color:val?"#fff":"rgba(255,255,255,.45)"}}>{label}</div>
+        {desc && <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:3,fontFamily:"'Outfit',sans-serif"}}>{desc}</div>}
+      </div>
+      <div onClick={onToggle} style={{width:44,height:24,borderRadius:12,background:val?"#fff":"rgba(255,255,255,.12)",border:`1px solid ${val?"#fff":"rgba(255,255,255,.2)"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
+        <div style={{position:"absolute",top:3,left:val?22:3,width:16,height:16,borderRadius:"50%",background:val?"#000":"rgba(255,255,255,.5)",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+      </div>
+    </div>
+  );
+  return (
+    <div className="vpad">
+      <div className="section-banner">
+        <div className="sb-label">APP SETTINGS</div>
+        <div className="sb-sub">Control which tabs are visible and toggle event mode</div>
+      </div>
+      <div style={{padding:"0 14px 24px"}}>
+        {/* Event Mode */}
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT MODE</div>
+          <div style={{padding:"16px",background:s.noEventMode?"rgba(255,255,255,.04)":"rgba(201,168,76,.06)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.1)":"rgba(201,168,76,.3)"}`,marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:s.noEventMode?"rgba(255,255,255,.45)":"#c9a84c"}}>
+                  {s.noEventMode ? "EVENT DISABLED" : "⚽ WORLD CUP MODE ACTIVE"}
+                </div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:"'Outfit',sans-serif"}}>
+                  {s.noEventMode ? "Matches & leaderboard tabs are hidden. App runs in restaurant-only mode." : "Matches and leaderboard are shown. Disable when the event ends."}
+                </div>
+              </div>
+              <div onClick={()=>onSave({noEventMode:!s.noEventMode})} style={{width:44,height:24,borderRadius:12,background:s.noEventMode?"rgba(255,255,255,.12)":"#c9a84c",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.2)":"#c9a84c"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0,marginLeft:16}}>
+                <div style={{position:"absolute",top:3,left:s.noEventMode?3:22,width:16,height:16,borderRadius:"50%",background:s.noEventMode?"rgba(255,255,255,.5)":"#000",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Individual Tab Visibility */}
+        {!s.noEventMode && (
+          <div style={{marginBottom:20}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>TAB VISIBILITY</div>
+            <Toggle label="MATCHES" desc="World Cup match predictions tab" val={s.showMatches} onToggle={()=>onSave({showMatches:!s.showMatches})} />
+            <Toggle label="LEADERBOARD" desc="Player rankings and points tab" val={s.showLeaderboard} onToggle={()=>onSave({showLeaderboard:!s.showLeaderboard})} />
+          </div>
+        )}
+        <div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>RESTAURANT TABS</div>
+          <Toggle label="MUNDOGRAM" desc="Social photo feed tab" val={s.showMundogram} onToggle={()=>onSave({showMundogram:!s.showMundogram})} />
+          <Toggle label="MENU" desc="Food & drinks ordering tab" val={s.showMenu} onToggle={()=>onSave({showMenu:!s.showMenu})} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Admin: Floor Plan Access ── */
+function AdminFloorplanAccess({ users, onSetAccess }) {
+  const [search, setSearch] = useState("");
+  const userList = Object.values(users).filter(u => !u.is_admin);
+  const filtered = search.trim()
+    ? userList.filter(u => (u.name||"").toLowerCase().includes(search.toLowerCase()))
+    : userList;
+  return (
+    <div className="vpad">
+      <div className="section-banner">
+        <div className="sb-label">FLOOR PLAN ACCESS</div>
+        <div className="sb-sub">Grant staff access to the live Floor Plan tab</div>
+      </div>
+      <div style={{padding:"0 14px 12px"}}>
+        <input className="afield-inp" placeholder="Search by name…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",marginBottom:12}} />
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(u => (
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,.03)",border:`1px solid ${u.floorplan_access?"rgba(96,165,250,.2)":"rgba(255,255,255,.07)"}`}}>
+              {u.avatar_url ? (
+                <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
+              ) : (
+                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                {u.floorplan_access && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#60a5fa",padding:"3px 8px",background:"rgba(96,165,250,.1)",border:"1px solid rgba(96,165,250,.3)"}}>FLOOR ✓</span>}
+                <button onClick={()=>onSetAccess(u.id,!u.floorplan_access)} style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,padding:"7px 14px",border:"1px solid",cursor:"pointer",background:u.floorplan_access?"rgba(239,68,68,.1)":"rgba(96,165,250,.1)",borderColor:u.floorplan_access?"rgba(239,68,68,.4)":"rgba(96,165,250,.4)",color:u.floorplan_access?"#f87171":"#60a5fa",whiteSpace:"nowrap"}}>
+                  {u.floorplan_access ? "REVOKE" : "GRANT"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -8826,8 +8959,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
             style={{
               position:"relative", width:700, minWidth:700, height:canvasH,
               background: editMode
-                ? "repeating-linear-gradient(rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 1px,transparent 40px),#0a0a0a"
-                : "#0a0a0a",
+                ? "radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px) 0 0 / 40px 40px, #0a0a0a"
+                : "radial-gradient(circle, rgba(255,255,255,.03) 1px, transparent 1px) 0 0 / 40px 40px, #080808",
               transition:"background .3s",
             }}
             onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
