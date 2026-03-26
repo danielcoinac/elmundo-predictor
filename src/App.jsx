@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from '@supabase/supabase-js';
-
+import jsQR from "jsqr";
 /* ─── Supabase ──────────────────────────────────────────────────────────────── */
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -117,11 +117,14 @@ async function sset(k, v) { try { await window.storage.set(k, JSON.stringify(v),
 const DEFAULT_MATCHES = [];
 
 const DEFAULT_RULES = [
-  { id:"r1", title:"How to Play",   body:"Register your account and predict the exact final score for each match before it starts. You cannot change your prediction once the match has kicked off." },
-  { id:"r2", title:"Points System", body:"Predict the exact final score correctly and earn 5 points. Predict the correct winner (or a draw) but with the wrong score and earn 1 point. An incorrect prediction earns 0 points." },
-  { id:"r3", title:"Leaderboard",   body:"The player with the most points at the end of the tournament wins. The leaderboard updates automatically every time a match result is entered." },
-  { id:"r4", title:"Tiebreaker",    body:"In case of a tie in points, the player who registered first will be ranked higher." },
-  { id:"r5", title:"Fair Play",     body:"One account per person. Any attempt to cheat or create multiple accounts will result in immediate disqualification." },
+  { id:"r1", title:"How to Play",        body:"Create your account and predict the exact final score for every World Cup 2026 match. Browse all 64 games in the Matches tab, enter your home and away score prediction for each one, and hit Save. You can update your predictions anytime until the deadline." },
+  { id:"r2", title:"Prediction Deadline",body:"All predictions must be submitted before 14:00 on June 11, 2026 — exactly 1 hour before the opening match (Mexico vs Canada, 15:00 BON time). Once the deadline passes, the prediction window closes permanently for all games. No late submissions, no exceptions." },
+  { id:"r3", title:"Points System",      body:"Exact final score correct → 5 points. Correct winner predicted (wrong score) → 1 point. Draw matches: only the exact score earns points — no points for guessing a draw with the wrong score. Wrong or missing prediction → 0 points." },
+  { id:"r4", title:"Leaderboard",        body:"The player with the most points at the end of the tournament wins. The leaderboard updates live every time a match result is entered. Check the Leaderboard tab anytime to see your current rank against all other players." },
+  { id:"r5", title:"Ordering Food & Drinks", body:"Top up your credits at the top-up desk (cash or card). Then scan the QR code on your table — it fills in your table number automatically. Browse the menu, add items to your cart, and place your order directly from your phone. Your order goes straight to the bar." },
+  { id:"r6", title:"Group Orders",       body:"Want to order together with your table? Go to the Group tab and start a group order. Everyone at the table scans the same table QR code to join. Add your own items, then choose to pay individually or let one person cover the whole table." },
+  { id:"r7", title:"Tiebreaker",         body:"If two or more players finish with the same number of points, the player who registered their account first is ranked higher. Make sure you register early!" },
+  { id:"r8", title:"Fair Play",          body:"One account per person only. Duplicate accounts detected by phone number or email will result in both accounts being banned from predictions. Any attempt to manipulate the prediction system — including changing device time — will be detected and result in disqualification." },
 ];
 
 const DEFAULT_SPONSORS = [
@@ -135,16 +138,25 @@ const matchDate = m => {
   const [mon, day] = (m.date || m.match_date || "Jan 1").split(" ");
   return new Date(2026, (MONTHS[mon]||1)-1, parseInt(day)||1);
 };
-const sortMatches = arr => [...arr].sort((a,b) => matchDate(a) - matchDate(b));
+// Sort by date first, then by kickoff time within the same day
+const sortMatches = arr => [...arr].sort((a,b) => {
+  const dateDiff = matchDate(a) - matchDate(b);
+  if (dateDiff !== 0) return dateDiff;
+  // same date — sort by time string "HH:MM"
+  const ta = (a.time || "00:00");
+  const tb = (b.time || "00:00");
+  return ta.localeCompare(tb);
+});
 
-// Points: 5 for exact score, 1 for correct winner/draw (but not exact)
+// Points: 5 for exact score, 1 for correct winner (non-draw only), 0 for everything else
 function calcPts(pred, homeScore, awayScore) {
   if (!pred) return 0;
   const ph = +pred.h, pa = +pred.a;
-  const mh = +homeScore,  ma = +awayScore;
+  const mh = +homeScore, ma = +awayScore;
   if (ph === mh && pa === ma) return 5;
-  const predWinner = ph > pa ? "home" : ph < pa ? "away" : "draw";
   const realWinner = mh > ma ? "home" : mh < ma ? "away" : "draw";
+  if (realWinner === "draw") return 0;
+  const predWinner = ph > pa ? "home" : ph < pa ? "away" : "draw";
   if (predWinner === realWinner) return 1;
   return 0;
 }
@@ -167,8 +179,6 @@ const Logo = ({ w = 160 }) => (
     <text x="100" y="85"  textAnchor="middle" fill="#fff" fontFamily="'Anton',sans-serif" fontSize="21" letterSpacing="5">BAR-REST</text>
     <rect x="16" y="93" width="168" height="44" fill="none" stroke="#fff" strokeWidth="2.2" rx="2"/>
     <text x="100" y="115" textAnchor="middle" fill="#fff" fontFamily="'Anton',sans-serif" fontSize="19" letterSpacing="3">EST. 2009</text>
-    <line x1="26" y1="122" x2="68" y2="122" stroke="#fff" strokeWidth="0.9"/>
-    <line x1="132" y1="122" x2="174" y2="122" stroke="#fff" strokeWidth="0.9"/>
     <text x="100" y="127" textAnchor="middle" fill="#fff" fontFamily="Georgia,serif" fontSize="6.2" letterSpacing="2.2">WWW.ELMUNDOBONAIRE.COM</text>
     <text x="100" y="168" textAnchor="middle" fill="#fff" fontFamily="'Anton',sans-serif" fontSize="37" letterSpacing="4">BONAIRE</text>
   </svg>
@@ -180,8 +190,6 @@ const HeaderLogo = () => (
     <text x="100" y="85"  textAnchor="middle" fill="#000" fontFamily="'Anton',sans-serif" fontSize="21" letterSpacing="5">BAR-REST</text>
     <rect x="16" y="93" width="168" height="44" fill="none" stroke="#000" strokeWidth="2.2" rx="2"/>
     <text x="100" y="115" textAnchor="middle" fill="#000" fontFamily="'Anton',sans-serif" fontSize="19" letterSpacing="3">EST. 2009</text>
-    <line x1="26" y1="122" x2="68" y2="122" stroke="#000" strokeWidth="0.9"/>
-    <line x1="132" y1="122" x2="174" y2="122" stroke="#000" strokeWidth="0.9"/>
     <text x="100" y="127" textAnchor="middle" fill="#000" fontFamily="Georgia,serif" fontSize="6.2" letterSpacing="2.2">WWW.ELMUNDOBONAIRE.COM</text>
     <text x="100" y="168" textAnchor="middle" fill="#000" fontFamily="'Anton',sans-serif" fontSize="37" letterSpacing="4">BONAIRE</text>
   </svg>
@@ -193,7 +201,11 @@ const HeaderLogo = () => (
 export default function App() {
   const [page,     setPage]     = useState("loading");
   const [authTab,  setAuthTab]  = useState("login");
-  const [appTab,   setAppTab]   = useState("matches");
+  const tableFromQR = new URLSearchParams(window.location.search).get("table") || "";
+  const [appTab,   setAppTab]   = useState(tableFromQR ? "menu" : "matches");
+  const [qrTable,  setQrTable]  = useState(tableFromQR);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [newOrderAlert, setNewOrderAlert] = useState(false);
   const [user,     setUser]     = useState(null);
   const [users,    setUsers]    = useState({});
   const [preds,    setPreds]    = useState({});
@@ -216,6 +228,9 @@ export default function App() {
   const [activeGroup,  setActiveGroup]  = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
   const [groupItems,   setGroupItems]   = useState([]);
+  const [sponsorGifts, setSponsorGifts] = useState([]);
+  const [showWinner,   setShowWinner]   = useState(false);
+  const [winnerData,   setWinnerData]   = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -258,10 +273,10 @@ export default function App() {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
         if (profile) {
           setUser({ ...session.user, ...profile });
-          const { data: predRows } = await supabase.from("predictions").select("*").eq("user_id", session.user.id);
+          const { data: predRows } = await supabase.from("predictions").select("*");
           if (predRows) {
             const predMap = {};
-            predRows.forEach(p => { predMap[`${session.user.id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
+            predRows.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
             setPreds(predMap);
           }
           const { data: allProfiles } = await supabase.from("profiles").select("*");
@@ -275,6 +290,8 @@ export default function App() {
           if (menuRows) setMenuItems(menuRows);
           const { data: credRow } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).maybeSingle();
           if (credRow) setMyCredits(credRow.balance || 0);
+          const { data: sgRows } = await supabase.from("sponsor_gifts").select("*").order("tier");
+          if (sgRows) setSponsorGifts(sgRows);
           const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
           if (orderRows) setMyOrders(orderRows);
 
@@ -310,7 +327,7 @@ export default function App() {
           if (stripeResult === "topup_success") {
             // Webhook already added credits — reload balance and show toast
             window.history.replaceState({}, "", window.location.pathname);
-            const { data: cr } = await supabase.from("user_credits").select("balance").eq("user_id", profRow.id).maybeSingle();
+            const { data: cr } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).maybeSingle();
             if (cr) setMyCredits(cr.balance);
             setTimeout(() => toast$("Payment successful! Credits added to your account ✓"), 600);
           } else if (stripeResult === "order_success") {
@@ -321,7 +338,12 @@ export default function App() {
             setTimeout(() => toast$("Group payment confirmed! Your order is being prepared 🍺"), 600);
           } else if (stripeResult === "cancelled") {
             window.history.replaceState({}, "", window.location.pathname);
-            setTimeout(() => toast$("Payment cancelled", false), 600);
+            // Delete any ghost card_pending orders left by the cancelled Stripe session
+            await supabase.from("orders")
+              .delete()
+              .eq("user_id", session.user.id)
+              .eq("payment_method", "card_pending");
+            setTimeout(() => toast$("Payment cancelled — your order was not placed", false), 600);
           }
 
           return;
@@ -357,6 +379,11 @@ export default function App() {
             const idx = m.findIndex(x => x.id === r.id);
             return idx >= 0 ? m.map((x,i) => i===idx ? mapped : x) : [...m, mapped];
           });
+          // Notify players when a result is entered
+          if (payload.eventType === "UPDATE" && payload.new?.status === "finished" && payload.old?.status !== "finished") {
+            playMatchAlert();
+            toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
+          }
         }
       }).subscribe();
 
@@ -374,12 +401,14 @@ export default function App() {
         }
       }).subscribe();
 
-    // ── 4. PROFILES — Realtime (for leaderboard updates) ────────────────────
+    // ── 4. PROFILES — Realtime (for leaderboard + own sponsor_tier updates) ──
     const profileSub = supabase.channel("rt-profiles")
       .on("postgres_changes", { event:"*", schema:"public", table:"profiles" }, payload => {
         const r = payload.new;
         if (!r || r.is_admin) return;
         setUsers(u => ({ ...u, [r.id]: r }));
+        // If this is the current user's profile, update user state too (e.g. sponsor_tier assigned by admin)
+        if (r.id === uid) setUser(prev => ({ ...prev, ...r }));
       }).subscribe();
 
     // ── 5. MY PREDICTIONS — Realtime (only this user's rows) ─────────────────
@@ -402,6 +431,17 @@ export default function App() {
         if (payload.new) setMyCredits(payload.new.balance || 0);
       }).subscribe();
 
+    // ── 6b. CREDIT TOP-UP NOTIFICATION ───────────────────────────────────────
+    const creditNotifSub = supabase.channel("rt-credits-user")
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"user_credits", filter:`user_id=eq.${uid}` }, payload => {
+        const newBal = payload.new?.balance;
+        const oldBal = payload.old?.balance;
+        if (newBal != null) setMyCredits(newBal);
+        if (newBal != null && oldBal != null && newBal > oldBal) {
+          toast$(`💰 +$${(newBal - oldBal).toFixed(2)} credits added to your account!`);
+        }
+      }).subscribe();
+
     // ── 7. MY ORDERS — Realtime ──────────────────────────────────────────────
     const orderSub = supabase.channel("rt-orders")
       .on("postgres_changes", {
@@ -415,7 +455,22 @@ export default function App() {
         }
       }).subscribe();
 
-    // ── 8. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
+    // ── 8. ADMIN ORDER ALERTS (all new orders, admins only) ──────────────────
+    let adminOrderSub = null;
+    if (isAdmin) {
+      adminOrderSub = supabase.channel("rt-admin-orders")
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"orders" }, payload => {
+          if (payload.new && payload.new.payment_method !== "card_pending") {
+            // Ignore ghost orders from Stripe sessions not yet completed
+            playOrderAlert();
+            setNewOrderAlert(true);
+            toast$(`🔔 New order — Table ${payload.new.table_number}`, true);
+            setAllOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
+          }
+        }).subscribe();
+    }
+
+    // ── 9. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
     // Only fetches the user's own lightweight data — failsafe if Realtime misses anything
     // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
     const fallback = setInterval(async () => {
@@ -435,6 +490,7 @@ export default function App() {
       supabase.removeChannel(predSub);
       supabase.removeChannel(creditSub);
       supabase.removeChannel(orderSub);
+      if (adminOrderSub) supabase.removeChannel(adminOrderSub);
       clearInterval(fallback);
     };
   }, [page, user?.id]);
@@ -490,6 +546,77 @@ export default function App() {
     return () => clearInterval(iv);
   }, [activeGroup?.id, activeGroup?.status]);
 
+  const playOrderAlert = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [[880, 0], [1100, 0.18], [1320, 0.34]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = "sine";
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + delay + 0.06);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.28);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.32);
+      });
+    } catch(e) {}
+  };
+
+  const playMatchAlert = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [[523, 0], [659, 0.2]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = "sine";
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + delay + 0.05);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.35);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.38);
+      });
+    } catch(e) {}
+  };
+
+  const playKitchenAlert = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [[1047, 0], [1047, 0.22], [1047, 0.44]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = "sine";
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + delay + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.8);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.85);
+      });
+    } catch(e) {}
+  };
+
+  const playFoodReadyBell = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [[523.25, 0, 0.35], [1046.5, 0, 0.18], [1568.75, 0, 0.1]].forEach(([freq, delay, vol]) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = "sine";
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + delay + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 2.5);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 2.6);
+      });
+      [[523.25, 0.9, 0.35], [1046.5, 0.9, 0.18]].forEach(([freq, delay, vol]) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = "sine";
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + delay + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 2.5);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 2.6);
+      });
+    } catch(e) {}
+  };
+
   const toast$ = (msg, ok = true) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, ok });
@@ -498,19 +625,23 @@ export default function App() {
 
   const doRegister = async () => {
     setFormErr("");
-    if (!form.name.trim())                 return setFormErr("Full name is required.");
+    if (!form.firstName?.trim())           return setFormErr("First name is required.");
+    if (!form.lastName?.trim())            return setFormErr("Last name is required.");
     if (!/\S+@\S+\.\S+/.test(form.email)) return setFormErr("Enter a valid email address.");
     if (!form.phone.trim())                return setFormErr("Phone number is required.");
+    if (!form.phone.trim().startsWith("+")) return setFormErr("Phone must include country code (e.g. +599, +31, +1).");
     if (form.password.length < 6)          return setFormErr("Password must be at least 6 characters.");
+    const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`;
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
     // Auto-assign next player number
     const { count } = await supabase.from("profiles").select("*", { count:"exact", head:true });
     const playerNumber = (count || 0) + 1;
-    await supabase.from("profiles").upsert({ id: data.user.id, name: form.name, phone: form.phone, player_number: playerNumber });
-    setUser({ ...data.user, name: form.name, phone: form.phone, is_admin: false, player_number: playerNumber });
+    await supabase.from("profiles").upsert({ id: data.user.id, name: fullName, phone: form.phone, player_number: playerNumber });
+    setUser({ ...data.user, name: fullName, phone: form.phone, is_admin: false, player_number: playerNumber });
     setPage("app");
-    toast$(`Welcome, ${form.name}! ⚽`);
+    setShowOnboarding(true);
+    toast$(`Welcome, ${fullName}! ⚽`);
   };
 
   const doLogin = async () => {
@@ -523,15 +654,15 @@ export default function App() {
     setUser({ ...data.user, ...profile });
     // Load all user data in parallel
     const [predRows, allProfiles, menuRows, credRow, orderRows] = await Promise.all([
-      supabase.from("predictions").select("*").eq("user_id", data.user.id).then(r => r.data),
-      supabase.from("profiles").select("*").then(r => r.data),
-      supabase.from("menu_items").select("*").order("sort_order").then(r => r.data),
-      supabase.from("user_credits").select("balance").eq("user_id", data.user.id).maybeSingle().then(r => r.data),
-      supabase.from("orders").select("*").eq("user_id", data.user.id).order("created_at", { ascending: false }).limit(20).then(r => r.data),
+      supabase.from("predictions").select("*").then(r => r.data || []).catch(() => []),
+      supabase.from("profiles").select("*").then(r => r.data || []).catch(() => []),
+      supabase.from("menu_items").select("*").order("sort_order").then(r => r.data || []).catch(() => []),
+      supabase.from("user_credits").select("balance").eq("user_id", data.user.id).maybeSingle().then(r => r.data).catch(() => null),
+      supabase.from("orders").select("*").eq("user_id", data.user.id).order("created_at", { ascending: false }).limit(20).then(r => r.data || []).catch(() => []),
     ]);
     if (predRows) {
       const predMap = {};
-      predRows.forEach(p => { predMap[`${data.user.id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
+      predRows.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
       setPreds(predMap);
     }
     if (allProfiles) {
@@ -543,6 +674,8 @@ export default function App() {
     if (credRow) setMyCredits(+credRow.balance);
     if (orderRows) setMyOrders(orderRows);
     setPage("app");
+    const seen = localStorage.getItem(ONBOARDING_KEY);
+    if (!seen) setShowOnboarding(true);
     toast$(`Welcome back, ${profile.name}! ⚽`);
   };
 
@@ -573,8 +706,20 @@ export default function App() {
   const predSavingRef = useRef(new Set());
   const savePred = async (id, h, a) => {
     if (predSavingRef.current.has(id)) return;
+    // Prediction-banned users cannot submit
+    if (user?.is_banned) { toast$("⛔ Cheating detected — you are banned from predictions", false); return; }
     predSavingRef.current.add(id);
     try {
+      // ── Server-side time check (defeats device clock manipulation) ──────
+      // Fetch real server time from Supabase — device clock changes are irrelevant
+      const { data: tsData } = await supabase.rpc("get_server_time");
+      const serverNow = tsData ? new Date(tsData).getTime() : Date.now();
+      const lockMs = getGlobalLockMs(matches);
+      if (lockMs && serverNow >= lockMs) {
+        toast$("⛔ Prediction window is closed — the tournament has started", false);
+        return;
+      }
+      // ────────────────────────────────────────────────────────────────────
       const { error } = await supabase.from("predictions").upsert(
         { user_id: user.id, match_id: id, home_pred: +h, away_pred: +a },
         { onConflict: "user_id,match_id" }
@@ -589,28 +734,31 @@ export default function App() {
   };
 
   const adminUpdateMatch = async (updated) => {
-    await supabase.from("matches").upsert({
+    const { error } = await supabase.from("matches").upsert({
       id: updated.id, home: updated.home, away: updated.away,
       match_group: updated.group, match_date: updated.date,
       match_time: updated.time, status: updated.status,
       home_score: updated.hs, away_score: updated.as
     });
+    if (error) { toast$("Error saving match: " + error.message, false); return; }
     setMatches(m => m.map(x => x.id === updated.id ? updated : x));
     toast$("Match updated ✓");
   };
   const adminAddMatch = async (newMatch) => {
     const id = `m${Date.now()}`;
-    await supabase.from("matches").insert({
+    const { error } = await supabase.from("matches").insert({
       id, home: newMatch.home, away: newMatch.away,
       match_group: newMatch.group, match_date: newMatch.date,
       match_time: newMatch.time, status: newMatch.status,
       home_score: newMatch.hs, away_score: newMatch.as
     });
+    if (error) { toast$("Error adding match: " + error.message, false); return; }
     setMatches(m => [...m, { ...newMatch, id }]);
     toast$("Match added ✓");
   };
   const adminDeleteMatch = async (id) => {
-    await supabase.from("matches").delete().eq("id", id);
+    const { error } = await supabase.from("matches").delete().eq("id", id);
+    if (error) { toast$("Error removing match: " + error.message, false); return; }
     setMatches(m => m.filter(x => x.id !== id));
     toast$("Match removed ✓");
   };
@@ -635,7 +783,8 @@ export default function App() {
     .map(u => ({ ...u, pts: pts(u.id) }))
     .sort((a, b) => b.pts - a.pts).slice(0, 10);
 
-  const isAdmin = user?.is_admin === true;
+  const isAdmin = user?.is_admin === true || user?.is_admin === 1 || user?.is_admin === "true"
+    || user?.badge === "developer" || user?.badge === "owner";
 
   // ── MENU HANDLERS ──────────────────────────────────────────────────────────
   const saveMenuItem = async (item) => {
@@ -654,7 +803,8 @@ export default function App() {
   };
 
   const deleteMenuItem = async (id) => {
-    await supabase.from("menu_items").delete().eq("id", id);
+    const { error } = await supabase.from("menu_items").delete().eq("id", id);
+    if (error) { toast$("Error removing item: " + error.message, false); return; }
     setMenuItems(m => m.filter(x => x.id !== id));
     toast$("Item removed ✓");
   };
@@ -662,6 +812,12 @@ export default function App() {
   const toggleMenuItemAvail = async (id, available) => {
     await supabase.from("menu_items").update({ available }).eq("id", id);
     setMenuItems(m => m.map(x => x.id === id ? { ...x, available } : x));
+  };
+
+  const toggleMenuItemSoldOut = async (item) => {
+    const newVal = !item.sold_out;
+    await supabase.from("menu_items").update({ sold_out: newVal }).eq("id", item.id);
+    setMenuItems(m => m.map(x => x.id === item.id ? { ...x, sold_out: newVal } : x));
   };
 
   // ─── STRIPE CHECKOUT ────────────────────────────────────────────────────────
@@ -674,7 +830,7 @@ export default function App() {
       if (error || !data?.url) throw new Error(error?.message || "No checkout URL");
       window.location.href = data.url;
     } catch (e) {
-      toast$("Payment error: " + e.message, false);
+      toast$("Payment error: " + (e?.message || "Please try again"), false);
     }
   };
 
@@ -703,12 +859,61 @@ export default function App() {
     return true;
   };
 
+  const adminBanUsers = async (ids, unban = false) => {
+    const { error } = await supabase.from("profiles").update({ is_banned: !unban }).in("id", ids);
+    if (error) { toast$("Error updating ban status: " + error.message, false); return; }
+    setUsers(u => {
+      const next = { ...u };
+      ids.forEach(id => { if (next[id]) next[id] = { ...next[id], is_banned: !unban }; });
+      return next;
+    });
+    toast$(unban ? `${ids.length} account(s) unbanned ✓` : `⛔ ${ids.length} account(s) banned`);
+  };
+
+  const adminSetSponsorTier = async (userId, tier) => {
+    const tierVal = tier || null;
+    const { error } = await supabase.from("profiles").update({ sponsor_tier: tierVal }).eq("id", userId);
+    if (error) {
+      toast$("DB error: run the SQL migration in Supabase first — see docs", false);
+      console.error("sponsor_tier update error:", error);
+      return;
+    }
+    setUsers(u => ({ ...u, [userId]: { ...u[userId], sponsor_tier: tierVal } }));
+    if (user?.id === userId) setUser(u => ({ ...u, sponsor_tier: tierVal }));
+    toast$(tier ? `VIP access granted ✓ — sponsor will see the PERKS tab instantly` : "VIP access removed ✓");
+  };
+
+  const adminSetKitchenAccess = async (userId, grant) => {
+    const { error } = await supabase.from("profiles").update({ kitchen_access: grant }).eq("id", userId);
+    if (error) { toast$("DB error — run migration first: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS kitchen_access BOOLEAN DEFAULT FALSE", false); return; }
+    setUsers(u => ({ ...u, [userId]: { ...u[userId], kitchen_access: grant } }));
+    toast$(grant ? "Kitchen access granted ✓" : "Kitchen access removed ✓");
+  };
+
+  const adminSaveSponsorGifts = async (gifts) => {
+    const { data: existing } = await supabase.from("sponsor_gifts").select("id");
+    if (existing?.length) {
+      await supabase.from("sponsor_gifts").delete().in("id", existing.map(r => r.id));
+    }
+    if (gifts.length > 0) {
+      await supabase.from("sponsor_gifts").insert(gifts.map(g => ({
+        tier: g.tier, item_name: g.item_name, item_price: +(g.item_price || 0), quantity: +(g.quantity || 1)
+      })));
+    }
+    const { data } = await supabase.from("sponsor_gifts").select("*").order("tier");
+    if (data) setSponsorGifts(data);
+    toast$("Sponsor gifts saved ✓");
+  };
+
   const adminAddCredits = async (userId, amount, userName) => {
     if (!amount || +amount <= 0) { toast$("Enter a valid amount", false); return; }
     const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
     const newBal = +((cur?.balance || 0) + amount).toFixed(2);
-    await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
+    const { error: upsertErr } = await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
+    if (upsertErr) { toast$("Error adding credits: " + upsertErr.message, false); return; }
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
+    // Update users state so Credits tab reflects new balance immediately
+    setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);
     // Print top-up receipt
     const now = new Date();
@@ -721,19 +926,19 @@ export default function App() {
         @page { size: 80mm auto; margin: 0; }
         * { margin:0; padding:0; box-sizing:border-box; }
         html, body { width: 80mm; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; background: #fff; }
+        body { font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700; color: #000; background: #fff; }
         .wrap { width: 72mm; margin: 0 auto; padding: 4mm 0; }
         .center { text-align: center; }
-        .logo { font-size: 24px; font-weight: 900; letter-spacing: 3px; margin-bottom: 2px; }
-        .sub { font-size: 9px; color: #333; margin-bottom: 8px; letter-spacing: 2px; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
-        .divider-solid { border-top: 2px solid #000; margin: 8px 0; }
-        .row { display: flex; justify-content: space-between; padding: 3px 0; font-size:11px; }
-        .label { font-size: 9px; color: #333; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-        .big { font-size: 20px; font-weight: 900; letter-spacing: 1px; }
-        .amount { font-size: 28px; font-weight: 900; }
-        .footer { font-size: 10px; color: #333; margin-top: 10px; text-align:center; }
-        .type { display:inline-block; border:1px solid #000; padding: 2px 8px; font-size:9px; letter-spacing:2px; font-weight:900; margin-top:5px; }
+        .logo { font-size: 28px; font-weight: 900; letter-spacing: 3px; margin-bottom: 2px; }
+        .sub { font-size: 13px; font-weight: 800; color: #000; margin-bottom: 8px; letter-spacing: 2px; }
+        .divider { border-top: 2px dashed #000; margin: 10px 0; }
+        .divider-solid { border-top: 3px solid #000; margin: 10px 0; }
+        .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; font-weight: 700; }
+        .label { font-size: 12px; font-weight: 900; color: #000; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+        .big { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
+        .amount { font-size: 32px; font-weight: 900; }
+        .footer { font-size: 13px; font-weight: 700; color: #000; margin-top: 12px; text-align:center; }
+        .type { display:inline-block; border:2px solid #000; padding: 3px 10px; font-size:12px; letter-spacing:2px; font-weight:900; margin-top:5px; }
         @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style></head><body><div class="wrap">
       <div class="center">
@@ -743,15 +948,15 @@ export default function App() {
       </div>
       <div class="divider"></div>
       <div class="label">Customer</div>
-      <div style="font-size:16px;font-weight:900;margin-bottom:10px">${userName}</div>
+      <div style="font-size:18px;font-weight:900;margin-bottom:12px">${userName}</div>
       <div class="label">Credits Added</div>
       <div class="amount">$${(+amount).toFixed(2)}</div>
       <div class="divider-solid"></div>
       <div class="row"><span>New Balance</span><span style="font-weight:900">$${newBal.toFixed(2)}</span></div>
       <div class="row"><span>Payment</span><span>Cash / Card</span></div>
-      <div class="row"><span>Date & Time</span><span>${dateStr} · ${timeStr}</span></div>
+      <div class="row"><span>Date &amp; Time</span><span>${dateStr} · ${timeStr}</span></div>
       <div class="divider"></div>
-      <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food & drinks.</div>
+      <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
       </div></body></html>`);
       win.document.close();
       win.focus();
@@ -762,65 +967,82 @@ export default function App() {
   };
 
   const updateOrderStatus = async (orderId, status) => {
-    await supabase.from("orders").update({ status }).eq("id", orderId);
+    const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
+    if (error) { toast$("Error updating order status", false); return; }
     setAllOrders(o => o.map(x => x.id === orderId ? { ...x, status } : x));
   };
 
   const deleteOrder = async (orderId) => {
     // Mark as "completed" — stays in history but off the floor plan
-    await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
+    const { error } = await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
+    if (error) { toast$("Error completing order", false); return; }
     setAllOrders(o => o.map(x => x.id === orderId ? { ...x, status: "completed" } : x));
   };
 
   const loadAllOrders = async () => {
-    const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("orders").select("*")
+      .neq("payment_method", "card_pending") // exclude ghost orders from cancelled Stripe sessions
+      .order("created_at", { ascending: false });
     if (data) setAllOrders(data);
   };
 
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
-    const win = window.open("", "_blank", "width=340,height=500");
+    const win = window.open("", "_blank", "width=360,height=600");
     if (!win) { toast$("Allow popups to print receipt", false); return; }
     const now = new Date(ord.created_at);
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-    const dateStr = now.toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" });
+    const dateStr = now.toLocaleDateString("en-US",{weekday:"short",month:"long",day:"numeric",year:"numeric"});
     const itemRows = (ord.items || []).map(it =>
-      `<div class="row"><span>${it.qty}× ${it.name}</span><span>$${(it.price*it.qty).toFixed(2)}</span></div>`
+      `<div class="row"><span>${it.qty}x ${it.name.toUpperCase()}</span><span>$${(it.price*it.qty).toFixed(2)}</span></div>`
     ).join("");
-    const payLabel = ord.payment_method === "credits" ? "Credits" : "Cash / Card";
-    win.document.write(`<!DOCTYPE html><html><head><title>Order Receipt</title>
+    const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "COMPLIMENTARY" : "CASH";
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt</title>
     <style>
-      @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm}
-      body{font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff}
-      .wrap{width:72mm;margin:0 auto;padding:4mm 0}
-      .center{text-align:center}.logo{font-size:22px;font-weight:900;letter-spacing:3px;margin-bottom:2px}
-      .sub{font-size:9px;color:#333;margin-bottom:8px;letter-spacing:2px}
-      .divider{border-top:1px dashed #000;margin:8px 0}.divider-solid{border-top:2px solid #000;margin:8px 0}
-      .row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px}
-      .label{font-size:9px;color:#333;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-      .total{font-size:18px;font-weight:900}.type{display:inline-block;border:1px solid #000;padding:2px 8px;font-size:9px;letter-spacing:2px;font-weight:900;margin-top:5px}
-      .footer{font-size:10px;color:#333;margin-top:10px;text-align:center}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+      @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box;page-break-inside:avoid;break-inside:avoid}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-family:'Arial Black','Arial',sans-serif;font-size:14px;font-weight:700;color:#000;background:#fff}
+      .wrap{width:74mm;margin:0 auto;padding:3mm 0 6mm}
+      .center{text-align:center}
+      .brand{font-size:30px;font-weight:900;letter-spacing:5px;line-height:1}
+      .bar-rest{font-size:13px;font-weight:900;letter-spacing:4px;margin-top:3px}
+      .event{font-size:11px;font-weight:900;letter-spacing:3px;border:2px solid #000;display:inline-block;padding:3px 10px;margin-top:6px}
+      .loc{font-size:10px;font-weight:700;letter-spacing:2px;margin-top:5px}
+      .sep{border:none;border-top:3px solid #000;margin:10px 0}
+      .sep-dash{border:none;border-top:2px dashed #000;margin:7px 0}
+      .meta-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:2px dashed #000}
+      .meta-lbl{font-size:13px;font-weight:900;letter-spacing:1px;color:#000;text-transform:uppercase}
+      .meta-val{font-size:14px;font-weight:900}
+      .section-hdr{font-size:12px;font-weight:900;letter-spacing:3px;padding:8px 0 4px;border-bottom:2px solid #000;margin-bottom:2px}
+      .row{display:flex;justify-content:space-between;padding:6px 0;font-size:15px;font-weight:800}
+      .total-row{display:flex;justify-content:space-between;padding:10px 0 6px;border-top:3px solid #000;font-size:22px;font-weight:900}
+      .pay-row{display:flex;justify-content:space-between;font-size:14px;font-weight:900;margin-top:4px}
+      .footer{text-align:center;margin-top:14px;padding-top:10px;border-top:3px double #000}
+      .thanks{font-size:18px;font-weight:900;letter-spacing:3px;margin-bottom:5px}
+      .wc{font-size:13px;font-weight:900;letter-spacing:3px;margin-top:6px}
+      .url{font-size:12px;font-weight:900;margin-top:4px}
+      @media print{html,body{width:80mm}}
     </style></head><body><div class="wrap">
     <div class="center">
-      <div class="logo">EL MUNDO</div>
-      <div class="sub">WORLD CUP 2026 · BONAIRE</div>
-      <div class="type">ORDER RECEIPT</div>
+      <div class="brand">EL MUNDO</div>
+      <div class="bar-rest">BAR &amp; RESTAURANT</div>
+      <div class="event">WORLD CUP EVENT 2026</div>
+      <div class="loc">KRALENDIJK · BONAIRE · EST. 2009</div>
     </div>
-    <div class="divider"></div>
-    <div class="label">Customer</div>
-    <div style="font-size:14px;font-weight:900;margin-bottom:6px">${customerName || "Guest"}</div>
-    <div class="label">Table</div>
-    <div style="font-size:14px;font-weight:900;margin-bottom:8px">Table ${ord.table_number}${ord.order_number ? ` · #${ord.order_number}` : ""}</div>
-    <div class="divider"></div>
-    <div class="label">Items</div>
+    <hr class="sep"/>
+    <div class="meta-row"><span class="meta-lbl">Customer</span><span class="meta-val">${customerName||"Guest"}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${ord.table_number}${ord.order_number?` &nbsp;·&nbsp; #${ord.order_number}`:""}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Date</span><span class="meta-val">${dateStr}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Time</span><span class="meta-val">${timeStr}</span></div>
+    <hr class="sep"/>
+    <div class="section-hdr">ORDER ITEMS</div>
     ${itemRows}
-    <div class="divider-solid"></div>
-    <div class="row"><span style="font-weight:900">TOTAL</span><span class="total">$${(+ord.total).toFixed(2)}</span></div>
-    <div class="row"><span>Payment</span><span>${payLabel}</span></div>
-    <div class="row"><span>Date &amp; Time</span><span>${dateStr} · ${timeStr}</span></div>
-    <div class="divider"></div>
-    <div class="center footer">Thank you &amp; enjoy! ⚽<br>El Mundo Bar-Rest, Bonaire</div>
+    <div class="total-row"><span>TOTAL</span><span>$${(+ord.total).toFixed(2)}</span></div>
+    <div class="pay-row"><span>PAYMENT</span><span>${payLabel}</span></div>
+    <div class="footer">
+      <div class="thanks">THANK YOU!</div>
+      <div class="wc">⚽ WORLD CUP 2026 ⚽</div>
+      <div class="url">www.elmundobonaire.com</div>
+    </div>
     </div></body></html>`);
     win.document.close(); win.focus();
     setTimeout(() => { win.print(); win.close(); }, 400);
@@ -958,10 +1180,12 @@ export default function App() {
       return order.status === "placed";
     }
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const { data: hostProfile } = await supabase.from("profiles").select("name").eq("id", order.host_user_id).maybeSingle();
     const { error: orderError } = await supabase.from("orders").insert({
       user_id: order.host_user_id,
-      table_number: order.table_number,
-      items: items.map(i => ({ id: i.item_id, name: i.item_name, price: i.price, qty: i.qty })),
+      user_name: hostProfile?.name || "Group Order",
+      table_number: String(order.table_number),
+      items: items.map(i => ({ id: i.item_id, name: i.item_name, price: i.price, qty: i.qty, category: i.category||"" })),
       total: +total.toFixed(2),
       payment_method: order.payment_mode === "host" ? "group_host" : "group_individual",
       status: "pending",
@@ -1035,6 +1259,7 @@ export default function App() {
     <div style={{ fontFamily:"'Outfit',sans-serif", background:"#000", minHeight:"100vh", color:"#fff" }}>
       <link href="https://fonts.googleapis.com/css2?family=Anton&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
       <style>{CSS}</style>
+      {showOnboarding && <OnboardingTutorial onDone={() => { localStorage.setItem(ONBOARDING_KEY, "1"); setShowOnboarding(false); }} />}
       {toast && (
         <div className={`notification ${toast.ok ? "notif-ok" : "notif-err"}`}>
           <span className="notif-dot">{toast.ok ? "✓" : "!"}</span>
@@ -1049,7 +1274,7 @@ export default function App() {
       )}
       {page === "app" && (
         <Main
-          appTab={appTab} setAppTab={setAppTab}
+          appTab={appTab} setAppTab={setAppTab} qrTable={qrTable}
           user={user} isAdmin={isAdmin}
           board={board} preds={preds} matches={matches}
           rules={rules} sponsors={sponsors}
@@ -1065,6 +1290,7 @@ export default function App() {
           placeOrder={placeOrder}
           saveMenuItem={saveMenuItem} deleteMenuItem={deleteMenuItem}
           toggleMenuItemAvail={toggleMenuItemAvail}
+          toggleMenuItemSoldOut={toggleMenuItemSoldOut}
           adminAddCredits={adminAddCredits}
           updateOrderStatus={updateOrderStatus}
           deleteOrder={deleteOrder}
@@ -1081,6 +1307,14 @@ export default function App() {
           printOrderReceipt={printOrderReceipt}
           stripeCheckout={stripeCheckout}
           onToast={toast$}
+          sponsorGifts={sponsorGifts}
+          adminSetSponsorTier={adminSetSponsorTier}
+          adminSaveSponsorGifts={adminSaveSponsorGifts}
+          adminBanUsers={adminBanUsers}
+          adminSetKitchenAccess={adminSetKitchenAccess}
+          newOrderAlert={newOrderAlert} setNewOrderAlert={setNewOrderAlert}
+          showWinner={showWinner} setShowWinner={setShowWinner}
+          winnerData={winnerData} setWinnerData={setWinnerData}
         />
       )}
     </div>
@@ -1551,8 +1785,12 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
           </div>
           <div className="auth-form">
             {!isLogin && <>
-              <FField label={t('fullName')}  val={form.name}     on={set("name")}     ph="John Doe"          />
-              <FField label={t('phone')}    val={form.phone}    on={set("phone")}    ph="+599 700 0000"     />
+              <div style={{display:"flex",gap:10}}>
+                <FField label="FIRST NAME"  val={form.firstName||""} on={set("firstName")} ph="John" />
+                <FField label="LAST NAME"   val={form.lastName||""}  on={set("lastName")}  ph="Doe"  />
+              </div>
+              <FField label={t('phone')} val={form.phone} on={set("phone")} ph="+599 700 0000" />
+              <div style={{fontSize:10,color:"rgba(255,255,255,.3)",letterSpacing:1,marginTop:-6,paddingLeft:2}}>Country code required · e.g. +599, +31, +1, +34</div>
             </>}
             <FField label={t('email')}     val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
             <FField label={t('password')}  val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
@@ -1758,7 +1996,7 @@ function TVLeaderboard({ board, onBack }) {
       )}
 
       {/* Footer */}
-      <div className="tv-footer" style={{position:"relative",zIndex:2}}>⚽ Exact score = 5 pts · Correct winner or draw = 1 pt · Most points wins</div>
+      <div className="tv-footer" style={{position:"relative",zIndex:2}}>⚽ Exact score = 5 pts · Correct winner = 1 pt · Most points wins</div>
     </div>
   );
 }
@@ -1770,7 +2008,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
                 adminSaveRules, adminSaveSponsors,
                 menuItems, myCredits, myOrders, placeOrder,
-                saveMenuItem, deleteMenuItem, toggleMenuItemAvail,
+                saveMenuItem, deleteMenuItem, toggleMenuItemAvail, toggleMenuItemSoldOut,
                 adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded,
                 activeGroup, groupMembers, groupItems,
                 createGroupOrder, joinGroupOrder, leaveGroupOrder,
@@ -1778,33 +2016,37 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
                 payGroupShareCredits, hostPayAllCredits,
                 calcMyGroupShare,
-                resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast }) {
+                resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast,
+                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetKitchenAccess = () => {},
+                newOrderAlert = false, setNewOrderAlert,
+                showWinner = false, setShowWinner, winnerData, setWinnerData,
+                qrTable = "" }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
 
-  const switchTab = (id) => { setAnimKey(id); setAppTab(id); };
+  const switchTab = (id) => { setAnimKey(id); setAppTab(id); if (id === "admin" && setNewOrderAlert) setNewOrderAlert(false); };
 
   const tabs = [
     { id:"matches",     label:t('matches'),     ico:<SoccerIco /> },
     { id:"leaderboard", label:t('leaderboard'), ico:<TrophyIco /> },
+    { id:"moments",     label:"MUNDOGRAM",      ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> },
     { id:"menu",        label:t('menu'),        ico:<MenuIco />   },
-    { id:"rules",       label:t('rules'),       ico:<RulesIco />  },
     { id:"profile",     label:t('profile'),     ico:<PersonIco /> },
+    ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
+    ...(user?.kitchen_access ? [{ id:"kitchen", label:"KITCHEN", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6z"/><line x1="6" y1="17" x2="18" y2="17"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
 
   return (
     <div className="shell">
-      <header className="hdr">
+      <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
         <div className="hdr-inner">
           <div className="hdr-l">
-            <HeaderLogo />
-            <div className="hdr-text">
-              <span className="hdr-brand">EL MUNDO</span>
-              <span className="hdr-caption">⚽ WORLD CUP 2026</span>
-            </div>
+            <button className="hdr-logo-btn" onClick={() => switchTab("matches")} title="Go to Matches">
+              <Logo w={72} />
+            </button>
           </div>
           <div className="hdr-r">
             {!isAdmin && myRank > 0 && (
@@ -1832,8 +2074,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       </header>
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
-          {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} />}
-          {appTab === "leaderboard" && <LeaderView  board={board} user={user} />}
+          {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} />}
+          {appTab === "moments"     && <MomentsView user={user} isAdmin={isAdmin} users={users} />}
+          {appTab === "leaderboard" && <LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} />}
           {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
             createGroupOrder={createGroupOrder} joinGroupOrder={joinGroupOrder} leaveGroupOrder={leaveGroupOrder}
@@ -1845,9 +2088,14 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             printOrderReceipt={printOrderReceipt}
             stripeCheckout={stripeCheckout}
             onToast={onToast}
+            qrTable={qrTable}
           />}
           {appTab === "rules"       && <RulesView   rules={rules} />}
-          {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} />}
+          {appTab === "profile"     && <ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} />}
+          {appTab === "vip" && user?.sponsor_tier && (
+            <SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} />
+          )}
+          {appTab === "kitchen" && user?.kitchen_access && <KitchenView user={user} />}
           {appTab === "admin" && isAdmin && (
             <AdminView
               matches={matches} rules={rules} sponsors={sponsors}
@@ -1855,9 +2103,24 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSaveRules={adminSaveRules} onSaveSponsors={adminSaveSponsors}
               menuItems={menuItems} users={users}
               onSaveMenuItem={saveMenuItem} onDeleteMenuItem={deleteMenuItem}
-              onToggleAvail={toggleMenuItemAvail} onAddCredits={adminAddCredits}
+              onToggleAvail={toggleMenuItemAvail} onToggleSoldOut={toggleMenuItemSoldOut}
+              onAddCredits={adminAddCredits}
               onUpdateOrderStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onLoadAllOrders={loadAllOrders}
               allOrders={allOrders}
+              sponsorGifts={sponsorGifts}
+              onSetSponsorTier={adminSetSponsorTier}
+              onSaveSponsorGifts={adminSaveSponsorGifts}
+              onBanUsers={adminBanUsers}
+              onSetKitchenAccess={adminSetKitchenAccess}
+              onAnnounceWinner={() => { setWinnerData(board[0]||null); setShowWinner(true); }}
+              board={board}
+            />
+          )}
+          {showWinner && (
+            <TournamentWinnerScreen
+              board={board}
+              isAdmin={isAdmin}
+              onClose={() => setShowWinner(false)}
             />
           )}
         </div>
@@ -1866,7 +2129,12 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         <div className="bot-nav-inner">
           {tabs.map(({ id, label, ico }) => (
             <button key={id} className={`bnav-btn ${appTab===id?"bnav-on":""}`} onClick={()=>switchTab(id)}>
-              <span className="bnav-ico">{ico}</span>
+              <span className="bnav-ico" style={{position:"relative"}}>
+                {ico}
+                {id==="admin" && newOrderAlert && (
+                  <span style={{position:"absolute",top:-2,right:-4,width:8,height:8,background:"#ef4444",borderRadius:"50%",display:"block",boxShadow:"0 0 6px #ef4444"}}/>
+                )}
+              </span>
               <span className="bnav-lbl">{label}</span>
               {appTab===id && <span className="bnav-indicator"/>}
             </button>
@@ -1878,17 +2146,124 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 }
 
 /* ═══ MATCHES ═══════════════════════════════════════════════════════════════ */
-function MatchesView({ matches, getPred, savePred, loaded }) {
+function PredictionCountdown({ lockMs, firstMatch }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const locked = now >= lockMs;
+  const ms     = Math.max(0, lockMs - now);
+  const days   = Math.floor(ms / 86400000);
+  const hours  = Math.floor((ms % 86400000) / 3600000);
+  const mins   = Math.floor((ms % 3600000) / 60000);
+  const secs   = Math.floor((ms % 60000) / 1000);
+  const pad    = n => String(n).padStart(2, "0");
+
+  // Three-tier color system
+  const phase = days >= 15 ? "green" : days >= 5 ? "yellow" : "red";
+  const accent  = phase === "green" ? "#4ade80" : phase === "yellow" ? "#facc15" : "#f87171";
+  const bg      = phase === "green" ? "rgba(74,222,128,.06)"  : phase === "yellow" ? "rgba(250,204,21,.06)"  : "rgba(248,113,113,.08)";
+  const border  = phase === "green" ? "rgba(74,222,128,.18)"  : phase === "yellow" ? "rgba(250,204,21,.18)"  : "rgba(248,113,113,.22)";
+  const digitCl = phase === "red" ? "cd-urgent" : "";
+
+  if (locked) return (
+    <div style={{margin:"10px 16px 4px",padding:"12px 16px",borderRadius:12,
+      background:"rgba(239,68,68,.07)",border:"1px solid rgba(239,68,68,.2)",
+      display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+      <span style={{fontSize:16}}>🔒</span>
+      <div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#f87171"}}>PREDICTIONS CLOSED</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:1}}>The tournament has started · no more entries</div>
+      </div>
+    </div>
+  );
+
+  const units = [
+    { val: pad(days),  label: "DAYS"  },
+    { val: pad(hours), label: "HRS"   },
+    { val: pad(mins),  label: "MIN"   },
+    { val: pad(secs),  label: "SEC"   },
+  ];
+
+  return (
+    <div style={{margin:"10px 16px 4px",borderRadius:12,overflow:"hidden",
+      background:"#111",border:`1px solid ${border}`,transition:"border-color 1s"}}>
+
+      {/* Top label row */}
+      <div style={{padding:"8px 14px 7px",display:"flex",alignItems:"center",
+        justifyContent:"space-between",borderBottom:`1px solid ${border}`,background:bg,
+        transition:"background .8s,border-color .8s"}}>
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,
+          color:accent,transition:"color 1s"}}>
+          {phase === "red" ? "⚠ CLOSING SOON" : "PREDICTIONS CLOSE IN"}
+        </span>
+        {firstMatch && (
+          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,
+            color:"rgba(255,255,255,.35)"}}>
+            Deadline · {firstMatch.date} {firstMatch.time}
+          </span>
+        )}
+      </div>
+
+      {/* Digit row */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+        padding:"12px 14px 10px",gap:6}}>
+        {units.map(({ val, label }, i) => (
+          <React.Fragment key={label}>
+            <div style={{textAlign:"center"}}>
+              <div className={digitCl} style={{
+                background:"#1a1a1a",border:`1px solid rgba(255,255,255,.09)`,
+                borderRadius:8,padding:"7px 0",width:52,
+                fontFamily:"'Anton',sans-serif",fontSize:26,lineHeight:1,
+                color:accent,letterSpacing:1,
+                transition:"color 1s"}}>
+                {val}
+              </div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:9,
+                letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:5}}>{label}</div>
+            </div>
+            {i < units.length - 1 && (
+              <div style={{display:"flex",flexDirection:"column",gap:5,
+                marginBottom:18,flexShrink:0}}>
+                <div style={{width:4,height:4,borderRadius:"50%",background:accent,opacity:.6,transition:"background 1s"}} />
+                <div style={{width:4,height:4,borderRadius:"50%",background:accent,opacity:.6,transition:"background 1s"}} />
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+    </div>
+  );
+}
+
+function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user }) {
   const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
 
-  // collect unique dates across all matches
+  // Date filter
   const allDates = [...new Set(sortMatches(matches).map(m => m.date).filter(Boolean))];
   const [selDate, setSelDate] = useState("all");
+  const [nowTs,   setNowTs]   = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 10000);
+    return () => clearInterval(id);
+  }, []);
 
-  const filterByDate = arr => selDate === "all" ? arr : arr.filter(m => m.date === selDate);
-  const visUpcoming = filterByDate(upcoming);
-  const visFinished = filterByDate(finished);
+  const filterMatches = arr => selDate === "all" ? arr : arr.filter(m => m.date === selDate);
+  const visUpcoming = filterMatches(upcoming);
+  const visFinished = filterMatches(finished);
+
+  // Single global lock = 1h before first match of the whole tournament
+  const globalLockMs   = getGlobalLockMs(matches);
+  const isGlobalLocked = globalLockMs ? nowTs >= globalLockMs : false;
+  // First match info for the banner
+  const firstMatch = sortMatches(matches)[0];
+  const firstKo    = firstMatch ? matchKickoff(firstMatch) : null;
+  const lockDate   = globalLockMs ? new Date(globalLockMs) : null;
+  const lockTimeStr = lockDate ? lockDate.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",timeZone:"America/Kralendijk"}) : "";
 
   if (!loaded) return (
     <div>
@@ -1903,13 +2278,33 @@ function MatchesView({ matches, getPred, savePred, loaded }) {
 
   return (
     <div>
-      {/* Day filter bar */}
+      {/* Date filter */}
       {allDates.length > 1 && (
         <div className="date-filter-bar">
-          <button className={`date-chip ${selDate==="all"?"date-chip-on":""}`} onClick={()=>setSelDate("all")}>ALL</button>
+          <button className={`date-chip ${selDate==="all"?"date-chip-on":""}`} onClick={()=>setSelDate("all")}>ALL DATES</button>
           {allDates.map(d => (
             <button key={d} className={`date-chip ${selDate===d?"date-chip-on":""}`} onClick={()=>setSelDate(d)}>{d}</button>
           ))}
+        </div>
+      )}
+
+      {/* ── Premium global countdown ── */}
+      {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
+
+      {/* Prediction ban notice */}
+      {isBanned && (
+        <div style={{margin:"8px 16px",padding:"14px 16px",borderRadius:10,
+          background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.35)",
+          display:"flex",gap:12,alignItems:"flex-start"}}>
+          <span style={{fontSize:22,flexShrink:0}}>🚫</span>
+          <div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1.5,color:"rgba(239,68,68,.95)",marginBottom:4}}>
+              PREDICTION ACCESS REVOKED
+            </div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",lineHeight:1.5}}>
+              Suspicious activity was detected on your account. You have been permanently banned from submitting or changing predictions. You can still use the app and follow the tournament.
+            </div>
+          </div>
         </div>
       )}
 
@@ -1917,9 +2312,10 @@ function MatchesView({ matches, getPred, savePred, loaded }) {
         <span className="section-banner-title">UPCOMING</span>
         <span className="section-banner-sub">Exact score = 5 pts · Correct winner = 1 pt</span>
       </div>
+
       <div className="card-stack">
         {visUpcoming.length === 0 && <div className="empty">No upcoming matches{selDate!=="all"?` on ${selDate}`:""}</div>}
-        {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} />)}
+        {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} isBanned={isBanned} allPreds={allPreds} user={user} />)}
       </div>
       <div className="section-banner section-banner-dim">
         <span className="section-banner-title">RESULTS</span>
@@ -1927,7 +2323,7 @@ function MatchesView({ matches, getPred, savePred, loaded }) {
       </div>
       <div className="card-stack">
         {visFinished.length === 0 && <div className="empty">No results{selDate!=="all"?` on ${selDate}`:""}</div>}
-        {visFinished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} />)}
+        {visFinished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} allPreds={allPreds} user={user} />)}
       </div>
     </div>
   );
@@ -1939,18 +2335,30 @@ function matchKickoff(m) {
     return new Date(`${m.date} ${year} ${m.time}:00 GMT-0400`);
   } catch { return null; }
 }
-function useCountdown(m) {
+
+// Single global lock = 1 hour before the very first match of the entire tournament
+function getGlobalLockMs(matches) {
+  const kickoffs = matches
+    .map(m => matchKickoff(m))
+    .filter(Boolean)
+    .map(k => k.getTime());
+  if (kickoffs.length === 0) return null;
+  return Math.min(...kickoffs) - 60 * 60 * 1000;
+}
+
+// Countdown to a target timestamp (ms). All cards on the same day share the same lockMs.
+function useCountdown(lockMs) {
   const [now, setNow] = useState(Date.now());
+  const locked = !lockMs || now >= lockMs;
   useEffect(() => {
-    if (m.status === "finished") return;
+    if (locked) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [m.status]);
-  const ko = matchKickoff(m);
-  if (!ko) return { minsLeft: Infinity, label: "", urgency: "none" };
-  const ms = ko - now;
+  }, [locked]);
+  if (!lockMs) return { msLeft: 0, label: "", urgency: "none" };
+  const ms = lockMs - now;
+  if (ms <= 0) return { msLeft: 0, label: "LOCKED", urgency: "locked" };
   const totalMins = ms / 60000;
-  if (totalMins <= 0) return { minsLeft: 0, label: "LOCKED", urgency: "locked" };
   const h = Math.floor(totalMins / 60);
   const min = Math.floor(totalMins % 60);
   const sec = Math.floor((ms % 60000) / 1000);
@@ -1960,13 +2368,17 @@ function useCountdown(m) {
   else if (totalMins > 60) { label = `${h}h ${min}m left`; urgency = "yellow"; }
   else if (totalMins > 10) { label = `${min}m ${sec}s left`; urgency = "yellow"; }
   else { label = `${min}m ${sec}s`; urgency = "red"; }
-  return { minsLeft: totalMins, label, urgency };
+  return { msLeft: ms, label, urgency };
 }
 
-function MatchCard({ m, pred, onSave }) {
+function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }) {
   const [h, setH] = useState(pred?.h ?? "");
   const [a, setA] = useState(pred?.a ?? "");
   const [saved, setSaved] = useState(!!pred);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCaption, setShareCaption] = useState("");
+  const [sharePosting, setSharePosting] = useState(false);
+  const [sharePosted, setSharePosted] = useState(false);
   const fin       = m.status === "finished";
   const correct   = fin && pred && pred.h === m.hs && pred.a === m.as;
   const wrong     = fin && pred && !correct;
@@ -1975,34 +2387,75 @@ function MatchCard({ m, pred, onSave }) {
     const mw = m.hs  > m.as   ? "home" : m.hs  < m.as   ? "away" : "draw";
     return pw === mw;
   })();
-  const { minsLeft, label: countdownLabel, urgency } = useCountdown(m);
-  const locked    = !fin && minsLeft <= 60;
   const submitted = !!pred;
+  const [nowTs, setNowTs] = useState(Date.now());
+  useEffect(() => {
+    if (fin) return;
+    const id = setInterval(() => setNowTs(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [fin]);
+  const isActuallyLocked = isBanned || (globalLockTime ? nowTs >= globalLockTime : false);
+
+  // Show Community Pulse only within 1 hour of kickoff (or after)
+  const matchKickoffTs = (() => {
+    if (!m.date || !m.time) return null;
+    try {
+      const [mon, day] = m.date.split(" ");
+      const [hh, mm] = (m.time||"00:00").split(":");
+      return new Date(`${mon} ${day} 2026 ${hh}:${mm}:00 GMT-0400`).getTime();
+    } catch { return null; }
+  })();
+  const showWPW = !!allPreds && !fin && (matchKickoffTs !== null && nowTs >= matchKickoffTs - 60 * 60 * 1000);
+
+  const postPredToFeed = async () => {
+    if (!user || sharePosting || sharePosted) return;
+    setSharePosting(true);
+    try {
+      const result = fin
+        ? (correct ? "exact" : partialCorrect ? "winner" : pred ? "wrong" : "nopred")
+        : null;
+      const pts = fin ? (correct ? 5 : partialCorrect ? 1 : 0) : null;
+      const meta = {
+        __type: "pred",
+        home: m.home, away: m.away,
+        date: m.date, time: m.time, group: m.group,
+        predH: pred?.h, predA: pred?.a,
+        fin, result, pts,
+        finalH: m.hs, finalA: m.as,
+        userCaption: shareCaption.trim() || null,
+      };
+      const { error: insErr } = await supabase.from("moments").insert({
+        image_url: "",
+        caption: JSON.stringify(meta),
+        posted_by: user.id,
+        poster_name: user.name,
+        poster_avatar: user.avatar_url || null,
+        submitted_by: user.id,
+        approved: true,
+      });
+      if (insErr) throw insErr;
+      setSharePosted(true);
+      setShareOpen(false);
+      setShareCaption("");
+    } catch(e) { console.error("share failed", e); }
+    finally { setSharePosting(false); }
+  };
 
   const save = () => {
-    if (h===""||a===""||locked||submitted) return;
+    if (h===""||a===""||isActuallyLocked||submitted||isBanned) return;
     onSave(m.id, h, a);
     setSaved(true);
   };
 
-  const urgencyColor = urgency === "red" ? "rgba(255,255,255,1)" : urgency === "yellow" ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.6)";
-  const urgencyBg    = urgency === "red" ? "rgba(255,255,255,.1)" : urgency === "yellow" ? "rgba(255,255,255,.05)" : "transparent";
-  const urgencyBorder= urgency === "red" ? "rgba(255,255,255,.5)" : urgency === "yellow" ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.15)";
-  const urgencyGlow  = urgency === "red"    ? "0 0 6px rgba(239,68,68,.5), 0 0 12px rgba(239,68,68,.2)"
-                     : urgency === "yellow" ? "0 0 6px rgba(251,191,36,.4), 0 0 12px rgba(251,191,36,.15)"
-                     : urgency === "green"  ? "0 0 6px rgba(74,222,128,.35), 0 0 10px rgba(74,222,128,.12)"
-                     : "none";
-  const statusColor  = correct ? "#22c55e" : partialCorrect ? "#f59e0b" : wrong ? "#ef4444" : locked && !fin ? "#f59e0b" : "transparent";
+  const statusColor = correct ? "#22c55e" : partialCorrect ? "#f59e0b" : wrong ? "#ef4444" : isActuallyLocked && !fin ? "#f59e0b" : "transparent";
 
   return (
     <div className={`mcard ${correct?"mcard-ok":partialCorrect?"mcard-partial":wrong?"mcard-ng":""}`} style={{borderLeft:`3px solid ${statusColor}`}}>
       <div className="mcard-topstrip">
         <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} BON</span>
-        {!fin && countdownLabel && (
-          <span className={`countdown-chip${urgency==="red"?" countdown-chip-urgent":""}`} style={{color: urgencyColor, borderColor: urgencyBorder, background: urgencyBg, boxShadow: urgencyGlow}}>
-            {urgency === "locked" ? "🔒 LOCKED" : countdownLabel}
-          </span>
+        {!fin && isActuallyLocked && !isBanned && (
+          <span className="countdown-chip" style={{color:"rgba(255,255,255,.45)",borderColor:"rgba(255,255,255,.12)",background:"transparent",fontSize:10}}>🔒 LOCKED</span>
         )}
       </div>
       <div className="mcard-scoreboard">
@@ -2029,7 +2482,7 @@ function MatchCard({ m, pred, onSave }) {
               </div>
               <span className="score-label score-label-green">YOUR PICK</span>
             </div>
-          ) : locked ? (
+          ) : isActuallyLocked ? (
             <div className="score-board">
               <span style={{fontSize:28,lineHeight:1}}>🔒</span>
               <span className="score-label" style={{marginTop:6}}>LOCKED</span>
@@ -2047,7 +2500,7 @@ function MatchCard({ m, pred, onSave }) {
           <span className="mteam-name-lg">{m.away}</span>
         </div>
       </div>
-      {!fin && !submitted && !locked && (
+      {!fin && !submitted && !isActuallyLocked && (
         <div className="mcard-foot">
           <button className={`pred-cta ${saved?"pred-cta-done":""}`} disabled={h===""||a===""} onClick={save}>
             {saved ? <><IcoCheck /> PREDICTION SAVED</> : "SUBMIT PREDICTION →"}
@@ -2057,8 +2510,10 @@ function MatchCard({ m, pred, onSave }) {
       {!fin && submitted && (
         <div className="mverdict mv-locked"><IcoCheck /> Locked in · {pred.h}:{pred.a}</div>
       )}
-      {!fin && locked && !submitted && (
-        <div className="mverdict mv-missed"><IcoDash /> Missed — predictions closed for this match</div>
+      {!fin && isActuallyLocked && !submitted && (
+        <div className="mverdict mv-missed">
+          <IcoDash /> {isBanned ? "Banned from predictions" : "Missed — prediction deadline has passed"}
+        </div>
       )}
       {fin && (
         <div className={`mverdict ${correct?"mv-ok": partialCorrect?"mv-partial":"mv-ng"}`}>
@@ -2066,6 +2521,682 @@ function MatchCard({ m, pred, onSave }) {
             : partialCorrect ? <><IcoCheck /> Right winner +1 pt · Your pick: {pred.h}:{pred.a}</>
             : pred        ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
             :               <><IcoDash /> No prediction</>}
+        </div>
+      )}
+      {/* ── Share to Feed button ── */}
+      {user && pred && !sharePosted && (submitted || fin) && (
+        <div className="mcard-share-row">
+          {!shareOpen ? (
+            <button className="mcard-share-btn" onClick={()=>setShareOpen(true)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              {fin ? "SHARE RESULT TO FEED" : "SHARE YOUR PICK TO FEED"}
+            </button>
+          ) : (
+            <div className="mcard-share-panel">
+              <div className="mcard-share-preview">
+                <span className="mcard-share-preview-match">{flag(m.home)} {m.home} vs {m.away} {flag(m.away)}</span>
+                <span className="mcard-share-preview-score">
+                  {fin
+                    ? `Final ${m.hs}:${m.as} · My pick ${pred.h}:${pred.a} · ${correct?"✓ +5pts":partialCorrect?"✓ +1pt":"✗ 0pts"}`
+                    : `My pick: ${pred.h}:${pred.a}`}
+                </span>
+              </div>
+              <input
+                className="mcard-share-inp"
+                placeholder="Add a caption… (optional)"
+                value={shareCaption}
+                onChange={e=>setShareCaption(e.target.value)}
+                maxLength={150}
+                autoFocus
+              />
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button className="mcard-share-cancel" onClick={()=>{setShareOpen(false);setShareCaption("");}}>CANCEL</button>
+                <button className="mcard-share-post" onClick={postPredToFeed} disabled={sharePosting}>
+                  {sharePosting?"POSTING…":"POST TO FEED →"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {user && pred && sharePosted && (
+        <div className="mcard-share-row">
+          <div className="mcard-share-posted">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Posted to Mundogram!
+          </div>
+        </div>
+      )}
+      {/* ── Who Predicted What ── show within 1h of kickoff and after */}
+      {showWPW && (() => {
+        const mp = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`)).map(([,v]) => v);
+        if (!mp.length) return null;
+        const hw = mp.filter(p => p.h > p.a).length;
+        const dr = mp.filter(p => p.h === p.a).length;
+        const aw = mp.filter(p => p.h < p.a).length;
+        const tot = mp.length;
+        const hp = Math.round(hw/tot*100), dp = Math.round(dr/tot*100), ap = 100-hp-dp;
+        return (
+          <div className="wpw-wrap">
+            <div className="wpw-title">COMMUNITY PULSE · {tot} player{tot!==1?"s":""}</div>
+            <div className="wpw-bars">
+              <div className="wpw-bar-col">
+                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-home" style={{width:`${hp}%`}}/></div>
+                <div className="wpw-bar-lbl">{flag(m.home)} {hp}%</div>
+              </div>
+              <div className="wpw-bar-col wpw-draw-col">
+                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-draw" style={{width:`${dp}%`}}/></div>
+                <div className="wpw-bar-lbl">DRAW {dp}%</div>
+              </div>
+              <div className="wpw-bar-col">
+                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-away" style={{width:`${ap}%`}}/></div>
+                <div className="wpw-bar-lbl">{flag(m.away)} {ap}%</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ═══ MOMENTS ═══════════════════════════════════════════════════════════════ */
+function MomentsView({ user, isAdmin, users = {} }) {
+  const [feedTab,  setFeedTab]  = useState("feed"); // "feed" | "notifs"
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchFromFeed, setSearchFromFeed] = useState(false); // opened via card author click
+  const [searchQ, setSearchQ] = useState("");
+  const [searchSel, setSearchSel] = useState(null);
+  const [moments,  setMoments]  = useState([]);
+  const [likes,    setLikes]    = useState({});
+  const [comments, setComments] = useState({});
+  const [openComments, setOpenComments] = useState(null);
+  const [commentTexts, setCommentTexts] = useState({});
+  const [showPost,  setShowPost]  = useState(false);
+  const [caption,   setCaption]   = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [deleting,  setDeleting]  = useState(null);
+  const [preview,   setPreview]   = useState(null);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [likeAnims, setLikeAnims] = useState({});
+  const [notifSeen, setNotifSeen] = useState(() => { try { return localStorage.getItem("em_notif_seen")||""; } catch { return ""; } });
+  const [notifs,    setNotifs]    = useState([]);
+  const [openCardMenu, setOpenCardMenu] = useState(null); // momentId with open 3-dots menu
+  const [lightboxUrl, setLightboxUrl] = useState(null); // photo to show full-screen
+  const [imgRatios, setImgRatios] = useState({}); // momentId -> aspect ratio string
+
+  const load = async () => {
+    const { data: ms } = await supabase.from("moments").select("*").order("created_at", { ascending: false });
+    if (!ms?.length) { setMoments([]); return; }
+    setMoments(ms);
+    const ids = ms.map(x => x.id);
+    const [{ data: ls }, { data: cs }] = await Promise.all([
+      supabase.from("moment_likes").select("*").in("moment_id", ids),
+      supabase.from("moment_comments").select("*").in("moment_id", ids).order("created_at"),
+    ]);
+    const lMap = {};
+    (ls||[]).forEach(l => { if (!lMap[l.moment_id]) lMap[l.moment_id] = new Set(); lMap[l.moment_id].add(l.user_id); });
+    setLikes(lMap);
+    const cMap = {};
+    (cs||[]).forEach(c => { if (!cMap[c.moment_id]) cMap[c.moment_id] = []; cMap[c.moment_id].push(c); });
+    setComments(cMap);
+    // Build notifications: comments/likes on MY posts by others
+    const myIds = new Set((ms||[]).filter(m => m.posted_by === user.id).map(m => m.id));
+    const notifList = [];
+    (cs||[]).filter(c => myIds.has(c.moment_id) && c.user_id !== user.id).forEach(c => {
+      notifList.push({ id:`c_${c.id}`, type:"comment", name:c.user_name, text:c.body, momentId:c.moment_id, time:c.created_at, img:(ms||[]).find(m=>m.id===c.moment_id)?.image_url });
+    });
+    (ls||[]).filter(l => myIds.has(l.moment_id) && l.user_id !== user.id).forEach(l => {
+      const likerName = users[l.user_id]?.name || l.user_name || "Someone";
+      const likedMoment = (ms||[]).find(m=>m.id===l.moment_id);
+      const likedImg = likedMoment?.image_url && likedMoment.image_url !== "" ? likedMoment.image_url : null;
+      notifList.push({ id:`l_${l.moment_id}_${l.user_id}`, type:"like", name:likerName, text:"liked your post", momentId:l.moment_id, time:null, img:likedImg });
+    });
+    notifList.sort((a,b) => b.time > a.time ? 1 : -1);
+    setNotifs(notifList);
+  };
+
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("rt-moments")
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"moments" }, () => load())
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"moments" }, () => load())
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"moment_likes" }, p => {
+        const { moment_id, user_id } = p.new;
+        if (moment_id && user_id) {
+          setLikes(l => { const n={...l}; const s=new Set(n[moment_id]||[]); s.add(user_id); n[moment_id]=s; return n; });
+        } else { load(); }
+      })
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"moment_likes" }, p => {
+        const { moment_id, user_id } = p.old;
+        if (moment_id && user_id) {
+          setLikes(l => { const n={...l}; const s=new Set(n[moment_id]||[]); s.delete(user_id); n[moment_id]=s; return n; });
+        } else { load(); }
+      })
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"moment_comments" }, p => {
+        const c = p.new;
+        setComments(prev => { const n={...prev}; n[c.moment_id]=[...(n[c.moment_id]||[]), c]; return n; });
+      })
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"moment_comments" }, p => {
+        const c = p.old;
+        setComments(prev => { const n={...prev}; n[c.moment_id]=(n[c.moment_id]||[]).filter(x=>x.id!==c.id); return n; });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  const toggleLike = async (momentId) => {
+    const liked = (likes[momentId]||new Set()).has(user.id);
+    if (liked) {
+      await supabase.from("moment_likes").delete().eq("moment_id", momentId).eq("user_id", user.id);
+    } else {
+      await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id, user_name: user.name });
+      // Burst animation
+      const particles = Array.from({length:7},(_,i)=>({ id:Date.now()+i, dx:(Math.random()-0.5)*80, dy:-(30+Math.random()*60) }));
+      setLikeAnims(a=>({...a,[momentId]:[...(a[momentId]||[]),...particles]}));
+      setTimeout(()=>setLikeAnims(a=>({...a,[momentId]:(a[momentId]||[]).filter(p=>!particles.find(x=>x.id===p.id))})),900);
+    }
+  };
+
+  const postComment = async (momentId) => {
+    const txt = (commentTexts[momentId]||"").trim();
+    if (!txt) return;
+    await supabase.from("moment_comments").insert({
+      moment_id: momentId, user_id: user.id,
+      user_name: user.name, avatar_url: user.avatar_url || null,
+      body: txt,
+    });
+    setCommentTexts(t=>({...t,[momentId]:""}));
+  };
+
+  const deleteComment = async (commentId, momentId) => {
+    await supabase.from("moment_comments").delete().eq("id", commentId);
+  };
+
+  const deleteMoment = async (momentId) => {
+    setDeleting(momentId);
+    await supabase.from("moment_comments").delete().eq("moment_id", momentId);
+    await supabase.from("moment_likes").delete().eq("moment_id", momentId);
+    const mom = moments.find(m => m.id === momentId);
+    if (mom?.image_url) {
+      const path = mom.image_url.split("/avatars/").pop()?.split("?")[0];
+      if (path) await supabase.storage.from("avatars").remove([path]);
+    }
+    await supabase.from("moments").delete().eq("id", momentId);
+    setMoments(ms => ms.filter(m => m.id !== momentId));
+    setDeleting(null);
+  };
+
+  const approveMoment = async (momentId) => {
+    await supabase.from("moments").update({ approved: true }).eq("id", momentId);
+    setMoments(ms => ms.map(m => m.id === momentId ? { ...m, approved: true } : m));
+  };
+
+  const handlePickPhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPreviewFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handlePostPhoto = async () => {
+    if (!previewFile) return;
+    setUploading(true);
+    try {
+      const compressed = await compressImage(previewFile);
+      const path = `moments/${Date.now()}_${user.id}.jpg`;
+      const { error: upErr } = await supabase.storage.from("avatars").upload(path, compressed, { upsert: false, contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+      await supabase.from("moments").insert({
+        image_url: publicUrl, caption: caption.trim() || null,
+        posted_by: user.id, poster_name: user.name, poster_avatar: user.avatar_url || null,
+        submitted_by: user.id, approved: isAdmin,
+      });
+      setCaption(""); setShowPost(false); setPreview(null); setPreviewFile(null);
+      if (!isAdmin) alert("📸 Submitted! Your photo appears after admin approves it.");
+    } catch(err) { console.error("Moment upload failed", err); alert("Upload failed: " + (err?.message || JSON.stringify(err))); }
+    finally { setUploading(false); }
+  };
+
+  const timeAgo = (ts) => {
+    const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
+  };
+
+  const unseenNotifs = notifs.filter(n => !notifSeen.includes(n.id)).length;
+
+  const markNotifsSeen = () => {
+    const ids = notifs.map(n=>n.id).join(",");
+    setNotifSeen(ids);
+    try { localStorage.setItem("em_notif_seen", ids); } catch {}
+  };
+
+  // Player search
+  const userList = Object.values(users);
+  const searchResults = searchQ.trim().length > 0
+    ? userList.filter(u => u.name?.toLowerCase().includes(searchQ.toLowerCase()) || String(u.player_number||"").includes(searchQ))
+    : [];
+
+  return (
+    <div className="mom-root">
+
+      {/* ── LIGHTBOX ── */}
+      {lightboxUrl && (
+        <div className="mom-lightbox" onClick={()=>setLightboxUrl(null)}>
+          <button className="psearch-close" style={{top:20,right:20}} onClick={()=>setLightboxUrl(null)}>✕</button>
+          <img src={lightboxUrl} className="mom-lightbox-img" alt=""/>
+        </div>
+      )}
+
+      {/* ── PLAYER SEARCH / PROFILE POPUP ── */}
+      {showSearch && (
+        <div className="psearch-overlay" onClick={e=>{if(e.target===e.currentTarget){setShowSearch(false);setSearchQ("");setSearchSel(null);setSearchFromFeed(false);}}}>
+          <div className="psearch-popup">
+            <button className="psearch-close" onClick={()=>{setShowSearch(false);setSearchQ("");setSearchSel(null);setSearchFromFeed(false);}}>✕</button>
+
+            {!searchSel ? (
+              <>
+                <div className="psearch-title">FIND PLAYERS</div>
+                <div className="psearch-input-wrap">
+                  <svg className="psearch-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input className="psearch-inp" placeholder="Name or #number…" value={searchQ}
+                    onChange={e=>setSearchQ(e.target.value)} autoFocus/>
+                  {searchQ && <button className="psearch-clear" onClick={()=>setSearchQ("")}>✕</button>}
+                </div>
+                <div className="psearch-results">
+                  {searchQ.trim().length === 0 && <div className="psearch-hint">⚽ Search by player name or number</div>}
+                  {searchQ.trim().length > 0 && searchResults.length === 0 && <div className="psearch-hint">No players found for "{searchQ}"</div>}
+                  {searchResults.map((u,i)=>(
+                    <div key={u.id} className="psearch-row" style={{animationDelay:`${i*0.04}s`}} onClick={()=>setSearchSel(u)}>
+                      <Av u={u} size={46} fontSize={19}/>
+                      <div className="psearch-row-info">
+                        <div className="psearch-row-name">{u.name}</div>
+                        {getPlayerBadge(u) && <div style={{marginTop:5}}><PlayerBadge u={u}/></div>}
+                      </div>
+                      <span className="psearch-arr">›</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              /* ── Player profile view ── */
+              <>
+                {!searchFromFeed && (
+                  <button className="psearch-back" onClick={()=>setSearchSel(null)}>← BACK</button>
+                )}
+                <div className="psearch-profile">
+                  <Av u={searchSel} size={88} fontSize={36}/>
+                  <div className="psearch-pname">{searchSel.name}</div>
+                  {getPlayerBadge(searchSel) && <div className="psearch-badge-glow"><PlayerBadge u={searchSel}/></div>}
+                </div>
+                <div className="psearch-stats">
+                  {[{l:"POINTS",v:searchSel.pts??0},{l:"CORRECT",v:searchSel.correct??0},{l:"ACCURACY",v:searchSel.accuracy!=null?`${searchSel.accuracy}%`:"—"}].map(s=>(
+                    <div key={s.l} className="psearch-stat">
+                      <div className="psearch-stat-val">{s.v}</div>
+                      <div className="psearch-stat-lbl">{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+                {(() => {
+                  const theirMoments = moments.filter(m=>m.posted_by===searchSel.id&&m.approved&&m.image_url&&m.image_url!=="");
+                  return theirMoments.length > 0 ? (
+                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                      <div className="psearch-posts-title">PHOTOS · {theirMoments.length}</div>
+                      <div className="psearch-grid" style={{flex:1,overflowY:"auto"}}>
+                        {theirMoments.map(m=>(
+                          <img key={m.id} src={m.image_url} className="psearch-grid-img" alt=""
+                            onClick={()=>setLightboxUrl(m.image_url)} style={{cursor:"pointer"}}/>
+                        ))}
+                      </div>
+                    </div>
+                  ) : <div className="psearch-hint" style={{marginTop:24}}>No posts yet</div>;
+                })()}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── POST POPUP ── */}
+      {showPost && (
+        <div className="psearch-overlay" onClick={e=>{if(e.target===e.currentTarget){setShowPost(false);setPreview(null);setPreviewFile(null);}}}>
+          <div className="psearch-popup" style={{height:"auto",maxHeight:"90vh"}}>
+            <button className="psearch-close" onClick={()=>{setShowPost(false);setPreview(null);setPreviewFile(null);}}>✕</button>
+            <div className="psearch-title" style={{paddingBottom:8}}>{isAdmin?"NEW POST":"SUBMIT A MOMENT"}</div>
+            {!isAdmin && <div style={{fontSize:11,color:"rgba(255,255,255,.3)",letterSpacing:1,padding:"0 24px 12px"}}>Your photo will be reviewed before appearing publicly</div>}
+            <div style={{padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:12}}>
+              {preview ? (
+                <div className="mom-preview-wrap">
+                  <img src={preview} className="mom-preview-img" alt="preview" style={{maxHeight:300}}/>
+                  <button className="mom-preview-change" onClick={()=>{setPreview(null);setPreviewFile(null);}}>✕ Change photo</button>
+                </div>
+              ) : (
+                <label className="mom-pick-area">
+                  <div style={{fontSize:48,marginBottom:10}}>📷</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,color:"rgba(255,255,255,.5)"}}>TAP TO SELECT PHOTO</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.2)",marginTop:6}}>JPG, PNG up to 10MB</div>
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={handlePickPhoto}/>
+                </label>
+              )}
+              <input className="mom-caption-inp" placeholder="Write a caption… (optional)" value={caption} onChange={e=>setCaption(e.target.value)} maxLength={200} style={{fontSize:14,padding:"12px 14px"}}/>
+              <div style={{display:"flex",gap:10}}>
+                <button className="mom-cancel-btn" style={{flex:1,padding:"13px 0"}} onClick={()=>{setShowPost(false);setPreview(null);setPreviewFile(null);}}>CANCEL</button>
+                <button className="mom-upload-btn" style={{flex:2,padding:"13px 0",opacity:(!previewFile||uploading)?0.35:1,cursor:(!previewFile||uploading)?"not-allowed":"pointer"}} onClick={handlePostPhoto} disabled={!previewFile||uploading}>
+                  {uploading?"UPLOADING…":"SHARE POST"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── NOTIFICATIONS POPUP ── */}
+      {feedTab==="notifs" && (
+        <div className="psearch-overlay" onClick={e=>{if(e.target===e.currentTarget){setFeedTab("feed");}}}>
+          <div className="psearch-popup" style={{height:"75vh"}}>
+            <button className="psearch-close" onClick={()=>setFeedTab("feed")}>✕</button>
+            <div className="psearch-title">NOTIFICATIONS{unseenNotifs > 0 ? ` · ${unseenNotifs} NEW` : ""}</div>
+            <div style={{flex:1,overflowY:"auto"}}>
+              {notifs.length === 0 ? (
+                <div className="psearch-hint" style={{paddingTop:40}}>
+                  <div style={{fontSize:40,marginBottom:12}}>🔔</div>
+                  <div>No notifications yet</div>
+                  <div style={{marginTop:6,fontSize:11}}>Likes and comments on your posts appear here</div>
+                </div>
+              ) : notifs.map(n=>(
+                <div key={n.id} className={`mom-notif-row ${!notifSeen.includes(n.id)?"mom-notif-new":""}`}>
+                  <div className="mom-notif-icon">{n.type==="like"?"❤️":"💬"}</div>
+                  <div className="mom-notif-body">
+                    <span className="mom-notif-name">{n.name}</span>
+                    <span className="mom-notif-text"> {n.type==="like"?"liked your photo":`commented: "${n.text?.substring(0,40)}${(n.text?.length||0)>40?"…":""}"`}</span>
+                    {n.time && <div className="mom-notif-time">{timeAgo(n.time)}</div>}
+                  </div>
+                  {n.img && <img src={n.img} className="mom-notif-thumb" alt=""/>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── HEADER ── */}
+      <div className="mom-header">
+        <div className="mom-topbar">
+          {/* Left: my avatar */}
+          <div className="mom-topbar-left">
+            <div className="mom-my-av" onClick={()=>{setSearchSel(users[user.id]||user);setShowSearch(true);setSearchFromFeed(true);}}>
+              <Av u={user} size={32} fontSize={13}/>
+            </div>
+          </div>
+          {/* Center: FEED + neon sub */}
+          <div className="mom-topbar-center">
+            <div className="mom-logo-text">FEED</div>
+            <div className="mom-neon-sub">— WORLD CUP 2026 —</div>
+          </div>
+          {/* Right: action icons */}
+          <div className="mom-topbar-right">
+            <button className="mom-icon-btn" onClick={()=>{setFeedTab("notifs");markNotifsSeen();}}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              {unseenNotifs > 0 && <span className="mom-icon-badge">{unseenNotifs}</span>}
+            </button>
+            <button className="mom-icon-btn" onClick={()=>{setShowSearch(true);setSearchSel(null);setSearchQ("");setSearchFromFeed(false);}}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <button className="mom-icon-btn mom-icon-add" onClick={()=>setShowPost(true)}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div className="mom-divider"/>
+      </div>
+
+      {/* ── FEED TAB ── */}
+      {feedTab === "feed" && (
+        <>
+          {/* Stories row — players who have posts */}
+          {(() => {
+            const storyUsers = [];
+            const seen = new Set();
+            moments.filter(m=>(m.approved||isAdmin)&&m.image_url&&m.image_url!=="").forEach(m => {
+              if (!seen.has(m.posted_by)) {
+                seen.add(m.posted_by);
+                storyUsers.push(users[m.posted_by] || { id: m.posted_by, name: m.poster_name, avatar_url: m.poster_avatar });
+              }
+            });
+            if (storyUsers.length === 0) return null;
+            return (
+              <div className="mom-stories-row">
+                {/* My story / post button */}
+                <div className="mom-story-item" onClick={()=>setShowPost(true)}>
+                  <div className="mom-story-av mom-story-add">
+                    <Av u={user} size={52} fontSize={20}/>
+                    <div className="mom-story-plus">+</div>
+                  </div>
+                  <div className="mom-story-name">Your Story</div>
+                </div>
+                {storyUsers.map(u => (
+                  <div key={u.id} className="mom-story-item" onClick={()=>{setSearchSel(u);setShowSearch(true);setSearchFromFeed(true);}}>
+                    <div className={`mom-story-av ${u.id===user.id?"mom-story-av-me":"mom-story-av-ring"}`}>
+                      <Av u={u} size={52} fontSize={20}/>
+                    </div>
+                    <div className="mom-story-name">{(u.name||"").split(" ")[0]}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {moments.filter(m=>isAdmin||m.approved).length === 0 ? (
+            <div className="mom-empty">
+              <div style={{fontSize:64,marginBottom:16}}>📸</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:4,color:"rgba(255,255,255,.3)"}}>NO POSTS YET</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,.2)",marginTop:8,letterSpacing:1,lineHeight:1.6}}>Share a moment or your match prediction — be the first!</div>
+              <button className="mom-empty-cta" onClick={()=>setShowPost(true)}>+ POST A PHOTO</button>
+            </div>
+          ) : (
+            <div className="mom-feed">
+              {moments.filter(mom=>isAdmin||mom.approved).map(mom => {
+                const myLike = (likes[mom.id]||new Set()).has(user.id);
+                const likeCount = (likes[mom.id]||new Set()).size;
+                const momComments = comments[mom.id] || [];
+                const showingComments = openComments === mom.id;
+                const isPending = !mom.approved;
+                const anims = likeAnims[mom.id] || [];
+                const posterUser = users[mom.posted_by] || { name: mom.poster_name, avatar_url: mom.poster_avatar };
+                const openPosterProfile = () => { setSearchSel(posterUser); setShowSearch(true); setSearchFromFeed(true); };
+                const menuOpen = openCardMenu === mom.id;
+                const ratio = imgRatios[mom.id] || "4/5";
+
+                // Detect prediction post (image_url is "" and caption is JSON with __type:"pred")
+                let predMeta = null;
+                try {
+                  if ((mom.image_url === "" || mom.image_url === null) && mom.caption?.startsWith('{"__type":"pred"')) {
+                    predMeta = JSON.parse(mom.caption);
+                  }
+                } catch {}
+
+                return (
+                  <div key={mom.id} className={`mom-card ${isPending?"mom-card-pending":""}`}
+                    onClick={()=>{ if(menuOpen) setOpenCardMenu(null); }}>
+                    {isPending && isAdmin && (
+                      <div className="mom-pending-banner">
+                        ⏳ PENDING
+                        <button className="mom-approve-btn" onClick={()=>approveMoment(mom.id)}>✓ APPROVE</button>
+                        <button className="mom-delete-btn" style={{marginLeft:6,color:"#ef4444"}} onClick={e=>{e.stopPropagation();deleteMoment(mom.id);}}>✕ REJECT</button>
+                      </div>
+                    )}
+                    {/* Author row */}
+                    <div className="mom-card-author">
+                      <div className="mom-card-av mom-card-av-ring" onClick={openPosterProfile}>
+                        <Av u={posterUser} size={40} fontSize={16}/>
+                      </div>
+                      <div className="mom-photo-author" onClick={openPosterProfile} style={{cursor:"pointer"}}>
+                        <div className="mom-author-top">
+                          <span className="mom-poster-name">{mom.poster_name}</span>
+                          {getPlayerBadge(posterUser) && <PlayerBadge u={posterUser}/>}
+                        </div>
+                        <div className="mom-time">{timeAgo(mom.created_at)}</div>
+                      </div>
+                      {/* 3-dots menu */}
+                      <div className="mom-3dots-wrap">
+                        <button className="mom-3dots" onClick={e=>{e.stopPropagation();setOpenCardMenu(menuOpen?null:mom.id);}}>
+                          <span/><span/><span/>
+                        </button>
+                        {menuOpen && (
+                          <div className="mom-card-menu" onClick={e=>e.stopPropagation()}>
+                            <button className="mom-card-menu-item" onClick={()=>{openPosterProfile();setOpenCardMenu(null);}}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                              View Profile
+                            </button>
+                            {(isAdmin || mom.posted_by === user.id) && (
+                              <button className="mom-card-menu-item mom-card-menu-delete" onClick={()=>{deleteMoment(mom.id);setOpenCardMenu(null);}} disabled={deleting===mom.id}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                {deleting===mom.id?"Deleting…":"Delete Post"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Prediction Post Card — special render */}
+                    {predMeta ? (
+                      <div className="mom-pred-card">
+                        <div className="mom-pred-label">
+                          {predMeta.fin ? "⚽ MY RESULT" : "⚽ MY PREDICTION"}
+                        </div>
+                        <div className="mom-pred-matchup">
+                          <div className="mom-pred-team">
+                            <span className="mom-pred-flag">{flag(predMeta.home)}</span>
+                            <span className="mom-pred-tname">{predMeta.home}</span>
+                          </div>
+                          <div className="mom-pred-scores">
+                            {predMeta.fin && (
+                              <div className="mom-pred-final">
+                                <span className="mom-pred-fnum">{predMeta.finalH}</span>
+                                <span className="mom-pred-fcolon">:</span>
+                                <span className="mom-pred-fnum">{predMeta.finalA}</span>
+                                <div className="mom-pred-final-lbl">FINAL</div>
+                              </div>
+                            )}
+                            <div className="mom-pred-pick">
+                              <span className="mom-pred-pnum">{predMeta.predH}</span>
+                              <span className="mom-pred-pcolon">:</span>
+                              <span className="mom-pred-pnum">{predMeta.predA}</span>
+                              <div className="mom-pred-pick-lbl">MY PICK</div>
+                            </div>
+                          </div>
+                          <div className="mom-pred-team mom-pred-team-r">
+                            <span className="mom-pred-flag">{flag(predMeta.away)}</span>
+                            <span className="mom-pred-tname">{predMeta.away}</span>
+                          </div>
+                        </div>
+                        <div className="mom-pred-meta">{predMeta.group} · {predMeta.date} · {predMeta.time} BON</div>
+                        {predMeta.fin && predMeta.result && (
+                          <div className={`mom-pred-result ${predMeta.result==="exact"?"mom-pred-exact":predMeta.result==="winner"?"mom-pred-winner":"mom-pred-wrong"}`}>
+                            {predMeta.result==="exact" && <><span className="mom-pred-result-ico">✓</span> EXACT SCORE · +5 PTS</>}
+                            {predMeta.result==="winner" && <><span className="mom-pred-result-ico">✓</span> RIGHT WINNER · +1 PT</>}
+                            {predMeta.result==="wrong"  && <><span className="mom-pred-result-ico">✗</span> WRONG PREDICTION · 0 PTS</>}
+                          </div>
+                        )}
+                        {predMeta.userCaption && <div className="mom-pred-user-caption">"{predMeta.userCaption}"</div>}
+                      </div>
+                    ) : (
+                      /* Regular photo post */
+                      mom.image_url && mom.image_url !== "" && (
+                        <div className="mom-photo-wrap" style={{aspectRatio:ratio}} onClick={()=>setLightboxUrl(mom.image_url)}>
+                          <img src={mom.image_url} className="mom-img" alt="moment"
+                            style={isPending?{opacity:.55}:{}}
+                            onLoad={e=>{
+                              const {naturalWidth:w,naturalHeight:h}=e.target;
+                              if(!w||!h) return;
+                              const r=w/h;
+                              setImgRatios(prev=>({...prev,[mom.id]:r>1.1?"16/9":r<0.9?"4/5":"1/1"}));
+                            }}/>
+                        </div>
+                      )
+                    )}
+
+                    {/* Caption (for photo posts) */}
+                    {!predMeta && mom.caption && <div className="mom-caption">{mom.caption}</div>}
+
+                    {/* Actions bar */}
+                    <div className="mom-actions">
+                      <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+                        <button className={`mom-like-btn ${myLike?"mom-liked":""}`} onClick={()=>toggleLike(mom.id)}>
+                          <svg className={`mom-heart-svg ${myLike?"mom-heart-svg-on":""}`} width="24" height="24" viewBox="0 0 24 24" fill={myLike?"#e63946":"none"} stroke={myLike?"#e63946":"rgba(255,255,255,.55)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                          {likeCount > 0 && <span className="mom-like-count">{likeCount}</span>}
+                        </button>
+                        {anims.map(p=>(
+                          <span key={p.id} className="mom-heart-burst" style={{"--dx":`${p.dx}px`,"--dy":`${p.dy}px`}}>❤</span>
+                        ))}
+                      </div>
+                      <button className="mom-comment-toggle" onClick={()=>setOpenComments(showingComments?null:mom.id)}>
+                        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        {momComments.length > 0 && <span className="mom-like-count">{momComments.length}</span>}
+                      </button>
+                    </div>
+
+                    {/* Comments */}
+                    {showingComments && (
+                      <div className="mom-comments">
+                        {momComments.map(c=>(
+                          <div key={c.id} className="mom-comment">
+                            <Av u={{name:c.user_name,avatar_url:c.avatar_url}} size={28} fontSize={12}/>
+                            <div className="mom-comment-body">
+                              <span className="mom-comment-name">{c.user_name}</span>
+                              <span className="mom-comment-text"> {c.body}</span>
+                            </div>
+                            {(isAdmin||c.user_id===user.id)&&<button className="mom-del-comment" onClick={()=>deleteComment(c.id,mom.id)}>×</button>}
+                          </div>
+                        ))}
+                        <div className="mom-comment-input-row">
+                          <Av u={user} size={28} fontSize={12}/>
+                          <input className="mom-comment-inp" placeholder="Add a comment…"
+                            value={commentTexts[mom.id]||""}
+                            onChange={e=>setCommentTexts(t=>({...t,[mom.id]:e.target.value}))}
+                            onKeyDown={e=>{if(e.key==="Enter")postComment(mom.id);}}
+                            maxLength={300}/>
+                          <button className="mom-comment-send" onClick={()=>postComment(mom.id)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── NOTIFICATIONS TAB ── */}
+      {feedTab === "notifs" && (
+        <div className="mom-notifs">
+          {notifs.length === 0 ? (
+            <div className="mom-empty">
+              <div style={{fontSize:52,marginBottom:16}}>🔔</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"rgba(255,255,255,.25)"}}>NO NOTIFICATIONS YET</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,.2)",marginTop:8,lineHeight:1.6}}>Likes and comments on your posts will appear here</div>
+            </div>
+          ) : notifs.map(n => (
+            <div key={n.id} className={`mom-notif-row ${!notifSeen.includes(n.id)?"mom-notif-new":""}`}>
+              <div className="mom-notif-icon">{n.type==="like"?"❤️":"💬"}</div>
+              <div className="mom-notif-body">
+                <span className="mom-notif-name">{n.name}</span>
+                <span className="mom-notif-text"> {n.type==="like"?"liked your post":`commented: "${n.text?.substring(0,40)}${(n.text?.length||0)>40?"…":""}"`}</span>
+                {n.time && <div className="mom-notif-time">{timeAgo(n.time)}</div>}
+              </div>
+              {n.img && <img src={n.img} className="mom-notif-thumb" alt=""/>}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2104,7 +3235,262 @@ const IcoCheck = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="non
 const IcoX     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 const IcoDash  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 
-function LeaderView({ board, user }) {
+/* ─── Player Badge ───────────────────────────────────────────────────────── */
+/* ═══ TOURNAMENT WINNER SCREEN ══════════════════════════════════════════════ */
+function TournamentWinnerScreen({ board, isAdmin, onClose }) {
+  const winner = board[0];
+  const second = board[1];
+  const third  = board[2];
+  const confetti = Array.from({ length: 24 }, (_, i) => ({
+    id: i,
+    color: ["#c9a84c","#fff","#4ade80","#f87171","#60a5fa","#fbbf24"][i % 6],
+    left: `${(i * 37 + 11) % 100}%`,
+    dur:  `${3 + (i % 5)}s`,
+    delay:`${(i * 0.3) % 3}s`,
+    size: `${5 + (i % 5)}px`,
+  }));
+
+  return createPortal(
+    <div className="winner-overlay">
+      {/* Confetti */}
+      <div className="winner-confetti">
+        {confetti.map(c => (
+          <span key={c.id} style={{
+            position:"absolute", left:c.left, top:"-10px",
+            width:c.size, height:c.size, borderRadius:"50%",
+            background:c.color, opacity:.8,
+            animation:`confettiFall ${c.dur} ${c.delay} linear infinite`,
+          }}/>
+        ))}
+      </div>
+
+      <div className="winner-trophy">🏆</div>
+      <div className="winner-label">TOURNAMENT OVER</div>
+      <div className="winner-event">EL MUNDO WORLD CUP 2026</div>
+
+      {winner && <>
+        <div className="winner-name">{winner.name}</div>
+        <div className="winner-pts">{winner.pts} <span style={{fontSize:14,letterSpacing:2,opacity:.6}}>PTS</span></div>
+        <div className="winner-champion">⭐ World Champion ⭐</div>
+      </>}
+
+      {(second || third) && (
+        <div className="winner-podium">
+          {second && (
+            <div className="winner-pod-item">
+              <div className="winner-pod-pos">🥈</div>
+              <div className="winner-pod-name">{second.name}</div>
+              <div className="winner-pod-pts">{second.pts} pts</div>
+            </div>
+          )}
+          {third && (
+            <div className="winner-pod-item">
+              <div className="winner-pod-pos">🥉</div>
+              <div className="winner-pod-name">{third.name}</div>
+              <div className="winner-pod-pts">{third.pts} pts</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <button className="winner-close" onClick={onClose}>CLOSE SCREEN</button>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+const BADGE_CFG = {
+  developer: { label:"<> DEVELOPER", cls:"badge-dev"     },
+  owner:     { label:"OWNER",     cls:"badge-owner"   },
+  admin:     { label:"ADMIN",     cls:"badge-admin"   },
+  gold:      { label:"SPONSOR",   cls:"badge-sponsor" },
+  silver:    { label:"SPONSOR",   cls:"badge-sponsor" },
+  sponsor:   { label:"SPONSOR",   cls:"badge-sponsor" },
+};
+const getPlayerBadge = (u) => {
+  if (u.badge && BADGE_CFG[u.badge]) return u.badge;
+  if (u.is_admin === true || u.is_admin === 1 || u.is_admin === "true") return "admin";
+  if (u.sponsor_tier) return "sponsor"; // always show "SPONSOR" regardless of tier
+  return null;
+};
+function PlayerBadge({ u }) {
+  const key = getPlayerBadge(u);
+  if (!key) return null;
+  const cfg = BADGE_CFG[key];
+  return <span className={`plr-badge ${cfg.cls}`}>{cfg.label}</span>;
+}
+
+/* ─── Avatar color from name hash ───────────────────────────────────────── */
+const avatarColor = (name = "") => {
+  const cols = ["#c0392b","#e67e22","#f39c12","#27ae60","#2980b9","#8e44ad","#16a085","#d35400","#1abc9c","#e91e63"];
+  let h = 0; for (const c of name) h = c.charCodeAt(0) + ((h << 5) - h);
+  return cols[Math.abs(h) % cols.length];
+};
+
+/* ─── Reusable Avatar component ─────────────────────────────────────────── */
+function Av({ u, size = 44, fontSize = 20 }) {
+  if (u?.avatar_url) return (
+    <img src={u.avatar_url} alt={u.name}
+      style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,display:"block"}} />
+  );
+  return (
+    <div style={{width:size,height:size,borderRadius:"50%",background:avatarColor(u?.name||""),
+      display:"flex",alignItems:"center",justifyContent:"center",
+      fontFamily:"'Anton',sans-serif",fontSize,color:"#fff",flexShrink:0,letterSpacing:0}}>
+      {(u?.name||"?")[0].toUpperCase()}
+    </div>
+  );
+}
+
+/* ─── Compress image before upload ──────────────────────────────────────── */
+const compressImage = (file) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 400;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+      else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(resolve, "image/jpeg", 0.85);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ─── Player Search View ─────────────────────────────────────────────────── */
+function PlayerSearchView({ allUsers, currentUser, matches }) {
+  const [query,    setQuery]    = useState("");
+  const [selected, setSelected] = useState(null);
+  const [stats,    setStats]    = useState(null);
+  const [loading,  setLoading]  = useState(false);
+
+  const finished = matches.filter(m => m.status === "finished");
+
+  const results = !query.trim() ? [] : allUsers.filter(u => {
+    const q = query.toLowerCase();
+    return (u.name||"").toLowerCase().includes(q) || (u.phone||"").includes(q);
+  }).slice(0, 25);
+
+  const openPlayer = async (u) => {
+    setSelected(u); setStats(null); setLoading(true);
+    const { data: rows } = await supabase.from("predictions").select("*").eq("user_id", u.id);
+    if (rows) {
+      const pm = {}; rows.forEach(p => { pm[p.match_id] = { h: p.home_pred, a: p.away_pred }; });
+      let exact = 0, winner = 0, wrong = 0, totalPts = 0;
+      for (const m of finished) {
+        const p = pm[m.id];
+        if (!p) continue;
+        const pts = calcPts(p, m.hs ?? m.home_score, m.as ?? m.away_score);
+        if (pts === 5) exact++; else if (pts === 1) winner++; else wrong++;
+        totalPts += pts;
+      }
+      const total = exact + winner + wrong;
+      setStats({ exact, winner, wrong, total, totalPts, accuracy: total ? Math.round((exact+winner)/total*100) : 0 });
+    }
+    setLoading(false);
+  };
+
+  if (selected) return (
+    <div className="ps-root">
+      <button className="ps-back" onClick={() => { setSelected(null); setStats(null); }}>‹ BACK TO SEARCH</button>
+
+      {/* Profile card */}
+      <div className="ps-profile-card">
+        <div className="ps-profile-glow" style={{background: avatarColor(selected.name)}} />
+        <div style={{marginBottom:14}}><Av u={selected} size={80} fontSize={36} /></div>
+        <div className="ps-profile-name">{selected.name}</div>
+        {getPlayerBadge(selected) && <div style={{marginTop:10}}><PlayerBadge u={selected} /></div>}
+        {selected.id === currentUser.id && <div className="ps-its-you">— THIS IS YOU —</div>}
+      </div>
+
+      {/* Stats */}
+      <div className="ps-stats-grid">
+        <div className="ps-stat-box">
+          <div className="ps-stat-num">{loading ? "…" : (stats?.totalPts ?? 0)}</div>
+          <div className="ps-stat-lbl">POINTS</div>
+        </div>
+        <div className="ps-stat-box">
+          <div className="ps-stat-num">{loading ? "…" : (stats?.total ?? 0)}</div>
+          <div className="ps-stat-lbl">PREDICTED</div>
+        </div>
+        <div className="ps-stat-box">
+          <div className="ps-stat-num">{loading ? "…" : `${stats?.accuracy ?? 0}%`}</div>
+          <div className="ps-stat-lbl">ACCURACY</div>
+        </div>
+      </div>
+
+      {stats && stats.total > 0 && (
+        <div className="ps-breakdown">
+          <div className="ps-bk-title">PREDICTION BREAKDOWN</div>
+          <div className="ps-bk-bar">
+            {stats.exact  > 0 && <div className="ps-bk-seg ps-bk-exact"  style={{flex:stats.exact}}  title={`Exact: ${stats.exact}`}/>}
+            {stats.winner > 0 && <div className="ps-bk-seg ps-bk-winner" style={{flex:stats.winner}} title={`Winner: ${stats.winner}`}/>}
+            {stats.wrong  > 0 && <div className="ps-bk-seg ps-bk-wrong"  style={{flex:stats.wrong}}  title={`Wrong: ${stats.wrong}`}/>}
+          </div>
+          <div className="ps-bk-legend">
+            <span><span className="ps-bk-dot" style={{background:"#4ade80"}}/>Exact score ({stats.exact})</span>
+            <span><span className="ps-bk-dot" style={{background:"#fbbf24"}}/>Correct winner ({stats.winner})</span>
+            <span><span className="ps-bk-dot" style={{background:"rgba(255,255,255,.18)"}}/>Wrong ({stats.wrong})</span>
+          </div>
+        </div>
+      )}
+      {stats && stats.total === 0 && !loading && (
+        <div className="ps-no-preds">No predictions placed yet</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="ps-root">
+      {/* Search bar */}
+      <div className="ps-bar">
+        <span className="ps-bar-ico">⌕</span>
+        <input className="ps-inp" placeholder="Search by name or phone…" value={query}
+          onChange={e => setQuery(e.target.value)} autoComplete="off" autoCorrect="off" />
+        {query && <button className="ps-clr" onClick={() => setQuery("")}>✕</button>}
+      </div>
+
+      {/* Empty state */}
+      {!query.trim() && (
+        <div className="ps-empty">
+          <div className="ps-empty-ico">👥</div>
+          <div className="ps-empty-title">SEARCH PLAYERS</div>
+          <div className="ps-empty-sub">Find anyone by name or phone number</div>
+        </div>
+      )}
+
+      {/* No results */}
+      {query.trim() && results.length === 0 && (
+        <div className="ps-empty">
+          <div className="ps-empty-ico">🔍</div>
+          <div className="ps-empty-title">NO RESULTS</div>
+          <div className="ps-empty-sub">Try a different name or number</div>
+        </div>
+      )}
+
+      {/* Results */}
+      {results.map(u => (
+        <div key={u.id} className="ps-row" onClick={() => openPlayer(u)}>
+          <Av u={u} size={44} fontSize={20} />
+          <div className="ps-row-info">
+            <div className="ps-row-name">{u.name} {u.id === currentUser.id && <span className="ps-you">YOU</span>}</div>
+            {getPlayerBadge(u) && <PlayerBadge u={u} />}
+          </div>
+          <div className="ps-row-arrow">›</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LeaderView({ board, user, allUsers = [], matches = [] }) {
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
   const top3 = filtered.slice(0, 3);
   const rest = filtered.slice(3);
@@ -2113,12 +3499,7 @@ function LeaderView({ board, user }) {
 
   return (
     <div className="lb-root">
-
-      {/* ── TITLE BAR ── */}
-      <div className="lb-title-bar">
-        <span className="lb-title">RANKINGS</span>
-      </div>
-
+      {true && <>
       {/* ── TOP 3 PODIUM ── */}
       {top3.length >= 3 && (
         <div className="lb-podium">
@@ -2184,6 +3565,7 @@ function LeaderView({ board, user }) {
           <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -2217,17 +3599,549 @@ function RulesView({ rules }) {
 }
 
 /* ═══ SPONSORS VIEW ═════════════════════════════════════════════════════════ */
+const SPONSORS_LIST = [
+  { id:"indebon",    name:"INDEBON",             sub:"Instituto Di Deporte Boneriano",        logo:"/logos/indebon2.jpg",   bg:"#fff" },
+  { id:"haafkes",    name:"Haafkes",             sub:"Bouwondernemers · Nederland & Bonaire",  logo:"/logos/haafkes.png",    bg:"#fff" },
+  { id:"wildkamp",   name:"Wildkamp",            sub:"",                                       logo:"/logos/wildkamp.png",   bg:"#fff" },
+  { id:"koenderink", name:"Koenderink & Co",     sub:"Since 1971",                             logo:"/logos/koenderink.png", bg:"#fff" },
+  { id:"vdm",        name:"VDM Bonaire",         sub:"",                                       logo:"/logos/vdm.png",        bg:"#fff" },
+  { id:"tulum",      name:"Tulum Summer Wear",   sub:"Kralendijk",                             logo:"/logos/tulum.png",      bg:"#fff" },
+  { id:"panadero",   name:"Panadero Trading",    sub:"",                                       logo:"/logos/panadero.png",   bg:"#fff" },
+  { id:"tafelheer",  name:"De Tafelheer",        sub:"Horecabenodigdheden · Bonaire",          logo:"/logos/tafelheer.png",  bg:"#fff" },
+  { id:"topdog",     name:"TopDog Food",         sub:"+599 786-1744",                          logo:"/logos/topdog.png",     bg:"#fff" },
+  { id:"rmd",        name:"RMD",                 sub:"Advies en Ontwikkeling",                 logo:"/logos/rmd.jpg",        bg:"#fff" },
+  { id:"wave",       name:"Wave & Wheels",       sub:"Watersports · Bike Rental · Clothing",   logo:"/logos/wafewheel.jpg",  bg:"#fff" },
+  { id:"bon",        name:"BON Container",       sub:"Services & Storage BV",                  logo:"/logos/leon.jpg",       bg:"#fff" },
+  { id:"changes",    name:"Changes",             sub:"",                                       logo:"/logos/indebon.jpg",    bg:"#fff" },
+  { id:"winefactory",name:"The Wine Factory",    sub:"Wines & Spirits · Bonaire",              logo:"/logos/winefactory.jpg", bg:"#fff" },
+];
+
+function SponsorShowcase({ onClose }) {
+  const [idx, setIdx]         = useState(0);
+  const [animKey, setAnimKey] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const SLIDE_MS = 5000;
+
+  const advance = (next) => {
+    setLeaving(true);
+    setTimeout(() => {
+      setIdx(next);
+      setAnimKey(k => k+1);
+      setLeaving(false);
+    }, 350);
+  };
+
+  useEffect(() => {
+    const iv = setInterval(() => advance((idx + 1) % SPONSORS_LIST.length), SLIDE_MS);
+    return () => clearInterval(iv);
+  }, [idx]);
+
+  const s = SPONSORS_LIST[idx];
+
+  return createPortal(
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#050505",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+
+      {/* Stadium light beam from top */}
+      <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",
+        width:"70%",height:"65%",
+        background:"radial-gradient(ellipse at top,rgba(212,175,55,.07) 0%,transparent 70%)",
+        pointerEvents:"none"}}/>
+
+      {/* Subtle grid lines background */}
+      <div style={{position:"absolute",inset:0,
+        backgroundImage:"linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px)",
+        backgroundSize:"40px 40px",pointerEvents:"none"}}/>
+
+      {/* Floating gold particles */}
+      {[...Array(16)].map((_,i) => (
+        <div key={`p-${animKey}-${i}`} style={{
+          position:"absolute",
+          width: i%4===0 ? 3 : i%3===0 ? 2 : 1.5,
+          height: i%4===0 ? 3 : i%3===0 ? 2 : 1.5,
+          borderRadius:"50%",
+          background: i%3===0 ? "rgba(212,175,55,.7)" : "rgba(255,255,255,.25)",
+          left:`${5+(i*6.1)%90}%`,
+          top:`${8+(i*11.3)%84}%`,
+          animation:`scPart ${2.5+i*0.22}s ease-in-out ${i*0.12}s infinite alternate`,
+          pointerEvents:"none",
+        }}/>
+      ))}
+
+      {/* ── MAIN SLIDE ── */}
+      <div style={{
+        flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        padding:"60px 24px 80px",gap:0,
+        opacity: leaving ? 0 : 1,
+        transform: leaving ? "scale(.96) translateY(10px)" : "scale(1) translateY(0)",
+        transition:"opacity .35s ease, transform .35s ease",
+      }}>
+
+        {/* TOP LABEL */}
+        <div key={`lbl-${animKey}`} style={{
+          fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:4,
+          color:"#d4af37",marginBottom:20,
+          animation:"scFadeUp .6s .1s both",
+        }}>
+          PROUD SPONSOR · EL MUNDO WORLD CUP 2026
+        </div>
+
+        {/* LOGO CARD — full width, tall */}
+        <div key={`logo-${animKey}`} style={{
+          width:"100%",maxWidth:340,height:200,
+          background:"#fff",borderRadius:24,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          padding:"20px 28px",position:"relative",overflow:"hidden",
+          boxShadow:"0 0 0 1px rgba(212,175,55,.2), 0 30px 80px rgba(0,0,0,.8), 0 0 80px rgba(212,175,55,.08)",
+          animation:"scLogoIn .7s cubic-bezier(.22,1,.36,1) both",
+        }}>
+          <img src={s.logo} alt={s.name}
+            style={{maxWidth:"100%",maxHeight:150,objectFit:"contain",display:"block"}}/>
+          {/* Gold corner accents */}
+          <div style={{position:"absolute",top:12,left:12,width:16,height:16,
+            borderTop:"2px solid rgba(212,175,55,.4)",borderLeft:"2px solid rgba(212,175,55,.4)",borderRadius:"2px 0 0 0"}}/>
+          <div style={{position:"absolute",top:12,right:12,width:16,height:16,
+            borderTop:"2px solid rgba(212,175,55,.4)",borderRight:"2px solid rgba(212,175,55,.4)",borderRadius:"0 2px 0 0"}}/>
+          <div style={{position:"absolute",bottom:12,left:12,width:16,height:16,
+            borderBottom:"2px solid rgba(212,175,55,.4)",borderLeft:"2px solid rgba(212,175,55,.4)",borderRadius:"0 0 0 2px"}}/>
+          <div style={{position:"absolute",bottom:12,right:12,width:16,height:16,
+            borderBottom:"2px solid rgba(212,175,55,.4)",borderRight:"2px solid rgba(212,175,55,.4)",borderRadius:"0 0 2px 0"}}/>
+          {/* Shimmer */}
+          <div style={{
+            position:"absolute",inset:0,
+            background:"linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%)",
+            animation:"scShimmer 1s .3s ease forwards",transform:"translateX(-100%)",
+            pointerEvents:"none",
+          }}/>
+        </div>
+
+        {/* GOLD DIVIDER LINE */}
+        <div key={`div-${animKey}`} style={{
+          height:1,background:"linear-gradient(90deg,transparent,#d4af37,transparent)",
+          width:0,marginTop:28,
+          animation:"scLineGrow .7s .5s forwards",
+        }}/>
+
+        {/* SPONSOR NAME — HUGE */}
+        <div key={`name-${animKey}`} style={{
+          fontFamily:"'Anton',sans-serif",
+          fontSize: s.name.length > 14 ? 34 : s.name.length > 10 ? 42 : 52,
+          letterSpacing:1,color:"#fff",textAlign:"center",lineHeight:1,
+          marginTop:20,padding:"0 8px",
+          animation:"scFadeUp .6s .55s both",
+          textShadow:"0 0 40px rgba(255,255,255,.15)",
+        }}>
+          {s.name}
+        </div>
+
+        {/* SUBTITLE */}
+        {s.sub && (
+          <div key={`sub-${animKey}`} style={{
+            fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,
+            color:"rgba(255,255,255,.5)",marginTop:8,textAlign:"center",
+            animation:"scFadeUp .6s .7s both",letterSpacing:.5,
+          }}>
+            {s.sub}
+          </div>
+        )}
+
+        {/* COUNTER */}
+        <div key={`cnt-${animKey}`} style={{
+          fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:5,
+          color:"rgba(255,255,255,.2)",marginTop:24,
+          animation:"scFadeUp .5s .8s both",
+        }}>
+          {String(idx+1).padStart(2,"0")} — {String(SPONSORS_LIST.length).padStart(2,"0")}
+        </div>
+      </div>
+
+      {/* ── BOTTOM UI ── */}
+      {/* Dot nav */}
+      <div style={{position:"absolute",bottom:44,left:0,right:0,display:"flex",justifyContent:"center",gap:6,zIndex:5}}>
+        {SPONSORS_LIST.map((_,i) => (
+          <div key={i} onClick={()=>advance(i)} style={{
+            width: i===idx ? 22 : 6, height:6, borderRadius:3,
+            background: i===idx ? "#d4af37" : "rgba(255,255,255,.18)",
+            transition:"all .35s cubic-bezier(.34,1.56,.64,1)",cursor:"pointer",
+          }}/>
+        ))}
+      </div>
+
+      {/* Gold progress bar */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(255,255,255,.04)"}}>
+        <div key={`bar-${animKey}`} style={{
+          height:"100%",
+          background:"linear-gradient(90deg,#b8962e,#f5e27d,#b8962e)",
+          animation:`scProgress ${SLIDE_MS}ms linear forwards`,width:"0%",
+        }}/>
+      </div>
+
+      {/* Close */}
+      <button onClick={onClose} style={{
+        position:"absolute",top:48,right:16,zIndex:20,
+        background:"rgba(0,0,0,.6)",border:"1px solid rgba(255,255,255,.15)",
+        color:"rgba(255,255,255,.6)",borderRadius:20,padding:"7px 18px",
+        fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",
+        backdropFilter:"blur(8px)",
+      }}>✕ CLOSE</button>
+
+      {/* Top left label */}
+      <div style={{position:"absolute",top:52,left:18,
+        fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"rgba(255,255,255,.18)"}}>
+        OUR SPONSORS
+      </div>
+
+      {/* Prev / Next arrows */}
+      {[{dir:-1,side:"left",pos:16},{dir:1,side:"right",pos:16}].map(({dir,side,pos})=>(
+        <button key={side} onClick={()=>advance((idx+dir+SPONSORS_LIST.length)%SPONSORS_LIST.length)} style={{
+          position:"absolute",[side]:pos,top:"50%",transform:"translateY(-50%)",
+          background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",
+          color:"rgba(255,255,255,.5)",borderRadius:12,width:36,height:52,
+          fontFamily:"'Anton',sans-serif",fontSize:18,cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          backdropFilter:"blur(4px)",transition:"all .2s",zIndex:5,
+        }}>{dir===-1?"‹":"›"}</button>
+      ))}
+
+      <style>{`
+        @keyframes scLogoIn {
+          from { opacity:0; transform:scale(.82) translateY(24px); }
+          to   { opacity:1; transform:scale(1)   translateY(0);    }
+        }
+        @keyframes scFadeUp {
+          from { opacity:0; transform:translateY(20px); filter:blur(6px); }
+          to   { opacity:1; transform:translateY(0);    filter:blur(0);   }
+        }
+        @keyframes scLineGrow {
+          from { width:0;    opacity:0; }
+          to   { width:180px; opacity:1; }
+        }
+        @keyframes scShimmer {
+          from { transform:translateX(-100%); }
+          to   { transform:translateX(200%);  }
+        }
+        @keyframes scPart {
+          from { transform:translateY(0) scale(1);    opacity:.2; }
+          to   { transform:translateY(-22px) scale(1.5); opacity:.8; }
+        }
+        @keyframes scProgress {
+          from { width:0%;   }
+          to   { width:100%; }
+        }
+      `}</style>
+    </div>,
+    document.body
+  );
+}
+
+function SponsorsSection() {
+  const [showShowcase, setShowShowcase] = useState(false);
+  return (
+    <div style={{marginTop:16,paddingBottom:8}}>
+      {showShowcase && <SponsorShowcase onClose={()=>setShowShowcase(false)}/>}
+      {/* Header */}
+      <div style={{padding:"24px 16px 0",textAlign:"center"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:5,color:"rgba(255,255,255,.3)",marginBottom:10}}>
+          WORLD CUP 2026 · EL MUNDO BONAIRE
+        </div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:2,color:"#fff",marginBottom:6}}>
+          OUR SPONSORS
+        </div>
+        <div style={{width:40,height:1.5,background:"linear-gradient(90deg,transparent,#d4af37,transparent)",margin:"0 auto 12px"}}/>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",lineHeight:1.5}}>
+          Thank you to all our amazing partners who made this event possible
+        </div>
+      </div>
+
+      {/* Showcase button */}
+      <div style={{padding:"16px 16px 0",textAlign:"center"}}>
+        <button onClick={()=>setShowShowcase(true)} style={{
+          width:"100%",padding:"15px 0",
+          background:"linear-gradient(135deg,#d4af37,#f5e27d,#d4af37)",
+          backgroundSize:"200% 100%",
+          border:"none",borderRadius:12,cursor:"pointer",
+          fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:3,color:"#000",
+          boxShadow:"0 4px 24px rgba(212,175,55,.3)",
+          transition:"opacity .2s, transform .2s",
+          animation:"showcaseBtnShine 3s linear infinite",
+        }}>
+          ▶ WATCH SPONSOR SHOWCASE
+        </button>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)",marginTop:6}}>
+          Cinematic tribute to our partners
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:"20px 14px 8px"}}>
+        {SPONSORS_LIST.map(s => (
+          <div key={s.id} style={{
+            borderRadius:14,
+            overflow:"hidden",
+            border:"1px solid rgba(255,255,255,.06)",
+            background:"rgba(255,255,255,.03)",
+            display:"flex",flexDirection:"column",
+          }}>
+            {/* Logo area */}
+            <div style={{
+              background:s.bg,
+              padding:"18px 12px",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              minHeight:90,
+            }}>
+              <img
+                src={s.logo} alt={s.name}
+                style={{maxWidth:"100%",maxHeight:70,objectFit:"contain",display:"block"}}
+                onError={e => { e.target.style.display="none"; }}
+              />
+            </div>
+            {/* Name area */}
+            <div style={{padding:"10px 12px 12px",background:"rgba(255,255,255,.02)"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.5,color:"#fff",marginBottom:s.sub?3:0}}>
+                {s.name}
+              </div>
+              {s.sub && (
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",lineHeight:1.3}}>
+                  {s.sub}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer thank you */}
+      <div style={{margin:"16px 14px 0",padding:"16px",background:"rgba(212,175,55,.05)",border:"1px solid rgba(212,175,55,.12)",borderRadius:12,textAlign:"center"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"#d4af37",marginBottom:6}}>
+          ⚽ PROUD PARTNERS OF EL MUNDO
+        </div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",lineHeight:1.5}}>
+          Interested in sponsoring? Contact us at<br/>
+          <span style={{color:"rgba(255,255,255,.6)"}}>www.elmundobonaire.com</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
+function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
-  const initials = (user.name || "?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  const [uploading, setUploading] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
+  const [cardUrl, setCardUrl] = useState(null);
+  const [generatingCard, setGeneratingCard] = useState(false);
+
+  const generateCard = async () => {
+    setGeneratingCard(true);
+    try {
+      await document.fonts.ready;
+      const W = 1080, H = 1080;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      const GOLD = '#f0c040'; const GOLD2 = '#c9a84c';
+      const rr = (x,y,w,h,r) => { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); };
+
+      // ── Background ──
+      ctx.fillStyle = '#050505'; ctx.fillRect(0,0,W,H);
+      // Center radial glow
+      const bgGrd = ctx.createRadialGradient(W/2,H*0.42,0,W/2,H*0.42,W*0.6);
+      bgGrd.addColorStop(0,'rgba(240,192,64,0.07)'); bgGrd.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle = bgGrd; ctx.fillRect(0,0,W,H);
+      // Dot grid
+      ctx.fillStyle = 'rgba(255,255,255,0.022)';
+      for(let x=30;x<W;x+=50) for(let y=30;y<H;y+=50){ ctx.beginPath(); ctx.arc(x,y,1.8,0,Math.PI*2); ctx.fill(); }
+
+      // ── Gold accent lines helper ──
+      const goldLine = (y2) => {
+        const g = ctx.createLinearGradient(60,0,W-60,0);
+        g.addColorStop(0,'rgba(201,168,76,0)'); g.addColorStop(0.25,GOLD2); g.addColorStop(0.75,GOLD2); g.addColorStop(1,'rgba(201,168,76,0)');
+        ctx.fillStyle = g; ctx.fillRect(60, y2, W-120, 1.5);
+      };
+
+      // ── Header ──
+      goldLine(90);
+      ctx.textAlign='center'; ctx.fillStyle=GOLD; ctx.font='36px Anton';
+      ctx.fillText('EL MUNDO BAR-REST', W/2, 75);
+      goldLine(98);
+
+      // ── Avatar ──
+      const AX = W/2, AY = 350, AR = 150;
+      // Outer glow ring
+      const ringGrd = ctx.createLinearGradient(AX-AR,AY-AR,AX+AR,AY+AR);
+      ringGrd.addColorStop(0,GOLD); ringGrd.addColorStop(0.5,'#fff8d0'); ringGrd.addColorStop(1,GOLD2);
+      ctx.strokeStyle = ringGrd; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(AX,AY,AR+10,0,Math.PI*2); ctx.stroke();
+      // Inner dark ring
+      ctx.strokeStyle='rgba(5,5,5,0.9)'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(AX,AY,AR+3,0,Math.PI*2); ctx.stroke();
+      // Avatar clip
+      ctx.save(); ctx.beginPath(); ctx.arc(AX,AY,AR,0,Math.PI*2); ctx.clip();
+      if(user.avatar_url) {
+        try {
+          const img = new Image(); img.crossOrigin='anonymous';
+          await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=user.avatar_url+'?t=card'; });
+          ctx.drawImage(img, AX-AR, AY-AR, AR*2, AR*2);
+        } catch {
+          ctx.fillStyle='#1a1a1a'; ctx.fillRect(AX-AR,AY-AR,AR*2,AR*2);
+          ctx.fillStyle='#fff'; ctx.font=`${AR}px Anton`; ctx.textBaseline='middle';
+          ctx.fillText((user.name||'?')[0].toUpperCase(),AX,AY); ctx.textBaseline='alphabetic';
+        }
+      } else {
+        ctx.fillStyle='#1a1a1a'; ctx.fillRect(AX-AR,AY-AR,AR*2,AR*2);
+        ctx.fillStyle='#fff'; ctx.font=`${AR}px Anton`; ctx.textBaseline='middle';
+        ctx.fillText((user.name||'?')[0].toUpperCase(),AX,AY); ctx.textBaseline='alphabetic';
+      }
+      ctx.restore();
+
+      // ── Player name ──
+      ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillStyle='#fff';
+      const nameStr = (user.name||'').toUpperCase();
+      // Auto-size name to fit
+      let nameSz = 84;
+      ctx.font = `${nameSz}px Anton`;
+      while(ctx.measureText(nameStr).width > W-180 && nameSz > 40) { nameSz -= 4; ctx.font=`${nameSz}px Anton`; }
+      ctx.fillText(nameStr, W/2, 560);
+
+      // ── Rank chip ──
+      if(myRank > 0) {
+        const chip = `RANK  #${myRank}`;
+        ctx.font = '26px Anton';
+        const chipW = ctx.measureText(chip).width + 40;
+        const chipX = W/2 - chipW/2, chipY = 576, chipH = 40;
+        rr(chipX,chipY,chipW,chipH,6);
+        ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = 'rgba(240,192,64,0.1)'; ctx.fill();
+        ctx.fillStyle = GOLD; ctx.fillText(chip, W/2, chipY+chipH-9);
+      }
+
+      // ── Stats row ──
+      const SY = 668, SH = 130;
+      const stats = [
+        {v: myPts===0?'—':myPts, l:'POINTS'},
+        {v: myRank>0?`#${myRank}`:'—', l:'RANK'},
+        {v: sub>0?`${corr}/${sub}`:'—', l:'CORRECT'},
+        {v: sub>0?`${acc}%`:'—', l:'ACCURACY'},
+      ];
+      const statW = (W - 120) / 4;
+      stats.forEach((s,i) => {
+        const sx = 60 + i*statW;
+        rr(sx+6, SY, statW-12, SH, 10);
+        ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle='#fff'; ctx.font=`60px Anton`; ctx.textAlign='center';
+        ctx.fillText(String(s.v), sx+statW/2, SY+76);
+        ctx.fillStyle='rgba(255,255,255,0.38)'; ctx.font='20px Anton';
+        ctx.fillText(s.l, sx+statW/2, SY+108);
+      });
+
+      // ── Middle divider ──
+      goldLine(838);
+
+      // ── Bottom ──
+      ctx.textAlign='center';
+      ctx.fillStyle='#fff'; ctx.font='58px Anton';
+      ctx.fillText('WORLD CUP 2026', W/2, 910);
+      ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='26px Anton';
+      ctx.fillText('PREDICTION GAME  ·  EL MUNDO BONAIRE', W/2, 950);
+      // URL with gold
+      ctx.fillStyle=GOLD; ctx.font='28px Anton';
+      ctx.fillText('elmundo-world-cup.com', W/2, 1006);
+
+      // Bottom border line
+      goldLine(H-52);
+
+      // ── Watermark player number ──
+      if(user.player_number) {
+        ctx.fillStyle='rgba(255,255,255,0.07)'; ctx.font='200px Anton'; ctx.textAlign='right';
+        ctx.fillText(`#${user.player_number}`, W-20, H-60);
+      }
+
+      // Convert to blob URL
+      const blob = await new Promise(res => canvas.toBlob(res,'image/jpeg',0.94));
+      const url = URL.createObjectURL(blob);
+      if(cardUrl) URL.revokeObjectURL(cardUrl);
+      setCardUrl(url);
+      setShowShareCard(true);
+    } catch(e) { console.error('Card failed',e); alert('Could not generate card: '+e.message); }
+    finally { setGeneratingCard(false); }
+  };
+
+  const handleShare = async () => {
+    if(!cardUrl) return;
+    if(navigator.share && navigator.canShare) {
+      try {
+        const res = await fetch(cardUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `${(user.name||'player').replace(/\s+/g,'-')}-elmundo-card.jpg`, {type:'image/jpeg'});
+        if(navigator.canShare({files:[file]})) {
+          await navigator.share({ files:[file], title:'Join the El Mundo World Cup Predictor!', text:`I'm playing the World Cup 2026 Prediction Game at El Mundo, Bonaire! Join me 👉 elmundo-world-cup.com` });
+          return;
+        }
+      } catch {}
+    }
+    // Fallback: download
+    const a = document.createElement('a');
+    a.href = cardUrl; a.download = `${(user.name||'player').replace(/\s+/g,'-')}-elmundo-card.jpg`;
+    a.click();
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const compressed = await compressImage(file);
+      const path = `${user.id}.jpg`;
+      const { error: upErr } = await supabase.storage.from("avatars").upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+      const urlWithBust = `${publicUrl}?t=${Date.now()}`;
+      await supabase.from("profiles").update({ avatar_url: urlWithBust }).eq("id", user.id);
+      onAvatarUpdate?.(urlWithBust);
+    } catch(err) {
+      console.error("Avatar upload failed", err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="prof-wrap">
+
+      {/* ── SHARE CARD MODAL ── */}
+      {showShareCard && cardUrl && (
+        <div className="sc-overlay" onClick={e=>{if(e.target===e.currentTarget)setShowShareCard(false)}}>
+          <div className="sc-modal">
+            <button className="sc-close" onClick={()=>setShowShareCard(false)}>✕</button>
+            <div className="sc-title">YOUR PLAYER CARD</div>
+            <div className="sc-sub">Share it to invite friends to the game</div>
+            <img src={cardUrl} className="sc-preview" alt="Player card"/>
+            <div className="sc-actions">
+              <button className="sc-share-btn" onClick={handleShare}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                SHARE / DOWNLOAD
+              </button>
+            </div>
+            <div className="sc-hint">Long-press the image to save it directly</div>
+          </div>
+        </div>
+      )}
+
       <div className="prof-hero">
-        <div className="prof-av">{initials}</div>
+        <div className="prof-av-wrap">
+          {user.avatar_url
+            ? <img src={user.avatar_url} className="prof-av-img" alt="avatar" />
+            : <div className="prof-av">{(user.name||"?")[0].toUpperCase()}</div>
+          }
+          <label className="prof-av-upload" title="Change photo">
+            {uploading ? "…" : "📷"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={handleAvatarChange} />
+          </label>
+        </div>
         <div className="prof-name">{user.name}</div>
         <div className="prof-detail">{user.email}</div>
         <div className="prof-detail">{user.phone}</div>
@@ -2255,87 +4169,722 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors }) {
           </div>
         ))}
       </div>
+      {/* ── Share Card CTA ── */}
+      <div className="sc-cta-wrap">
+        <button className="sc-cta-btn" onClick={generateCard} disabled={generatingCard}>
+          {generatingCard ? (
+            <><span className="sc-cta-spinner"/>GENERATING…</>
+          ) : (
+            <>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              SHARE MY PLAYER CARD
+            </>
+          )}
+        </button>
+        <div className="sc-cta-sub">Generate a card to invite friends to the game</div>
+      </div>
+
       <div className="info-card">
         <div className="info-title">⚽ HOW POINTS WORK</div>
-        <p className="info-body">Predict the exact final score for each match. A correct prediction earns <strong>5 points</strong>. Predict the right winner or draw (wrong score) earns <strong>1 point</strong>. Most points at tournament end wins.</p>
+        <p className="info-body">Predict the exact final score for each match. Exact score correct earns <strong>5 points</strong>. Correct winner with wrong score earns <strong>1 point</strong>. Draw matches: only exact score earns points. Most points at tournament end wins.</p>
       </div>
 
       {/* ── SPONSORS SECTION ── */}
-      {sponsors?.length > 0 && (
-        <div style={{marginTop:8}}>
-          <div className="prof-section-divider">
-            <span className="prof-section-label">OUR SPONSORS</span>
-          </div>
-          <div className="prof-sponsor-sub">Thank you for making this event possible</div>
-          {sponsors[0] && (
-            <div className="sponsor-hero">
-              <div className="sponsor-hero-emoji">
-                {sponsors[0].logo
-                  ? <img src={sponsors[0].logo} alt={sponsors[0].name} style={{width:80,height:80,objectFit:"contain"}} />
-                  : sponsors[0].emoji}
-              </div>
-              <div className="sponsor-hero-role">{sponsors[0].role}</div>
-              <div className="sponsor-hero-name">{sponsors[0].name}</div>
-              <div className="sponsor-hero-detail">{sponsors[0].detail}</div>
-            </div>
-          )}
-          <div className="card-stack">
-            {sponsors.slice(1).map(s => (
-              <div key={s.id} className="sponsor-card">
-                <div className="sponsor-emoji">
-                  {s.logo
-                    ? <img src={s.logo} alt={s.name} style={{width:48,height:48,objectFit:"contain"}} />
-                    : s.emoji}
-                </div>
-                <div className="sponsor-info">
-                  <div className="sponsor-role">{s.role}</div>
-                  <div className="sponsor-name">{s.name}</div>
-                  {s.detail && <div className="sponsor-detail">{s.detail}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="sponsor-cta-box">
-            <div className="sponsor-cta-title">Become a Sponsor</div>
-            <div className="sponsor-cta-body">Contact El Mundo Bar-Rest to learn about sponsorship opportunities for the World Cup event.</div>
-          </div>
+      <SponsorsSection />
+    </div>
+  );
+}
+
+/* ═══ ADMIN DASHBOARD ═══════════════════════════════════════════════════════ */
+function AdminDashboard({ allOrders, users, board }) {
+  // Use LOCAL date (not UTC) — Supabase stores UTC, but we compare in local timezone
+  const isoLocal = d => {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+  const localDate = ts => isoLocal(new Date(ts));
+  const todayISO = isoLocal(new Date());
+
+  const todayOrders = allOrders.filter(o => o.created_at && localDate(o.created_at) === todayISO);
+  const pendingOrders = allOrders.filter(o => o.status === "pending" || o.status === "confirmed");
+  const todayRevenue = todayOrders.reduce((s,o) => s + (+o.total), 0);
+  const todayCreditOrders = todayOrders.filter(o => o.payment_method === "credits");
+  const todayCardOrders   = todayOrders.filter(o => o.payment_method !== "credits");
+  const creditRevenue = todayCreditOrders.reduce((s,o) => s + (+o.total), 0);
+  const cardRevenue   = todayCardOrders.reduce((s,o) => s + (+o.total), 0);
+
+  const totalUsers = Object.keys(users).length;
+  const topPlayer  = board[0] || null;
+
+  // Top product today
+  const todayProducts = {};
+  todayOrders.forEach(o => (o.items||[]).forEach(it => {
+    if (!todayProducts[it.name]) todayProducts[it.name] = 0;
+    todayProducts[it.name] += it.qty;
+  }));
+  const topProductEntry = Object.entries(todayProducts).sort((a,b)=>b[1]-a[1])[0];
+
+  const DCard = ({ icon, label, value, sub, accent }) => (
+    <div style={{background:"rgba(255,255,255,.04)",border:`1px solid ${accent||"rgba(255,255,255,.1)"}`,borderRadius:2,padding:"16px 14px",flex:1,minWidth:140,position:"relative",overflow:"hidden"}}>
+      <div style={{fontSize:22,marginBottom:8,lineHeight:1}}>{icon}</div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:4}}>{label}</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",lineHeight:1}}>{value}</div>
+      {sub && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",marginTop:5}}>{sub}</div>}
+    </div>
+  );
+
+  const SRow = ({ label, value, accent }) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",fontWeight:600}}>{label}</span>
+      <span style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:accent||"#fff"}}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"16px 14px 40px"}}>
+      {/* ── Date header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+        <div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)"}}>QUICK DASHBOARD</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#fff",marginTop:2}}>{new Date().toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</div>
         </div>
+        <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 8px #22c55e"}} title="Live" />
+      </div>
+
+      {/* ── Top KPI cards ── */}
+      <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+        <DCard icon="💵" label="TODAY'S REVENUE" value={`$${todayRevenue.toFixed(2)}`} sub={`${todayOrders.length} order${todayOrders.length!==1?"s":""}`} accent="rgba(34,197,94,.25)" />
+        <DCard icon="⏳" label="PENDING ORDERS" value={pendingOrders.length} sub="Waiting / in progress" accent={pendingOrders.length>0?"rgba(245,158,11,.3)":"rgba(255,255,255,.1)"} />
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
+        <DCard icon="👥" label="TOTAL PLAYERS" value={totalUsers} sub="Registered accounts" />
+        <DCard icon="🏆" label="TOP PLAYER" value={topPlayer ? topPlayer.name.split(" ")[0] : "—"} sub={topPlayer ? `${topPlayer.pts} pts · Rank #1` : "No predictions yet"} accent="rgba(201,168,76,.25)" />
+      </div>
+
+      {/* ── Today breakdown ── */}
+      <div style={{marginBottom:24}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>TODAY'S BREAKDOWN</div>
+        <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",padding:"4px 14px"}}>
+          <SRow label="💳 Credit Orders" value={`${todayCreditOrders.length} · $${creditRevenue.toFixed(2)}`} accent="#a3e635" />
+          <SRow label="💵 Cash / Card" value={`${todayCardOrders.length} · $${cardRevenue.toFixed(2)}`} accent="#60a5fa" />
+          <SRow label="📦 Total Orders Today" value={todayOrders.length} />
+          <SRow label="🔥 Top Item Today" value={topProductEntry ? `${topProductEntry[0]} x${topProductEntry[1]}` : "—"} />
+        </div>
+      </div>
+
+      {/* ── Active pending list ── */}
+      {pendingOrders.length > 0 && (
+        <div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:10}}>ACTIVE ORDERS</div>
+          {pendingOrders.slice(0,8).map(o => (
+            <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:"1px solid rgba(255,255,255,.05)",background:"rgba(255,255,255,.02)"}}>
+              <div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700}}>Table {o.table_number||"?"}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>{(o.items||[]).map(i=>i.name).join(", ")}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff"}}>${(+o.total).toFixed(2)}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:o.status==="pending"?"#f59e0b":"#a3e635",marginTop:2,textTransform:"uppercase",letterSpacing:1}}>{o.status}</div>
+              </div>
+            </div>
+          ))}
+          {pendingOrders.length > 8 && (
+            <div style={{textAlign:"center",padding:"10px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>+{pendingOrders.length-8} more</div>
+          )}
+        </div>
+      )}
+      {pendingOrders.length === 0 && (
+        <div style={{textAlign:"center",padding:"30px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.2)"}}>All orders fulfilled 🎉</div>
       )}
     </div>
   );
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders }) {
-  const [section, setSection] = useState("floorplan");
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetKitchenAccess }) {
+  const [section, setSection] = useState("dashboard");
 
-  const TABS = [
-    { id:"floorplan", label:"🗺 Floor Plan" },
-    { id:"menu",     label:"🍽 Menu"     },
-    { id:"tables",   label:"🪑 Tables"   },
-    { id:"credits",  label:"💳 Credits"  },
-    { id:"matches",  label:"⚽ Matches"  },
-    { id:"rules",    label:"📋 Rules"    },
-    { id:"sponsors", label:"⭐ Sponsors" },
+  const GROUPS = [
+    {
+      id: "live",
+      label: "LIVE OPS",
+      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      tabs: [
+        { id:"dashboard", label:"Dashboard" },
+        { id:"floorplan", label:"Floor Plan" },
+      ]
+    },
+    {
+      id: "service",
+      label: "SERVICE",
+      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+      tabs: [
+        { id:"menu",    label:"Menu"     },
+        { id:"tables",  label:"Tables"   },
+        { id:"tableqr", label:"Table QR" },
+        { id:"credits", label:"Credits"  },
+        { id:"kitchen", label:"Kitchen"  },
+      ]
+    },
+    {
+      id: "game",
+      label: "GAME",
+      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><line x1="2" y1="12" x2="22" y2="12"/></svg>,
+      tabs: [
+        { id:"matches",   label:"Matches"   },
+        { id:"rules",     label:"Rules"     },
+        { id:"vip",       label:"VIP Perks" },
+        { id:"integrity", label:"Integrity" },
+      ]
+    },
   ];
+
+  // Derive which group the current section belongs to
+  const activeGroup = GROUPS.find(g => g.tabs.some(t => t.id === section)) || GROUPS[0];
+  const subTabs = activeGroup.tabs;
+
+  const goGroup = (g) => { setSection(g.tabs[0].id); };
 
   return (
     <div className={section === "floorplan" ? "" : "vpad"}>
-      {section !== "floorplan" && <SecHead title="Admin Panel" sub="Manage all content from here" />}
-      <div className="admin-subtabs" style={{flexWrap:"wrap"}}>
-        {TABS.map(t => (
-          <button key={t.id} className={`admin-subtab ${section===t.id?"ast-on":""}`} onClick={()=>setSection(t.id)}>
-            {t.label}
+      {/* ── Level 1: Group nav ── */}
+      <div style={{display:"flex",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.07)",gap:0}}>
+        {GROUPS.map(g => {
+          const on = g.id === activeGroup.id;
+          return (
+            <button key={g.id} onClick={()=>goGroup(g)} style={{
+              display:"flex",alignItems:"center",gap:6,
+              padding:"13px 20px",
+              background: on ? "rgba(255,255,255,.06)" : "transparent",
+              border:"none",
+              borderBottom: on ? "2px solid #fff" : "2px solid transparent",
+              fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,
+              color: on ? "#fff" : "rgba(255,255,255,.35)",
+              cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",
+              marginBottom:-1,
+            }}>
+              <span style={{opacity: on ? 1 : 0.5}}>{g.ico}</span>
+              {g.label}
+            </button>
+          );
+        })}
+        {/* Announce Winner lives in the group bar, right-aligned */}
+        {onAnnounceWinner && (
+          <button onClick={onAnnounceWinner} style={{
+            marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
+            padding:"8px 14px",margin:"6px 12px 6px auto",
+            background:"rgba(201,168,76,.12)",border:"1px solid rgba(201,168,76,.35)",
+            fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
+            color:"#c9a84c",cursor:"pointer",whiteSpace:"nowrap",
+          }}>
+            🏆 WINNER
           </button>
+        )}
+      </div>
+
+      {/* ── Level 2: Sub-tab nav ── */}
+      <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,.05)",background:"rgba(255,255,255,.02)"}}>
+        {subTabs.map(t => {
+          const on = section === t.id;
+          return (
+            <button key={t.id} onClick={()=>setSection(t.id)} style={{
+              padding:"9px 16px",
+              background:"transparent",border:"none",
+              borderBottom: on ? "2px solid rgba(255,255,255,.5)" : "2px solid transparent",
+              fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight: on ? 700 : 500,
+              color: on ? "#fff" : "rgba(255,255,255,.3)",
+              cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",
+              marginBottom:-1,letterSpacing:.5,
+            }}>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Content ── */}
+      {section === "dashboard"  && <AdminDashboard allOrders={allOrders} users={users} board={board} />}
+      {section === "floorplan"  && <FloorPlan allOrders={allOrders} onLoad={onLoadAllOrders} onUpdateStatus={onUpdateOrderStatus} onDeleteOrder={onDeleteOrder} />}
+      {section === "matches"    && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
+      {section === "rules"      && <AdminRules    rules={rules}       onSave={onSaveRules} />}
+      {section === "sponsors"   && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
+      {section === "menu"       && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} onToggleSoldOut={onToggleSoldOut} />}
+      {section === "credits"    && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
+      {section === "tables"     && <AdminTables />}
+      {section === "tableqr"    && <AdminTableQR />}
+      {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
+      {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
+      {section === "kitchen"    && <AdminKitchenAccess users={users} onSetAccess={onSetKitchenAccess} />}
+    </div>
+  );
+}
+
+/* ── Admin: Kitchen Access Management ── */
+function AdminKitchenAccess({ users, onSetAccess }) {
+  const [search, setSearch] = useState("");
+  const userList = Object.values(users).filter(u => !u.is_admin);
+  const filtered = search.trim()
+    ? userList.filter(u => (u.name||"").toLowerCase().includes(search.toLowerCase()))
+    : userList;
+
+  return (
+    <div className="vpad">
+      <div className="section-banner">
+        <div className="sb-label">KITCHEN ACCESS</div>
+        <div className="sb-sub">Grant staff access to the Kitchen Display System</div>
+      </div>
+      <div style={{padding:"0 14px 12px"}}>
+        <input
+          className="afield-inp"
+          placeholder="Search by name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{width:"100%",marginBottom:12}}
+        />
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(u => (
+            <div key={u.id} style={{
+              display:"flex",alignItems:"center",gap:12,
+              padding:"12px 14px",
+              background:"rgba(255,255,255,.03)",
+              border:`1px solid ${u.kitchen_access ? "rgba(74,222,128,.2)" : "rgba(255,255,255,.07)"}`,
+            }}>
+              {u.avatar_url ? (
+                <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
+              ) : (
+                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>
+                  {(u.name||"?")[0].toUpperCase()}
+                </div>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                {u.kitchen_access && (
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",padding:"3px 8px",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.3)"}}>
+                    KITCHEN ✓
+                  </span>
+                )}
+                <button
+                  onClick={() => onSetAccess(u.id, !u.kitchen_access)}
+                  style={{
+                    fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,
+                    padding:"7px 14px",border:"1px solid",cursor:"pointer",
+                    background: u.kitchen_access ? "rgba(239,68,68,.1)" : "rgba(74,222,128,.1)",
+                    borderColor: u.kitchen_access ? "rgba(239,68,68,.4)" : "rgba(74,222,128,.4)",
+                    color: u.kitchen_access ? "#f87171" : "#4ade80",
+                    whiteSpace:"nowrap",
+                  }}
+                >
+                  {u.kitchen_access ? "REVOKE" : "GRANT"}
+                </button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,.25)",fontSize:13,fontFamily:"'Outfit',sans-serif"}}>
+              No players found
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Admin: Integrity / Duplicate Scanner ── */
+function AdminIntegrity({ users, onBanUsers }) {
+  const userList = Object.values(users);
+  const [scanning, setScanning] = useState(false);
+  const [dupeGroups, setDupeGroups] = useState([]);
+  const [scanned, setScanned] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const runScan = () => {
+    setScanning(true);
+    setTimeout(() => {
+      // Group by phone (non-empty)
+      const byPhone = {};
+      userList.forEach(u => {
+        const p = (u.phone || "").trim().replace(/\s+/g, "");
+        if (p) { if (!byPhone[p]) byPhone[p] = []; byPhone[p].push(u); }
+      });
+      // Group by email (non-empty)
+      const byEmail = {};
+      userList.forEach(u => {
+        const e = (u.email || "").trim().toLowerCase();
+        if (e) { if (!byEmail[e]) byEmail[e] = []; byEmail[e].push(u); }
+      });
+      // Collect groups with > 1 member
+      const groups = [];
+      const seen = new Set();
+      Object.entries(byPhone).forEach(([val, members]) => {
+        if (members.length < 2) return;
+        const key = members.map(m => m.id).sort().join(",");
+        if (seen.has(key)) return; seen.add(key);
+        groups.push({ type:"phone", value:val, members });
+      });
+      Object.entries(byEmail).forEach(([val, members]) => {
+        if (members.length < 2) return;
+        const key = members.map(m => m.id).sort().join(",");
+        if (seen.has(key)) return; seen.add(key);
+        groups.push({ type:"email", value:val, members });
+      });
+      setDupeGroups(groups);
+      setScanned(true);
+      setScanning(false);
+    }, 600);
+  };
+
+  // All users list with ban/unban
+  const filteredUsers = userList
+    .sort((a,b) => (a.name||"").localeCompare(b.name||""))
+    .filter(u => !search || u.name?.toLowerCase().includes(search.toLowerCase()) ||
+      (u.phone||"").includes(search) || (u.email||"").toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div>
+      {/* Duplicate Scanner */}
+      <div style={{padding:"14px 14px 0"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#fff",marginBottom:6}}>🤖 DUPLICATE ACCOUNT SCANNER</div>
+        <div className="admin-hint" style={{borderTop:"none",padding:"0 0 10px"}}>
+          Scans all players for matching phone number or email. Duplicate accounts will be flagged — you can ban all accounts in a group instantly.
+        </div>
+        <button className="admin-save-btn" style={{width:"100%",padding:13,marginBottom:14}} onClick={runScan} disabled={scanning}>
+          {scanning ? "Scanning…" : "🔍 Run Duplicate Scan"}
+        </button>
+
+        {scanned && dupeGroups.length === 0 && (
+          <div style={{textAlign:"center",padding:"20px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(74,222,128,.8)"}}>
+            ✅ No duplicate accounts found
+          </div>
+        )}
+
+        {dupeGroups.map((g, i) => (
+          <div key={i} style={{marginBottom:14,background:"rgba(239,68,68,.07)",border:"1px solid rgba(239,68,68,.25)",borderRadius:10,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(239,68,68,.9)"}}>
+                  ⚠ DUPLICATE {g.type.toUpperCase()}
+                </span>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.5)",marginTop:2}}>{g.value}</div>
+              </div>
+              <button onClick={() => onBanUsers(g.members.map(m => m.id))}
+                style={{padding:"6px 14px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",
+                  color:"rgba(239,68,68,.9)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,
+                  cursor:"pointer",borderRadius:6}}>
+                BAN ALL
+              </button>
+            </div>
+            {g.members.map(m => (
+              <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"7px 10px",background:"rgba(255,255,255,.04)",borderRadius:6,marginBottom:5}}>
+                <div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:600}}>{m.name}</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)"}}>
+                    {m.phone && `📞 ${m.phone}`}{m.phone && m.email && " · "}{m.email && `✉ ${m.email}`}
+                  </div>
+                </div>
+                {m.is_banned && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,
+                  color:"rgba(239,68,68,.7)",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",
+                  padding:"2px 8px",borderRadius:4}}>BANNED</span>}
+              </div>
+            ))}
+          </div>
         ))}
       </div>
-      {section === "floorplan" && <FloorPlan allOrders={allOrders} onLoad={onLoadAllOrders} onUpdateStatus={onUpdateOrderStatus} onDeleteOrder={onDeleteOrder} />}
-      {section === "matches"   && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
-      {section === "rules"     && <AdminRules    rules={rules}       onSave={onSaveRules} />}
-      {section === "sponsors"  && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
-      {section === "menu"      && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} />}
-      {section === "credits"   && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
-      {section === "tables"    && <AdminTables />}
+
+      {/* All players list with manual ban/unban */}
+      <div style={{padding:"14px 14px 0",borderTop:"1px solid rgba(255,255,255,.08)",marginTop:8}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#fff",marginBottom:8}}>👥 ALL PLAYERS</div>
+        <input className="afield-inp" placeholder="Search by name, phone or email…" value={search}
+          onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:10}} />
+        {filteredUsers.map(u => (
+          <div key={u.id} className="admin-row" style={{alignItems:"center",opacity: u.is_banned ? 0.6 : 1}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="admin-row-teams" style={{fontSize:13}}>{u.name}</div>
+              <div className="admin-row-dt">{u.phone && `📞 ${u.phone}`}{u.phone && u.email && " · "}{u.email && `✉ ${u.email}`}</div>
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
+              {u.is_banned && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,
+                color:"rgba(239,68,68,.7)",padding:"2px 8px",borderRadius:4,
+                background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)"}}>BANNED</span>}
+              <button onClick={() => onBanUsers([u.id], !!u.is_banned)}
+                style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontFamily:"'Anton',sans-serif",
+                  fontSize:9,letterSpacing:1.5,transition:"all .2s",
+                  border: u.is_banned ? "1px solid rgba(74,222,128,.4)" : "1px solid rgba(239,68,68,.3)",
+                  background: u.is_banned ? "rgba(74,222,128,.08)" : "rgba(239,68,68,.08)",
+                  color: u.is_banned ? "rgba(74,222,128,.8)" : "rgba(239,68,68,.8)"}}>
+                {u.is_banned ? "UNBAN" : "BAN"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Admin: Table QR Codes ── */
+function AdminTableQR() {
+  const [count, setCount] = useState(26);
+  const [customBase, setCustomBase] = useState("https://elmundo-world-cup.com");
+  const base = customBase.trim().replace(/\/$/, "");
+
+  const handlePrint = () => {
+    const win = window.open("", "_blank", "width=1000,height=800");
+    if (!win) return;
+    const tables = Array.from({ length: count }, (_, i) => i + 1);
+    const cards = tables.map(n => `
+      <div class="card">
+        <!-- Header: logo area -->
+        <div class="card-top">
+          <div class="logo-arch">EL MUNDO</div>
+          <div class="logo-sub">BAR-REST</div>
+          <div class="logo-badge">
+            <span class="badge-est">EST. 2009</span>
+            <span class="badge-dot">·</span>
+            <span class="badge-loc">BONAIRE</span>
+          </div>
+        </div>
+
+        <!-- Gold divider -->
+        <div class="divider"></div>
+
+        <!-- Table number -->
+        <div class="table-label">TABLE</div>
+        <div class="table-num">${n}</div>
+
+        <!-- QR Code -->
+        <div class="qr-wrap">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&color=000000&bgcolor=ffffff&data=${encodeURIComponent(base + "?table=" + n)}" />
+        </div>
+
+        <!-- Instruction -->
+        <div class="scan-row">
+          <span class="scan-line"></span>
+          <span class="scan-text">SCAN TO ORDER</span>
+          <span class="scan-line"></span>
+        </div>
+
+        <!-- Footer -->
+        <div class="card-footer">
+          <div class="footer-event">⚽ WORLD CUP 2026</div>
+          <div class="footer-url">elmundo-world-cup.com</div>
+        </div>
+      </div>
+    `).join("");
+
+    win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Table QR Codes — El Mundo</title>
+    <style>
+      @page { margin: 8mm; }
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body {
+        font-family: 'Arial Black', Arial, sans-serif;
+        background: #f0f0f0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .card {
+        background: #000;
+        color: #fff;
+        border-radius: 14px;
+        padding: 20px 16px 16px;
+        text-align: center;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0;
+      }
+
+      /* TOP — Logo */
+      .card-top { width:100%; margin-bottom: 10px; }
+      .logo-arch {
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 5px;
+        color: #fff;
+        line-height: 1;
+      }
+      .logo-sub {
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 4px;
+        color: rgba(255,255,255,.75);
+        margin-top: 2px;
+      }
+      .logo-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid rgba(255,255,255,.25);
+        border-radius: 4px;
+        padding: 3px 10px;
+        margin-top: 7px;
+        font-size: 8px;
+        letter-spacing: 2px;
+        color: rgba(255,255,255,.5);
+        font-weight: 700;
+      }
+      .badge-dot { color: #d4af37; }
+
+      /* Gold divider */
+      .divider {
+        width: 36px;
+        height: 1.5px;
+        background: linear-gradient(90deg, transparent, #d4af37, transparent);
+        margin: 10px auto;
+        flex-shrink: 0;
+      }
+
+      /* Table number */
+      .table-label {
+        font-size: 8px;
+        letter-spacing: 4px;
+        color: rgba(255,255,255,.35);
+        font-weight: 900;
+        margin-bottom: 2px;
+      }
+      .table-num {
+        font-size: 48px;
+        font-weight: 900;
+        color: #fff;
+        line-height: 1;
+        letter-spacing: -1px;
+        margin-bottom: 10px;
+      }
+
+      /* QR */
+      .qr-wrap {
+        background: #fff;
+        border-radius: 10px;
+        padding: 8px;
+        display: inline-block;
+        margin-bottom: 12px;
+      }
+      .qr-wrap img {
+        width: 140px;
+        height: 140px;
+        display: block;
+      }
+
+      /* Scan row */
+      .scan-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        margin-bottom: 12px;
+      }
+      .scan-line {
+        flex: 1;
+        height: 1px;
+        background: rgba(255,255,255,.15);
+      }
+      .scan-text {
+        font-size: 8px;
+        letter-spacing: 3px;
+        color: rgba(255,255,255,.45);
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      /* Footer */
+      .card-footer { width: 100%; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
+      .footer-event {
+        font-size: 9px;
+        letter-spacing: 3px;
+        color: #d4af37;
+        font-weight: 900;
+        margin-bottom: 3px;
+      }
+      .footer-url {
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: rgba(255,255,255,.3);
+        font-weight: 700;
+      }
+
+      @media print {
+        body { background: #f0f0f0; }
+      }
+    </style>
+    </head><body>
+    <div class="grid">${cards}</div>
+    </body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 800);
+  };
+
+  return (
+    <div style={{padding:"0 4px"}}>
+      <div className="admin-section-lbl" style={{marginBottom:8}}>TABLE QR CODES</div>
+      <div className="admin-hint" style={{borderTop:"none",padding:"0 0 16px"}}>
+        Each QR code links to the app with the table number pre-filled. Print them, laminate, and place on each table. When a customer scans, the table fills in automatically and they go straight to the menu.
+      </div>
+
+      <div style={{background:"#111",border:"1px solid #222",borderRadius:12,padding:16,marginBottom:16}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:6}}>App domain</div>
+        <input
+          type="text" value={customBase}
+          onChange={e => setCustomBase(e.target.value)}
+          style={{width:"100%",padding:"10px 12px",background:"#1a1a1a",border:"1px solid #333",
+            borderRadius:8,color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,
+            outline:"none",marginBottom:16}} />
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:10}}>Number of tables</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <input
+            type="number" min={1} max={50} value={count}
+            onChange={e => setCount(Math.max(1, Math.min(50, +e.target.value)))}
+            style={{width:80,padding:"10px 12px",background:"#1a1a1a",border:"1px solid #333",
+              borderRadius:8,color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:20,
+              textAlign:"center",outline:"none"}} />
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)"}}>
+            Will generate QR codes for tables 1 – {count}
+          </div>
+        </div>
+      </div>
+
+      {/* Preview grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+        {Array.from({ length: Math.min(count, 6) }, (_, i) => i + 1).map(n => (
+          <div key={n} style={{background:"#111",border:"1px solid #222",borderRadius:10,
+            padding:12,textAlign:"center"}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,
+              color:"#fff",marginBottom:8}}>TABLE {n}</div>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(base + "?table=" + n)}`}
+              style={{width:80,height:80,borderRadius:6,background:"#fff",padding:4}}
+              alt={`Table ${n} QR`} />
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(255,255,255,.3)",
+              marginTop:6,letterSpacing:1}}>Scan to order</div>
+          </div>
+        ))}
+      </div>
+      {count > 6 && (
+        <div style={{textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,
+          color:"rgba(255,255,255,.3)",marginBottom:16}}>
+          + {count - 6} more tables · all included in print
+        </div>
+      )}
+
+      <button className="admin-save-btn" style={{width:"100%",padding:14,fontSize:14}} onClick={handlePrint}>
+        🖨 Print All {count} QR Codes
+      </button>
+      <div className="admin-hint" style={{marginTop:8}}>
+        💡 A new window opens with all QR codes ready to print. Select "4 per row" layout. Laminate each card and place it on the matching table.
+      </div>
     </div>
   );
 }
@@ -2344,6 +4893,8 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 function AdminTables() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmUnlock, setConfirmUnlock] = useState(null); // { id, tableNum }
+  const [unlocking, setUnlocking] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -2358,12 +4909,15 @@ function AdminTables() {
 
   useEffect(() => { load(); }, []);
 
-  const unlock = async (id, tableNum) => {
-    if (!window.confirm(`Unlock table ${tableNum}? This will cancel the group order.`)) return;
+  const unlock = async () => {
+    if (!confirmUnlock) return;
+    setUnlocking(true);
     // Cancel the order FIRST so members' realtime/poll transitions fire before their data disappears
-    await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", id);
-    await supabase.from("group_order_members").delete().eq("group_order_id", id);
-    await supabase.from("group_order_items").delete().eq("group_order_id", id);
+    await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", confirmUnlock.id);
+    await supabase.from("group_order_members").delete().eq("group_order_id", confirmUnlock.id);
+    await supabase.from("group_order_items").delete().eq("group_order_id", confirmUnlock.id);
+    setConfirmUnlock(null);
+    setUnlocking(false);
     load();
   };
 
@@ -2371,6 +4925,21 @@ function AdminTables() {
 
   return (
     <div style={{padding:"0 4px"}}>
+      {/* Unlock confirmation modal */}
+      {confirmUnlock && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Unlock Table {confirmUnlock.tableNum}?</div>
+            <p className="modal-body">This will cancel the group order for this table. Members will be kicked out.</p>
+            <div className="modal-actions">
+              <button className="modal-del-btn" onClick={unlock} disabled={unlocking}>
+                {unlocking ? "Unlocking…" : "Yes, Unlock"}
+              </button>
+              <button className="modal-cancel-btn" onClick={()=>setConfirmUnlock(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="admin-section-lbl" style={{marginBottom:8}}>
         RESERVED TABLES
         <button onClick={load} style={{marginLeft:12,fontSize:11,padding:"2px 10px",background:"#222",color:"#aaa",border:"1px solid #333",borderRadius:6,cursor:"pointer"}}>↻ Refresh</button>
@@ -2395,7 +4964,7 @@ function AdminTables() {
             </div>
           </div>
           <button
-            onClick={() => unlock(g.id, g.table_number)}
+            onClick={() => setConfirmUnlock({ id: g.id, tableNum: g.table_number })}
             style={{padding:"8px 16px",background:"#1a0000",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:1,flexShrink:0}}
           >
             🔓 UNLOCK
@@ -2432,8 +5001,8 @@ function AdminMatches({ matches, onUpdate, onAdd, onDelete }) {
     onAdd({...af, status:fin?"finished":"upcoming", hs:fin?+af.hs:null, as:fin?+af.as:null});
     setAf(blank); setAddMode(false);
   };
+  // Matches are already sorted in memory via sortMatches() below — no DB writes needed
   const doSort = () => {
-    sortMatches(matches).forEach(m => onUpdate(m));
     setSorted(true);
     setTimeout(() => setSorted(false), 2000);
   };
@@ -2564,6 +5133,8 @@ function AdminEditCard({ ef, efSet, onSave, onCancel }) {
 /* ── Admin: Rules ── */
 function AdminRules({ rules, onSave }) {
   const [local, setLocal] = useState(rules.map(r=>({...r})));
+  // Keep local state in sync if rules load async after mount
+  useEffect(() => { setLocal(rules.map(r=>({...r}))); }, [rules.length]);
   const update = (id, field, val) => setLocal(l => l.map(r => r.id===id ? {...r,[field]:val} : r));
   const addRule = () => setLocal(l => [...l, { id:`r${Date.now()}`, title:"", body:"" }]);
   const removeRule = (id) => setLocal(l => l.filter(r => r.id!==id));
@@ -2599,6 +5170,8 @@ function AdminRules({ rules, onSave }) {
 /* ── Admin: Sponsors ── */
 function AdminSponsors({ sponsors, onSave }) {
   const [local, setLocal] = useState(sponsors.map(s=>({...s})));
+  // Keep local state in sync if sponsors load async after mount
+  useEffect(() => { setLocal(sponsors.map(s=>({...s}))); }, [sponsors.length]);
   const update = (id, field, val) => setLocal(l => l.map(s => s.id===id ? {...s,[field]:val} : s));
   const addSponsor = () => setLocal(l => [...l, { id:`s${Date.now()}`, name:"", role:"", detail:"", emoji:"⭐" }]);
   const removeSponsor = (id) => setLocal(l => l.filter(s => s.id!==id));
@@ -2632,6 +5205,734 @@ function AdminSponsors({ sponsors, onSave }) {
   );
 }
 
+/* ── Admin: VIP / Sponsor Perks ── */
+const SPONSOR_TIERS = ["gold", "silver"];
+const TIER_META = {
+  gold:   { label:"GOLD",   color:"#FFD700", bg:"rgba(255,215,0,.12)",   icon:"🥇" },
+  silver: { label:"SILVER", color:"#C0C0C0", bg:"rgba(192,192,192,.12)", icon:"🥈" },
+};
+
+function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
+  const [subTab, setSubTab] = useState("users"); // "users" | "gifts" | "redeemed"
+  const [search, setSearch] = useState("");
+  const [gifts, setGifts]   = useState(sponsorGifts.map(g => ({ ...g, _key: g.id || Math.random() })));
+  const [saving, setSaving] = useState(false);
+  const [redemptions, setRedemptions] = useState([]); // [{user_id, user_name, tier, items, created_at}]
+  const [loadingRed, setLoadingRed]   = useState(false);
+  // Keep gifts in sync if sponsorGifts loads async after mount
+  useEffect(() => { setGifts(sponsorGifts.map(g => ({ ...g, _key: g.id || Math.random() }))); }, [sponsorGifts.length]);
+
+  const [usedByUser, setUsedByUser] = useState({}); // userId -> {itemId -> qty}
+
+  const loadRedemptions = async () => {
+    setLoadingRed(true);
+    const { data } = await supabase.from("orders").select("*")
+      .eq("payment_method", "sponsor_gift")
+      .order("created_at", { ascending: false });
+    setRedemptions(data || []);
+    // Build per-user usage map
+    const byUser = {};
+    (data || []).forEach(r => {
+      if (!byUser[r.user_id]) byUser[r.user_id] = {};
+      (r.items || []).forEach(it => {
+        byUser[r.user_id][String(it.id)] = (byUser[r.user_id][String(it.id)] || 0) + (it.qty || 1);
+      });
+    });
+    setUsedByUser(byUser);
+    setLoadingRed(false);
+  };
+
+  useEffect(() => { loadRedemptions(); }, []);
+
+  const userList = Object.values(users)
+    .sort((a,b) => (a.name||"").localeCompare(b.name||""))
+    .filter(u => !search || u.name?.toLowerCase().includes(search.toLowerCase()));
+
+  const addGift = (tier) => setGifts(g => [...g, { _key: Date.now(), tier, item_name:"", item_price:0, quantity:1 }]);
+  const removeGift = (key) => setGifts(g => g.filter(x => x._key !== key));
+  const updateGift = (key, field, val) => setGifts(g => g.map(x => x._key === key ? { ...x, [field]: val } : x));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveGifts(gifts.filter(g => g.item_name.trim()));
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,padding:"12px 14px 0"}}>
+        {["users","gifts","configure"].map(id => (
+          <button key={id} className={`admin-subtab ${subTab===id?"ast-on":""}`} style={{flex:1}}
+            onClick={()=>setSubTab(id)}>
+            {id === "users" ? "👥 Sponsors" : id === "gifts" ? "🎁 Status" : "⚙️ Config"}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "users" && (
+        <div>
+          <div style={{padding:"12px 14px 8px"}}>
+            <input className="afield-inp" placeholder="Search by name…" value={search}
+              onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box"}} />
+          </div>
+          <div className="admin-hint" style={{margin:"0 14px 8px",borderTop:"none",padding:0}}>
+            Set a user's VIP tier — they'll get a ⭐ VIP tab. They must refresh their app after you assign it. Sponsors only see "VIP GUEST", not their tier label.
+          </div>
+          {userList.map(u => {
+            const uGifts = u.sponsor_tier ? gifts.filter(g => g.tier === u.sponsor_tier) : [];
+            const uUsed = usedByUser[u.id] || {};
+            const totalAlloc = uGifts.reduce((s,g) => s + (+g.quantity||0), 0);
+            const totalUsed = uGifts.reduce((s,g) => s + (uUsed[String(g.id)] || 0), 0);
+            const allRedeemed = totalAlloc > 0 && totalUsed >= totalAlloc;
+            return (
+            <div key={u.id} className="admin-row" style={{alignItems:"center"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="admin-row-teams" style={{fontSize:13}}>{u.name}</div>
+                <div className="admin-row-dt">{u.phone||u.email||""}</div>
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                {SPONSOR_TIERS.map(tier => {
+                  const m = TIER_META[tier];
+                  const active = u.sponsor_tier === tier;
+                  return (
+                    <button key={tier} onClick={() => onSetTier(u.id, active ? null : tier)}
+                      style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${active ? m.color : "rgba(255,255,255,.15)"}`,
+                        background: active ? m.bg : "transparent",
+                        color: active ? m.color : "rgba(255,255,255,.4)",
+                        fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",transition:"all .2s"}}>
+                      {m.icon} {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })}
+          {userList.length === 0 && <div className="empty">No users found</div>}
+        </div>
+      )}
+
+      {subTab === "gifts" && (
+        <div style={{padding:"12px 14px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div className="admin-hint" style={{borderTop:"none",padding:0,margin:0}}>
+              Live gift status per sponsor. Updates on refresh.
+            </div>
+            <button className="admin-save-btn" style={{padding:"6px 12px",fontSize:9,letterSpacing:1}} onClick={loadRedemptions}>↺ Refresh</button>
+          </div>
+          {/* Per-sponsor live status */}
+          {Object.values(users).filter(u => u.sponsor_tier).length === 0 ? (
+            <div style={{color:"rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,padding:20,textAlign:"center"}}>NO SPONSORS ASSIGNED YET</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+              {Object.values(users).filter(u => u.sponsor_tier).sort((a,b) => (a.name||"").localeCompare(b.name||"")).map(u => {
+                const uGifts = gifts.filter(g => g.tier === u.sponsor_tier);
+                const uUsed = usedByUser[u.id] || {};
+                const m = TIER_META[u.sponsor_tier];
+                return (
+                  <div key={u.id} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"12px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:"#fff"}}>{u.name}</div>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,color:m?.color||"#aaa",background:`rgba(201,168,76,.1)`,border:`1px solid rgba(201,168,76,.2)`,padding:"2px 8px",borderRadius:4}}>
+                        {m?.label||u.sponsor_tier}
+                      </div>
+                    </div>
+                    {uGifts.length === 0 ? (
+                      <div style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>No gifts configured for this tier</div>
+                    ) : (
+                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                        {uGifts.map(g => {
+                          const used = uUsed[String(g.id)] || 0;
+                          const total = +g.quantity || 0;
+                          const remaining = Math.max(0, total - used);
+                          const allUsed = remaining === 0 && total > 0;
+                          return (
+                            <div key={g.id || g._key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+                              <span style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{g.item_name}</span>
+                              <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,
+                                color: allUsed ? "#f87171" : remaining < total ? "#fbbf24" : "#4ade80"}}>
+                                {allUsed ? "ALL USED" : `${remaining} LEFT`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "configure" && (
+        <div style={{padding:"12px 14px"}}>
+          <div className="admin-hint" style={{borderTop:"none",padding:"0 0 12px"}}>
+            Add free items per tier. Sponsors order these at no cost — goes straight to the bar.
+          </div>
+          {SPONSOR_TIERS.map(tier => {
+            const m = TIER_META[tier];
+            const tierGifts = gifts.filter(g => g.tier === tier);
+            return (
+              <div key={tier} style={{marginBottom:24}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:m.color}}>
+                    {m.icon} {m.label} GIFTS
+                  </div>
+                  <button className="admin-add-btn" onClick={()=>addGift(tier)}>+ Add Item</button>
+                </div>
+                {tierGifts.length === 0 && (
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"8px 0"}}>
+                    No gifts configured for {m.label} yet.
+                  </div>
+                )}
+                {tierGifts.map(g => (
+                  <div key={g._key} className="admin-form-card" style={{marginBottom:8}}>
+                    <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                      <div style={{flex:1}}>
+                        <div className="admin-form-grid" style={{gridTemplateColumns:"1fr 80px"}}>
+                          <AField label="Item Name" val={g.item_name} ph="e.g. Corona Beer"
+                            on={e=>updateGift(g._key,"item_name",e.target.value)} />
+                          <AField label="Qty" val={g.quantity} ph="1" type="number"
+                            on={e=>updateGift(g._key,"quantity",e.target.value)} />
+                        </div>
+                      </div>
+                      <button className="admin-del-btn" style={{marginTop:22,flexShrink:0}} onClick={()=>removeGift(g._key)}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <button className="admin-save-btn" style={{width:"100%",padding:14}} onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save All Gift Packages"}
+          </button>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+/* ── Onboarding Tutorial ── */
+const ONBOARDING_KEY = "em_onboarding_v2";
+const ONBOARDING_SLIDES = [
+  {
+    emoji: "⚽",
+    title: "Welcome to El Mundo",
+    sub: "WORLD CUP 2026 · BONAIRE",
+    body: "The official prediction game & ordering app for El Mundo Bar-Rest. Predict match scores, order food & drinks from your table, and compete to top the leaderboard.",
+    cta: null,
+  },
+  {
+    emoji: "🎯",
+    title: "Predict Every Match",
+    sub: "MATCHES TAB",
+    body: "Go to the Matches tab, pick any World Cup game, and enter your predicted home and away score. Save it. You can change predictions anytime before the deadline.",
+    cta: null,
+  },
+  {
+    emoji: "🏆",
+    title: "How Points Work",
+    sub: "SCORING SYSTEM",
+    body: "Exact score correct → 5 pts\nCorrect winner (wrong score) → 1 pt\nDraw with wrong score → 0 pts\nWrong or missing prediction → 0 pts\n\nDeadline: 14:00 · June 11, 2026",
+    cta: null,
+  },
+  {
+    emoji: "🍺",
+    title: "Order From Your Seat",
+    sub: "MENU TAB",
+    body: "Top up credits at the desk (cash or card). Scan the QR code on your table — it fills your table number automatically. Order food & drinks straight from your phone.",
+    cta: null,
+  },
+  {
+    emoji: "🚀",
+    title: "You're All Set!",
+    sub: "GOOD LUCK",
+    body: "Head to the Matches tab and start predicting. May the best fan win!",
+    cta: "LET'S GO →",
+  },
+];
+
+function OnboardingTutorial({ onDone }) {
+  const [step, setStep] = useState(0);
+  const [exiting, setExiting] = useState(false);
+  const touchStartX = useRef(null);
+  const slide = ONBOARDING_SLIDES[step];
+  const total = ONBOARDING_SLIDES.length;
+
+  const finish = () => {
+    setExiting(true);
+    localStorage.setItem(ONBOARDING_KEY, "1");
+    setTimeout(onDone, 350);
+  };
+
+  const next = () => {
+    if (step < total - 1) setStep(s => s + 1);
+    else finish();
+  };
+
+  const prev = () => { if (step > 0) setStep(s => s - 1); };
+
+  const onTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchEnd = e => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx < -50) next();
+    else if (dx > 50) prev();
+    touchStartX.current = null;
+  };
+
+  return createPortal(
+    <div
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      style={{
+        position:"fixed",inset:0,zIndex:9999,
+        background:"#000",
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        padding:"24px 28px",
+        opacity: exiting ? 0 : 1,
+        transition:"opacity .35s ease",
+      }}>
+
+      {/* Skip */}
+      <button onClick={finish} style={{
+        position:"absolute",top:52,right:20,
+        background:"transparent",border:"none",
+        fontFamily:"'Outfit',sans-serif",fontSize:13,
+        color:"rgba(255,255,255,.35)",cursor:"pointer",
+        letterSpacing:1,padding:"8px 12px",
+      }}>SKIP</button>
+
+      {/* Slide content */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",maxWidth:380,textAlign:"center",gap:20}}>
+
+        {/* Emoji */}
+        <div style={{fontSize:72,lineHeight:1,marginBottom:4}}>{slide.emoji}</div>
+
+        {/* Sub label */}
+        <div style={{
+          fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,
+          color:"rgba(255,255,255,.3)",
+        }}>{slide.sub}</div>
+
+        {/* Title */}
+        <div style={{
+          fontFamily:"'Anton',sans-serif",fontSize:30,letterSpacing:1,
+          color:"#fff",lineHeight:1.1,
+        }}>{slide.title}</div>
+
+        {/* Thin gold line */}
+        <div style={{width:40,height:2,background:"rgba(212,175,55,.6)",borderRadius:2}}/>
+
+        {/* Body */}
+        <div style={{
+          fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(255,255,255,.65)",
+          lineHeight:1.7,whiteSpace:"pre-line",
+        }}>{slide.body}</div>
+      </div>
+
+      {/* Bottom: dots + button */}
+      <div style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",alignItems:"center",gap:24,paddingBottom:20}}>
+        {/* Dot indicators */}
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {ONBOARDING_SLIDES.map((_,i) => (
+            <div key={i} onClick={()=>setStep(i)} style={{
+              width: i===step ? 24 : 7,
+              height:7,
+              borderRadius:4,
+              background: i===step ? "#fff" : "rgba(255,255,255,.2)",
+              transition:"all .3s ease",
+              cursor:"pointer",
+            }}/>
+          ))}
+        </div>
+
+        {/* CTA button */}
+        <button onClick={next} style={{
+          width:"100%",padding:"17px 0",
+          background:"#fff",color:"#000",
+          border:"none",cursor:"pointer",
+          fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,
+          borderRadius:10,
+          transition:"opacity .15s",
+        }}>
+          {slide.cta || (step < total - 1 ? "NEXT →" : "LET'S GO →")}
+        </button>
+
+        {step > 0 && (
+          <button onClick={prev} style={{
+            background:"transparent",border:"none",
+            fontFamily:"'Outfit',sans-serif",fontSize:13,
+            color:"rgba(255,255,255,.3)",cursor:"pointer",letterSpacing:1,
+            marginTop:-10,padding:"4px 12px",
+          }}>← Back</button>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ── QR Table Scanner ── */
+function QRTableScanner({ onScan, onClose }) {
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const rafRef    = useRef(null);
+  const streamRef = useRef(null);
+  const [error, setError] = useState("");
+  const [hint,  setHint]  = useState("Point the camera at a table QR code");
+
+  useEffect(() => {
+    let active = true;
+    let successTimeout = null;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => {
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+        const scan = () => {
+          if (!active) return;
+          const video  = videoRef.current;
+          const canvas = canvasRef.current;
+          if (!video || !canvas || video.readyState !== 4) { rafRef.current = requestAnimationFrame(scan); return; }
+          canvas.width  = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0);
+          const img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          if (code?.data) {
+            try {
+              const url    = new URL(code.data);
+              const table  = url.searchParams.get("table");
+              const num    = parseInt(table);
+              if (table && num >= 1 && num <= 50) {
+                if (active) setHint(`✅ Table ${num} detected!`);
+                cancelAnimationFrame(rafRef.current);
+                successTimeout = setTimeout(() => {
+                  if (active) { onScan(String(num)); onClose(); }
+                }, 400);
+                return;
+              }
+            } catch {}
+            if (active) setHint("QR code found but not a table code — try again");
+          }
+          rafRef.current = requestAnimationFrame(scan);
+        };
+        rafRef.current = requestAnimationFrame(scan);
+      })
+      .catch(() => { if (active) setError("Camera access denied. Please allow camera permission and try again."); });
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafRef.current);
+      clearTimeout(successTimeout);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
+  return createPortal(
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"#000",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",
+        background:"rgba(0,0,0,.8)",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+        <div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"#fff"}}>SCAN TABLE QR CODE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Point at the QR code on your table</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",
+          color:"#fff",borderRadius:8,padding:"6px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
+          Cancel
+        </button>
+      </div>
+
+      {/* Camera */}
+      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+        {error ? (
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:12,padding:32}}>
+            <span style={{fontSize:40}}>📷</span>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.6)",textAlign:"center"}}>{error}</div>
+          </div>
+        ) : (
+          <>
+            <video ref={videoRef} playsInline muted
+              style={{width:"100%",height:"100%",objectFit:"cover"}} />
+            <canvas ref={canvasRef} style={{display:"none"}} />
+            {/* Scanner frame overlay */}
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+              <div style={{width:220,height:220,position:"relative"}}>
+                {/* Corner brackets */}
+                {[["0,0","0","0"],["0,auto","0","auto"],["auto,0","auto","0"],["auto,auto","auto","auto"]].map(([key,t,l],i) => (
+                  <div key={i} style={{position:"absolute",
+                    top: i < 2 ? 0 : "auto", bottom: i >= 2 ? 0 : "auto",
+                    left: i % 2 === 0 ? 0 : "auto", right: i % 2 === 1 ? 0 : "auto",
+                    width:32,height:32,
+                    borderTop:    i < 2  ? "3px solid #FFD700" : "none",
+                    borderBottom: i >= 2 ? "3px solid #FFD700" : "none",
+                    borderLeft:   i % 2 === 0 ? "3px solid #FFD700" : "none",
+                    borderRight:  i % 2 === 1 ? "3px solid #FFD700" : "none",
+                  }} />
+                ))}
+                {/* Scan line */}
+                <div style={{position:"absolute",left:8,right:8,top:"50%",height:2,
+                  background:"linear-gradient(90deg,transparent,#FFD700,transparent)",
+                  animation:"qrScanLine 2s ease-in-out infinite"}} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Hint bar */}
+      <div style={{padding:"14px 16px",background:"rgba(0,0,0,.85)",textAlign:"center",
+        fontFamily:"'Outfit',sans-serif",fontSize:13,
+        color: hint.startsWith("✅") ? "#4ade80" : "rgba(255,255,255,.6)"}}>
+        {hint}
+      </div>
+
+      <style>{`@keyframes qrScanLine{0%,100%{top:10%}50%{top:90%}}`}</style>
+    </div>,
+    document.body
+  );
+}
+
+/* ── Sponsor VIP View (user-facing) ── */
+function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
+  const tier      = user?.sponsor_tier;
+  const m         = tier ? TIER_META[tier] : null;
+  const myGifts   = sponsorGifts.filter(g => g.tier === tier);
+  const [table, setTable]       = useState("");
+  const [tableErr, setTableErr] = useState("");
+  const [cart, setCart]         = useState({});
+  const [placing, setPlacing]   = useState(false);
+  const [done, setDone]         = useState(false);
+  const [showQRScan, setShowQRScan] = useState(false);
+  // usedQty: how many of each gift_id the sponsor has already ordered (lifetime)
+  const [usedQty, setUsedQty]   = useState({});
+  const [loadingUsed, setLoadingUsed] = useState(true);
+  const VALID_TABLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
+
+  // Load past sponsor_gift orders for this user
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from("orders")
+      .select("items")
+      .eq("user_id", user.id)
+      .eq("payment_method", "sponsor_gift")
+      .then(({ data }) => {
+        const used = {};
+        (data || []).forEach(order => {
+          (order.items || []).forEach(item => {
+            used[item.id] = (used[item.id] || 0) + item.qty;
+          });
+        });
+        setUsedQty(used);
+        setLoadingUsed(false);
+      })
+      .catch(() => { setLoadingUsed(false); });
+  }, [user?.id]);
+
+  if (!tier || !m) return (
+    <div style={{padding:32,textAlign:"center",color:"rgba(255,255,255,.4)",fontFamily:"'Outfit',sans-serif"}}>
+      No sponsor access configured.
+    </div>
+  );
+
+  // remaining = gift.quantity - already used - in current cart
+  const getRemaining = (g) => Math.max(0, g.quantity - (usedQty[String(g.id)] || 0));
+
+  const addItem = (id, remaining) => setCart(c => {
+    const cur = c[id] || 0;
+    if (cur >= remaining) return c;
+    return { ...c, [id]: cur + 1 };
+  });
+  const removeItem = (id) => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
+
+  const cartItems = Object.entries(cart)
+    .map(([id, qty]) => ({ ...myGifts.find(g => String(g.id)===id), qty }))
+    .filter(i => i.item_name);
+
+  if (done) return (
+    <div style={{padding:40,textAlign:"center"}}>
+      <div style={{fontSize:64,marginBottom:16}}>🎉</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:2,color:"#fff",marginBottom:8}}>
+        ORDER SENT!
+      </div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:32}}>
+        Your complimentary gifts are on their way to Table {table}
+      </div>
+      <button onClick={() => { setDone(false); setCart({}); setTable(""); }}
+        style={{width:"100%",padding:"14px 0",background:"#fff",color:"#000",border:"none",
+          fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,cursor:"pointer",marginBottom:10}}>
+        ORDER MORE GIFTS
+      </button>
+      <button onClick={() => window.location.href = "/"}
+        style={{width:"100%",padding:"14px 0",background:"transparent",color:"rgba(255,255,255,.5)",
+          border:"1px solid rgba(255,255,255,.15)",fontFamily:"'Anton',sans-serif",fontSize:13,
+          letterSpacing:3,cursor:"pointer"}}>
+        BACK TO HOME
+      </button>
+    </div>
+  );
+
+  const handleOrder = async () => {
+    const t = parseInt(table.trim());
+    if (isNaN(t) || !VALID_TABLES.includes(t)) { setTableErr("Please enter a valid table (1–26)"); return; }
+    setTableErr("");
+    if (cartItems.length === 0) { onToast && onToast("Add at least one item", false); return; }
+    setPlacing(true);
+    const ok = await placeOrder({
+      tableNumber: String(t),
+      items: cartItems.map(i => ({ id: String(i.id), name: i.item_name, price: 0, qty: i.qty })),
+      total: 0,
+      paymentMethod: "sponsor_gift",
+    });
+    setPlacing(false);
+    if (ok) {
+      // Update usedQty immediately so limits reflect right away
+      setUsedQty(prev => {
+        const next = { ...prev };
+        cartItems.forEach(i => { next[String(i.id)] = (next[String(i.id)] || 0) + i.qty; });
+        return next;
+      });
+      setCart({});
+      setDone(true);
+    }
+  };
+
+  const allRedeemed = myGifts.length > 0 && myGifts.every(g => getRemaining(g) === 0);
+
+  return (
+    <div style={{paddingBottom:40}}>
+      {/* Hero */}
+      <div className="sponsor-vip-hero" style={{borderBottom:"2px solid rgba(255,215,0,.2)"}}>
+        <div className="sponsor-vip-tier-badge" style={{background:"rgba(255,215,0,.1)",border:"1px solid rgba(255,215,0,.35)",color:"#FFD700"}}>
+          ⭐ SPONSOR
+        </div>
+        <div className="sponsor-vip-name">{user.name}</div>
+        <div className="sponsor-vip-sub">Your complimentary gifts from El Mundo Bar-Rest</div>
+      </div>
+
+      {myGifts.length === 0 ? (
+        <div style={{padding:32,textAlign:"center",fontFamily:"'Outfit',sans-serif",color:"rgba(255,255,255,.4)"}}>
+          Your complimentary gifts will appear here soon. Check back shortly!
+        </div>
+      ) : allRedeemed ? (
+        <div style={{padding:40,textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff",marginBottom:8}}>ALL GIFTS REDEEMED</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)"}}>
+            You've used all your complimentary gifts. New gifts will appear here when available.
+          </div>
+        </div>
+      ) : (
+        <div style={{padding:"16px 16px 0"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.35)",marginBottom:12}}>
+            YOUR FREE GIFTS
+          </div>
+          {loadingUsed ? (
+            <div style={{textAlign:"center",padding:24,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
+          ) : myGifts.map(g => {
+            const inCart    = cart[String(g.id)] || 0;
+            const remaining = getRemaining(g);
+            const redeemed  = remaining === 0;
+            return (
+              <div key={g.id} className="menu-item-row" style={{borderColor: redeemed ? "rgba(255,255,255,.05)" : "rgba(255,215,0,.15)", opacity: redeemed ? 0.5 : 1}}>
+                <div className="menu-item-info">
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <div className="menu-item-name" style={{textTransform:"capitalize"}}>{g.item_name}</div>
+                    {redeemed ? (
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
+                        color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
+                        REDEEMED
+                      </span>
+                    ) : (
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
+                        color:"#FFD700",background:"rgba(255,215,0,.1)",border:"1px solid rgba(255,215,0,.35)",padding:"2px 8px",borderRadius:4}}>
+                        FREE × {remaining}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>
+                    {redeemed ? "Already redeemed" : `${remaining} left · $0.00`}
+                  </div>
+                </div>
+                <div className="menu-item-actions">
+                  {redeemed ? null : inCart > 0 ? (
+                    <div className="menu-qty-ctrl">
+                      <button className="menu-qty-btn" onClick={()=>removeItem(String(g.id))}>−</button>
+                      <span className="menu-qty-val">{inCart}</span>
+                      <button className="menu-qty-btn" onClick={()=>addItem(String(g.id), remaining)}>+</button>
+                    </div>
+                  ) : (
+                    <button className="menu-add-btn" onClick={()=>addItem(String(g.id), remaining)}>ADD</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Table + Order */}
+          <div style={{marginTop:24,borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:20}}>
+            {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
+            <div className="afield">
+              <label className="afield-lbl">TABLE NUMBER</label>
+              {table ? (
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",
+                  background:"rgba(74,222,128,.07)",border:"1px solid rgba(74,222,128,.25)",borderRadius:10}}>
+                  <span style={{fontSize:18}}>📍</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {table}</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Tap to change</div>
+                  </div>
+                  <button onClick={()=>setTable("")}
+                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                      color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
+                      fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
+                </div>
+              ) : (
+                <button onClick={()=>setShowQRScan(true)}
+                  style={{width:"100%",padding:"14px 16px",background:"rgba(255,215,0,.06)",
+                    border:"1px solid rgba(255,215,0,.25)",borderRadius:10,cursor:"pointer",
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                  <span style={{fontSize:22}}>📷</span>
+                  <div style={{textAlign:"left"}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+                  </div>
+                </button>
+              )}
+              {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:6}}>{tableErr}</div>}
+            </div>
+            {cartItems.length > 0 && (
+              <div style={{marginTop:12,marginBottom:12,background:"rgba(255,255,255,.04)",
+                border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:14}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:8}}>ORDER SUMMARY</div>
+                {cartItems.map(i => (
+                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.7)",marginBottom:4}}>
+                    <span style={{textTransform:"capitalize"}}>{i.item_name} × {i.qty}</span>
+                    <span style={{color:"#4ade80"}}>FREE</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="order-place-btn" style={{background:`linear-gradient(135deg,${m.color},${m.color}cc)`,color:"#000"}}
+              onClick={handleOrder} disabled={placing || cartItems.length === 0}>
+              {placing ? "PLACING ORDER…" : `🎁 ORDER COMPLIMENTARY GIFTS`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Admin: Rooms ── */
 
 /* ═══ GROUP ORDER VIEW ══════════════════════════════════════════════════════ */
@@ -2644,11 +5945,11 @@ function GroupOrderView({
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
   resetGroupToLobby,
-  stripeCheckout, onToast,
+  stripeCheckout, onToast, qrTable = "",
 }) {
-  const [screen, setScreen] = useState("start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
+  const [screen, setScreen] = useState(qrTable ? "create" : "start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
   const [joinCode, setJoinCode] = useState("");
-  const [tableInput, setTableInput] = useState("");
+  const [tableInput, setTableInput] = useState(qrTable);
   const [tableErr, setTableErr] = useState("");
   const [joinErr, setJoinErr] = useState("");
   const [paying, setPaying] = useState(false);
@@ -2656,7 +5957,9 @@ function GroupOrderView({
   const [copied, setCopied] = useState(false);
   const [takenTables, setTakenTables] = useState([]);
   const [cancelNote, setCancelNote] = useState(false);
+  const [showQRScan, setShowQRScan] = useState(false);
   const [goMenuOpen, setGoMenuOpen] = useState(false);
+  const [goMenuSection, setGoMenuSection] = useState("DRINKS");
   const [goMenuCat, setGoMenuCat] = useState("all");
 
   // Load taken tables whenever the create screen is shown
@@ -2702,6 +6005,29 @@ function GroupOrderView({
     try { await joinGroupOrder(joinCode.trim()); } finally { setBusy(false); }
   };
 
+  const handleJoinByTable = async (tableNum) => {
+    setBusy(true);
+    setJoinErr("");
+    try {
+      const { data } = await supabase
+        .from("group_orders")
+        .select("code, table_number")
+        .eq("table_number", String(tableNum))
+        .in("status", ["open", "awaiting_payment"])
+        .maybeSingle();
+      if (!data) {
+        // Nobody has started one yet — this user becomes the host automatically
+        await createGroupOrder(tableNum);
+      } else {
+        await joinGroupOrder(data.code);
+      }
+    } catch(e) {
+      setJoinErr("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleCopyCode = () => {
     navigator.clipboard?.writeText(activeGroup?.code || "");
     setCopied(true);
@@ -2741,43 +6067,63 @@ function GroupOrderView({
           </div>
         ))}
       </div>
-      <button className="go-btn-primary" onClick={() => setScreen("create")}>
-        + START GROUP ORDER
-      </button>
-      <button className="go-btn-secondary" style={{marginTop:10}} onClick={() => setScreen("join")}>
-        JOIN WITH CODE
-      </button>
+      {/* If came via table QR — offer smart join first */}
+      {qrTable ? (
+        <>
+          <button className="go-btn-primary" disabled={busy}
+            onClick={() => handleJoinByTable(qrTable)}>
+            {busy ? "CONNECTING…" : `📷 JOIN / START TABLE ${qrTable} ORDER`}
+          </button>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",textAlign:"center",marginTop:6}}>
+            Joins existing order or starts a new one for Table {qrTable}
+          </div>
+          {joinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8,textAlign:"center"}}>{joinErr}</div>}
+        </>
+      ) : (
+        <>
+          <button className="go-btn-primary" onClick={() => setScreen("create")}>
+            + START GROUP ORDER
+          </button>
+          <button className="go-btn-secondary" style={{marginTop:10}} onClick={() => setScreen("join")}>
+            JOIN WITH CODE
+          </button>
+        </>
+      )}
     </div>
   );
 
   // ── SCREEN: CREATE ──
   if (screen === "create") return (
     <div style={{padding:"24px 16px"}}>
+      {showQRScan && <QRTableScanner onScan={t=>{setTableInput(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
       <button className="go-back-btn" onClick={() => setScreen("start")}>← Back</button>
       <div className="go-section-title">START GROUP ORDER</div>
-      <label className="afield-lbl" style={{display:"block",margin:"8px 0 12px"}}>SELECT YOUR TABLE</label>
-      <div className="table-picker-grid" style={{marginBottom:8}}>
-        {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26].map(n => {
-          const taken = takenTables.includes(String(n));
-          return (
-            <button key={n}
-              disabled={taken}
-              className={`table-picker-btn ${tableInput===String(n)?"table-picker-on":""}`}
-              style={taken ? {opacity:.3,cursor:"not-allowed",position:"relative"} : {}}
-              onClick={() => { if (!taken) { setTableInput(String(n)); setTableErr(""); } }}
-              title={taken ? `Table ${n} is taken` : `Table ${n}`}>
-              {n}
-              {taken && <span style={{position:"absolute",top:2,right:3,fontSize:8,color:"#f87171"}}>✕</span>}
-            </button>
-          );
-        })}
-      </div>
-      {takenTables.length > 0 && (
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",marginBottom:8}}>
-          ✕ = table already has an active group order
+      <label className="afield-lbl" style={{display:"block",margin:"8px 0 12px"}}>YOUR TABLE</label>
+      {tableInput ? (
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",marginBottom:12,
+          background:"rgba(74,222,128,.07)",border:"1px solid rgba(74,222,128,.25)",borderRadius:10}}>
+          <span style={{fontSize:18}}>📍</span>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {tableInput}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Scanned from table QR code</div>
+          </div>
+          <button onClick={()=>setTableInput("")}
+            style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+              color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
+              fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
         </div>
+      ) : (
+        <button onClick={()=>setShowQRScan(true)}
+          style={{width:"100%",padding:"14px 16px",marginBottom:12,background:"rgba(255,215,0,.06)",
+            border:"1px solid rgba(255,215,0,.25)",borderRadius:10,cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          <span style={{fontSize:22}}>📷</span>
+          <div style={{textAlign:"left"}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+          </div>
+        </button>
       )}
-      {tableInput && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:8,fontWeight:600}}>Selected: Table {tableInput}</div>}
       {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{tableErr}</div>}
       <button className="go-btn-primary" style={{marginTop:8}} disabled={!tableInput || busy} onClick={handleCreate}>
         {busy ? "CREATING…" : "CREATE GROUP ORDER"}
@@ -2788,17 +6134,40 @@ function GroupOrderView({
   // ── SCREEN: JOIN ──
   if (screen === "join") return (
     <div style={{padding:"24px 16px"}}>
+      {showQRScan && (
+        <QRTableScanner
+          onScan={t => { setShowQRScan(false); handleJoinByTable(t); }}
+          onClose={() => setShowQRScan(false)} />
+      )}
       <button className="go-back-btn" onClick={() => setScreen("start")}>← Back</button>
       <div className="go-section-title">JOIN GROUP ORDER</div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:16}}>
-        Ask the host for the 6-character join code.
+
+      {/* Primary — scan QR */}
+      <button onClick={() => setShowQRScan(true)}
+        style={{width:"100%",padding:"16px",marginBottom:20,background:"rgba(255,215,0,.06)",
+          border:"1px solid rgba(255,215,0,.25)",borderRadius:12,cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+        <span style={{fontSize:26}}>📷</span>
+        <div style={{textAlign:"left"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Instantly joins the group order at your table</div>
+        </div>
+      </button>
+
+      {/* Divider */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}} />
+        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>OR ENTER CODE MANUALLY</span>
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}} />
       </div>
+
+      {/* Fallback — manual code */}
       <input className="ffield-inp" type="text" placeholder="Enter code e.g. X7K2QP"
         value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
-        style={{width:"100%",fontSize:28,textAlign:"center",padding:"14px",letterSpacing:8,marginBottom:8}} />
+        style={{width:"100%",fontSize:24,textAlign:"center",padding:"14px",letterSpacing:8,marginBottom:8}} />
       {joinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:13,marginBottom:8}}>{joinErr}</div>}
-      <button className="go-btn-primary" style={{marginTop:8}} disabled={busy} onClick={handleJoin}>
-        {busy ? "JOINING…" : "JOIN ORDER"}
+      <button className="go-btn-primary" style={{marginTop:4}} disabled={busy || joinCode.trim().length < 4} onClick={handleJoin}>
+        {busy ? "JOINING…" : "JOIN WITH CODE"}
       </button>
     </div>
   );
@@ -2892,8 +6261,15 @@ function GroupOrderView({
       {/* Group Menu Modal — rendered via portal to escape any parent transforms */}
       {goMenuOpen && createPortal((() => {
         const available = menuItems.filter(i => i.available);
-        const cats = ["all", ...Array.from(new Set(available.map(i => i.category || "Other")))];
-        const filtered = goMenuCat === "all" ? available : available.filter(i => (i.category || "Other") === goMenuCat);
+        const goSections = MENU_SECTIONS.map(s => ({
+          ...s,
+          cats: s.cats.map(c => ({ ...c, items: available.filter(i => i.category === c.id) })).filter(c => c.items.length > 0),
+        })).filter(s => s.cats.length > 0);
+        const activeSec = goSections.find(s => s.section === goMenuSection) || goSections[0];
+        const visibleCatsGo = activeSec ? activeSec.cats : [];
+        const filtered = goMenuCat === "all"
+          ? (activeSec ? activeSec.cats.flatMap(c => c.items) : [])
+          : available.filter(i => i.category === goMenuCat);
         return (
           <div className="go-modal-overlay" onClick={() => setGoMenuOpen(false)}>
             <div className="go-modal-panel" onClick={e => e.stopPropagation()}>
@@ -2902,12 +6278,25 @@ function GroupOrderView({
                 <div className="go-modal-title">ADD ITEMS</div>
                 <button className="go-modal-close" onClick={() => setGoMenuOpen(false)}>✕</button>
               </div>
-              {/* Category pills */}
+              {/* Section toggle: DRINKS / FOOD */}
+              <div className="go-modal-section-toggle">
+                {goSections.map(sec => (
+                  <button key={sec.section}
+                    className={`go-modal-sec-btn ${goMenuSection === sec.section ? "go-modal-sec-on" : ""}`}
+                    onClick={() => { setGoMenuSection(sec.section); setGoMenuCat("all"); }}>
+                    <span>{sec.section === "DRINKS" ? "🍹" : "🍽"}</span>
+                    <span>{sec.section}</span>
+                  </button>
+                ))}
+              </div>
+              {/* Sub-category pills */}
               <div className="go-modal-cats">
-                {cats.map(c => (
-                  <button key={c} className={`go-modal-cat-pill${goMenuCat === c ? " go-modal-cat-on" : ""}`}
-                    onClick={() => setGoMenuCat(c)}>
-                    {c === "all" ? "ALL" : c.toUpperCase()}
+                <button className={`go-modal-cat-pill${goMenuCat === "all" ? " go-modal-cat-on" : ""}`}
+                  onClick={() => setGoMenuCat("all")}>ALL</button>
+                {visibleCatsGo.map(c => (
+                  <button key={c.id} className={`go-modal-cat-pill${goMenuCat === c.id ? " go-modal-cat-on" : ""}`}
+                    onClick={() => setGoMenuCat(c.id)}>
+                    <span style={{fontSize:13}}>{c.icon}</span> {c.label.toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -3199,18 +6588,24 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
-  resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast }) {
+  resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "" }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
+  const [cartNotes,   setCartNotes]   = useState({}); // { [itemId]: noteString }
+  const [noteOpen,    setNoteOpen]    = useState({}); // { [itemId]: bool }
   const [tab,         setTab]         = useState("menu");
-  const [table,       setTable]       = useState("");
+  const [table,       setTable]       = useState(qrTable);
   const [placing,     setPlacing]     = useState(false);
   const [tableErr,    setTableErr]    = useState("");
   const [topupAmt,    setTopupAmt]    = useState("");
   const [cartPayMethod, setCartPayMethod] = useState("credits"); // "credits" | "card"
+  const [showQRScan,  setShowQRScan]  = useState(false);
+  const [showOrderTypeModal, setShowOrderTypeModal] = useState(false);
+  const [pendingPayMethod,   setPendingPayMethod]   = useState("credits");
 
   const available  = menuItems.filter(i => i.available);
   const [activeCat, setActiveCat] = useState(null);
+  const [activeSection, setActiveSection] = useState("DRINKS");
   const sectionRefs = useRef({});
   const pillsRef    = useRef(null);
   // Group available items by category in defined order
@@ -3220,6 +6615,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                .filter(c => c.items.length > 0),
   })).filter(s => s.cats.length > 0);
   const allActiveCats = menuSections.flatMap(s => s.cats);
+  const visibleSections = menuSections.filter(s => s.section === activeSection);
+  const visibleCats = visibleSections.flatMap(s => s.cats);
 
   const scrollToSection = catId => {
     setActiveCat(catId);
@@ -3239,7 +6636,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
 
   const addToCart      = id => setCart(c => ({ ...c, [id]: (c[id]||0)+1 }));
   const removeFromCart = id => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
-  const clearCart      = () => setCart({});
+  const clearCart      = () => { setCart({}); setCartNotes({}); setNoteOpen({}); };
 
   const cartItems = Object.entries(cart).map(([id, qty]) => {
     const item = menuItems.find(i => i.id === id);
@@ -3253,14 +6650,14 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   const VALID_TABLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
   const placingRef = useRef(false); // ref guard prevents double submit
 
-  // ── Set initial active category when menu first loads ──
+  // ── Set initial active category when menu first loads or section changes ──
   useEffect(() => {
-    if (allActiveCats.length > 0 && !activeCat) setActiveCat(allActiveCats[0].id);
-  }, [allActiveCats.length]);
+    if (visibleCats.length > 0) setActiveCat(visibleCats[0].id);
+  }, [activeSection, allActiveCats.length]);
 
   // ── IntersectionObserver: highlight pill as user scrolls ──
   useEffect(() => {
-    if (tab !== "menu" || allActiveCats.length === 0) return;
+    if (tab !== "menu" || visibleCats.length === 0) return;
     const scrollContainer = document.querySelector('.body');
     const pillH = pillsRef.current?.offsetHeight || 48;
     const observer = new IntersectionObserver(entries => {
@@ -3284,52 +6681,73 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
     });
     Object.values(sectionRefs.current).forEach(el => { if (el) observer.observe(el); });
     return () => observer.disconnect();
-  }, [tab, allActiveCats.length]);
+  }, [tab, activeSection, allActiveCats.length]);
+
+  const openOrderModal = (payMethod) => {
+    setPendingPayMethod(payMethod);
+    setShowOrderTypeModal(true);
+  };
+
+  const handleOrderTypeChoice = (type) => {
+    setShowOrderTypeModal(false);
+    if (type === "group") { setTab("group"); return; }
+    if (pendingPayMethod === "credits") handleOrder();
+    else handleStripeOrder();
+  };
 
   const handleOrder = async () => {
     if (!table.trim()) { setTableErr("Please select your table"); return; }
     const tableNum = parseInt(table.trim());
-    if (!VALID_TABLES.includes(tableNum)) {
+    if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
       setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
     }
     setTableErr("");
     if (placingRef.current) return;
     placingRef.current = true;
     setPlacing(true);
-    const ok = await onPlaceOrder({
-      tableNumber: String(tableNum),
-      items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty })),
-      total: +cartTotal.toFixed(2),
-      paymentMethod: "credits",
-    });
-    if (ok) { clearCart(); setTab("orders"); }
-    placingRef.current = false;
-    setPlacing(false);
+    try {
+      const ok = await onPlaceOrder({
+        tableNumber: String(tableNum),
+        items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+        total: +cartTotal.toFixed(2),
+        paymentMethod: "credits",
+      });
+      if (ok) { clearCart(); setTab("orders"); }
+    } finally {
+      placingRef.current = false;
+      setPlacing(false);
+    }
   };
 
   const handleStripeOrder = async () => {
     if (!table.trim()) { setTableErr("Please select your table"); return; }
     const tableNum = parseInt(table.trim());
-    if (!VALID_TABLES.includes(tableNum)) {
+    if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
       setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
     }
     setTableErr("");
     if (placingRef.current) return;
     placingRef.current = true;
     setPlacing(true);
-    // Insert a pending order first so we have an ID for the webhook
-    const { data: newOrder, error } = await supabase.from("orders").insert({
-      user_id: user.id,
-      user_name: user.name,
-      table_number: String(tableNum),
-      items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty })),
-      total: +cartTotal.toFixed(2),
-      payment_method: "card_pending",
-      status: "pending",
-    }).select().single();
-    placingRef.current = false;
-    setPlacing(false);
-    if (error || !newOrder) { onToast("Error creating order", false); return; }
+    let newOrder = null;
+    try {
+      const { data: ord, error } = await supabase.from("orders").insert({
+        user_id: user.id,
+        user_name: user.name,
+        table_number: String(tableNum),
+        items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+        total: +cartTotal.toFixed(2),
+        payment_method: "card_pending",
+        status: "pending",
+      }).select().single();
+      if (error || !ord) { onToast("Error creating order", false); return; }
+      newOrder = ord;
+    } catch(e) {
+      onToast("Error creating order", false); return;
+    } finally {
+      placingRef.current = false;
+      setPlacing(false);
+    }
     clearCart();
     // Redirect to Stripe
     stripeCheckout({
@@ -3340,6 +6758,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
       items: cartItems.map(i => ({ name:i.name, qty:i.qty, price:i.price })),
       total: +cartTotal.toFixed(2),
     });
+    setCartNotes({});
+    setNoteOpen({});
   };
 
   const statusColor = s => s==="pending"?"rgba(251,191,36,.9)":s==="confirmed"?"rgba(74,222,128,.8)":s==="ready"?"#fff":"rgba(255,255,255,.4)";
@@ -3374,12 +6794,29 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
 
       {/* ── MENU TAB ── */}
       {tab === "menu" && (
-        <div style={{paddingBottom: cartCount > 0 ? 80 : 20}}>
+        <div style={{paddingBottom: cartCount > 0 ? 140 : 20}}>
 
-          {/* ── Sticky category pill bar ── */}
-          {allActiveCats.length > 0 && (
+          {/* ── Section toggle: DRINKS / FOOD ── */}
+          <div className="menu-section-toggle">
+            {menuSections.map(sec => (
+              <button
+                key={sec.section}
+                className={`menu-sec-btn ${activeSection === sec.section ? "menu-sec-btn-on" : ""}`}
+                onClick={() => {
+                  setActiveSection(sec.section);
+                  const el = document.querySelector('.body') || window;
+                  if (el.scrollTo) el.scrollTo({ top: 0 });
+                }}>
+                <span className="menu-sec-btn-icon">{sec.section === "DRINKS" ? "🍹" : "🍽"}</span>
+                <span>{sec.section}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* ── Sticky sub-category pill bar ── */}
+          {visibleCats.length > 0 && (
             <div ref={pillsRef} className="menu-pills-bar">
-              {allActiveCats.map(cat => (
+              {visibleCats.map(cat => (
                 <button
                   key={cat.id}
                   data-pill={cat.id}
@@ -3393,15 +6830,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
           )}
 
           {/* ── Items grouped by category (flat — no collapse) ── */}
-          {menuSections.map(sec => (
+          {visibleSections.map(sec => (
             <div key={sec.section}>
-              {/* Section divider: DRINKS / FOOD */}
-              <div className="menu-section-divider">
-                <div className="menu-section-line"/>
-                <span className="menu-section-label">{sec.section}</span>
-                <div className="menu-section-line"/>
-              </div>
-
               {sec.cats.map(cat => (
                 <div key={cat.id}
                   ref={el => { sectionRefs.current[cat.id] = el; }}
@@ -3424,10 +6854,11 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                     const isBottle = st === "bottle" || (!st && /bottle/i.test(item.name + (item.description||"")));
                     const isDraft  = st === "draft"  || (!st && /draft/i.test(item.name  + (item.description||"")));
                     return (
-                      <div key={item.id} className="menu-item-row">
+                      <div key={item.id} className={`menu-item-row${item.sold_out?" menu-item-soldout":""}`} style={{position:"relative"}}>
+                        {item.sold_out && <div className="menu-item-soldout-badge">SOLD OUT</div>}
                         <div className="menu-item-info">
                           <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                            <div className="menu-item-name">{item.name}</div>
+                            <div className="menu-item-name">{(item.name||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}</div>
                             {isBucket && <span className="menu-badge menu-badge-gold">🪣 BUCKET</span>}
                             {isGlass   && <span className="menu-badge menu-badge-blue">🍷 GLASS</span>}
                             {isBottle  && <span className="menu-badge menu-badge-blue">🍾 BOTTLE</span>}
@@ -3437,7 +6868,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                           <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
                         </div>
                         <div className="menu-item-actions">
-                          {cart[item.id] ? (
+                          {!item.sold_out && (cart[item.id] ? (
                             <div className="menu-qty-ctrl">
                               <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
                               <span className="menu-qty-val">{cart[item.id]}</span>
@@ -3445,6 +6876,9 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                             </div>
                           ) : (
                             <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>{t('addToCart')}</button>
+                          ))}
+                          {item.sold_out && (
+                            <button className="menu-add-btn" disabled style={{opacity:.3,cursor:"not-allowed"}}>{t('addToCart')}</button>
                           )}
                         </div>
                       </div>
@@ -3477,14 +6911,32 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
           ) : (
             <>
               {cartItems.map(item => (
-                <div key={item.id} className="cart-row">
-                  <div className="cart-row-name">{item.name}</div>
-                  <div className="menu-qty-ctrl">
-                    <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
-                    <span className="menu-qty-val">{item.qty}</span>
-                    <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                <div key={item.id}>
+                  <div className="cart-row">
+                    <div className="cart-row-name">{item.name}</div>
+                    <div className="menu-qty-ctrl">
+                      <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
+                      <span className="menu-qty-val">{item.qty}</span>
+                      <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                    </div>
+                    <div className="cart-row-price">${(item.price*item.qty).toFixed(2)}</div>
                   </div>
-                  <div className="cart-row-price">${(item.price*item.qty).toFixed(2)}</div>
+                  <div style={{padding:"0 0 8px 4px"}}>
+                    {!noteOpen[item.id] ? (
+                      <button className="cart-item-note-btn" onClick={()=>setNoteOpen(n=>({...n,[item.id]:true}))}>
+                        {cartNotes[item.id] ? `📝 ${cartNotes[item.id]}` : "+ Add note"}
+                      </button>
+                    ) : (
+                      <input
+                        className="cart-item-note-inp"
+                        placeholder="Special request (e.g. no ice, extra sauce…)"
+                        value={cartNotes[item.id]||""}
+                        autoFocus
+                        onChange={e=>setCartNotes(n=>({...n,[item.id]:e.target.value}))}
+                        onBlur={()=>setNoteOpen(n=>({...n,[item.id]:false}))}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
               <div className="cart-total-row">
@@ -3492,19 +6944,39 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                 <span className="cart-total-val">${cartTotal.toFixed(2)}</span>
               </div>
               <div style={{padding:"0 16px"}}>
+                {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
                 <div className="afield" style={{marginBottom:14}}>
                   <label className="afield-lbl">{t('selectTable')}</label>
-                  <div className="table-picker-grid">
-                    {VALID_TABLES.map(n => (
-                      <button key={n}
-                        className={`table-picker-btn ${table===String(n)?"table-picker-on":""}`}
-                        onClick={()=>{setTable(String(n));setTableErr("");}}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
+                  {table ? (
+                    <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",
+                      background:"rgba(74,222,128,.07)",border:"1px solid rgba(74,222,128,.25)",borderRadius:10}}>
+                      <span style={{fontSize:18}}>📍</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {table}</div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>
+                          {qrTable ? "Set automatically from QR code" : "Tap ✕ to change"}
+                        </div>
+                      </div>
+                      {!qrTable && (
+                        <button onClick={()=>setTable("")}
+                          style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                            color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
+                            fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
+                      )}
+                    </div>
+                  ) : (
+                    <button onClick={()=>setShowQRScan(true)}
+                      style={{width:"100%",padding:"14px 16px",background:"rgba(255,215,0,.06)",
+                        border:"1px solid rgba(255,215,0,.25)",borderRadius:10,cursor:"pointer",
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                      <span style={{fontSize:22}}>📷</span>
+                      <div style={{textAlign:"left"}}>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+                      </div>
+                    </button>
+                  )}
                   {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{tableErr}</div>}
-                  {table && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginTop:8,fontWeight:600}}>{t('selectedTable')} {table}</div>}
                 </div>
                 <div className="afield" style={{marginBottom:20}}>
                   <label className="afield-lbl">{t('payment')}</label>
@@ -3537,14 +7009,14 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
                 </div>
                 {cartPayMethod === "credits" ? (
                   <button className="order-place-btn"
-                    disabled={placing || cartTotal > myCredits}
-                    onClick={handleOrder}>
+                    disabled={placing}
+                    onClick={() => openOrderModal("credits")}>
                     {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
                   </button>
                 ) : (
                   <button className="order-place-btn stripe-pay-btn"
                     disabled={placing}
-                    onClick={handleStripeOrder}>
+                    onClick={() => openOrderModal("card")}>
                     {placing ? "PROCESSING…" : `💳 PAY WITH CARD · $${cartTotal.toFixed(2)}`}
                   </button>
                 )}
@@ -3552,6 +7024,43 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
             </>
           )}
         </div>
+      )}
+
+      {/* ── ORDER TYPE MODAL ── */}
+      {showOrderTypeModal && createPortal(
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
+          onClick={() => setShowOrderTypeModal(false)}>
+          <div style={{background:"#111",border:"1px solid rgba(255,255,255,.1)",borderRadius:20,padding:28,width:"100%",maxWidth:340}}
+            onClick={e => e.stopPropagation()}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:17,letterSpacing:2,color:"#fff",marginBottom:4,textAlign:"center"}}>HOW DO YOU WANT TO ORDER?</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",textAlign:"center",marginBottom:24}}>
+              Solo for yourself, or group with your table
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <button onClick={() => handleOrderTypeChoice("solo")}
+                style={{padding:"18px 20px",borderRadius:14,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",cursor:"pointer",display:"flex",alignItems:"center",gap:16,textAlign:"left",width:"100%"}}>
+                <span style={{fontSize:32}}>🧍</span>
+                <div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:1,color:"#fff"}}>JUST ME</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:3}}>Solo order · pay now</div>
+                </div>
+              </button>
+              <button onClick={() => handleOrderTypeChoice("group")}
+                style={{padding:"18px 20px",borderRadius:14,background:"rgba(255,215,0,.06)",border:"1px solid rgba(255,215,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",gap:16,textAlign:"left",width:"100%"}}>
+                <span style={{fontSize:32}}>👥</span>
+                <div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:1,color:"#FFD700"}}>ORDER AS GROUP</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:3}}>Order together with your table</div>
+                </div>
+              </button>
+            </div>
+            <button onClick={() => setShowOrderTypeModal(false)}
+              style={{marginTop:16,width:"100%",padding:"11px",background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ── ORDERS TAB ── */}
@@ -3662,6 +7171,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
           calcMyGroupShare={calcMyGroupShare}
           resetGroupToLobby={resetGroupToLobby}
           stripeCheckout={stripeCheckout} onToast={onToast}
+          qrTable={qrTable}
         />
       )}
     </div>
@@ -3683,6 +7193,10 @@ const MENU_SECTIONS = [
     { id:"Tequila",       icon:"🌵", label:"Tequila"        },
     { id:"House Wines",   icon:"🍷", label:"House Wines"    },
     { id:"Sparkling",     icon:"🥂", label:"Sparkling"      },
+    { id:"Soft Drinks",   icon:"🥤", label:"Soft Drinks"    },
+    { id:"Waters",        icon:"💧", label:"Waters"         },
+    { id:"Juices",        icon:"🍊", label:"Juices"         },
+    { id:"Smoothies",     icon:"🥝", label:"Smoothies"      },
   ]},
   { section:"FOOD", cats:[
     { id:"Appetizers",    icon:"🥗", label:"Appetizers"     },
@@ -3697,6 +7211,7 @@ const MENU_SECTIONS = [
   ]},
 ];
 const ALL_MENU_CATS = MENU_SECTIONS.flatMap(s => s.cats.map(c => c.id));
+const FOOD_CATS = new Set(MENU_SECTIONS.find(s => s.section === "FOOD")?.cats.map(c => c.id) || []);
 const catMeta = id => MENU_SECTIONS.flatMap(s=>s.cats).find(c=>c.id===id) || { icon:"🍽", label:id };
 
 /* ── Admin: Menu management ── */
@@ -3748,7 +7263,7 @@ function MenuItemForm({ item, onClose, onSave }) {
   );
 }
 
-function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
+function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail, onToggleSoldOut }) {
   const [editItem,   setEditItem]   = useState(null);
   const [addMode,    setAddMode]    = useState(false);
   const [filterCat,  setFilterCat]  = useState("all");
@@ -3804,9 +7319,13 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail }) {
                       ${(+item.price).toFixed(2)}
                       {item.description && <span style={{color:"rgba(255,255,255,.3)"}}> · {item.description}</span>}
                       {!item.available && <span style={{color:"rgba(239,68,68,.65)"}}> · HIDDEN</span>}
+                      {item.sold_out && <span style={{color:"rgba(248,113,113,.8)"}}> · SOLD OUT</span>}
                     </div>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <button className={`admin-soldout-btn${item.sold_out?" on":""}`} onClick={()=>onToggleSoldOut&&onToggleSoldOut(item)}>
+                      SOLD OUT
+                    </button>
                     <button className="admin-save-btn" style={{padding:"5px 12px",fontSize:8}} onClick={()=>onToggleAvail(item.id,!item.available)}>
                       {item.available?"HIDE":"SHOW"}
                     </button>
@@ -3960,73 +7479,71 @@ function printReceipt(ord) {
   const timeStr = date.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   const items = (ord.items || []).map(it => `
     <tr>
-      <td style="padding:5px 0;font-size:13px;">${it.qty}× ${it.name}</td>
-      <td style="padding:5px 0;font-size:13px;text-align:right;">$${(it.price*it.qty).toFixed(2)}</td>
+      <td style="padding:6px 0;font-size:15px;font-weight:700;">${it.qty}x ${it.name.toUpperCase()}</td>
+      <td style="padding:6px 0;font-size:15px;font-weight:700;text-align:right;">$${(it.price*it.qty).toFixed(2)}</td>
     </tr>`).join("");
-  const payLabel = ord.payment_method === "credits" ? "Credits" : ord.payment_method === "card" ? "Card" : "Cash";
+  const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "COMPLIMENTARY" : "CASH";
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Receipt #${ord.order_number||ord.id}</title>
   <style>
-    @page { size: 80mm auto; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Courier New', monospace; color: #000; background: #fff; width: 80mm; font-size: 12px; }
-    .wrap { width: 72mm; margin: 0 auto; padding: 4mm 0; }
-    .logo-block { text-align: center; padding-bottom: 10px; border-bottom: 2px solid #000; margin-bottom: 10px; }
-    .logo-block .brand { font-size: 28px; font-weight: 900; letter-spacing: 4px; line-height: 1; }
-    .logo-block .sub   { font-size: 9px; letter-spacing: 3px; margin-top: 4px; }
-    .logo-block .sub2  { font-size: 8px; letter-spacing: 2px; color: #333; margin-top: 2px; }
-    .meta { font-size: 11px; line-height: 1.9; margin-bottom: 10px; }
-    .meta .row { display: flex; justify-content: space-between; }
-    .meta .lbl { color: #333; }
-    .divider { border: none; border-top: 1px dashed #000; margin: 8px 0; }
-    .divider-solid { border: none; border-top: 2px solid #000; margin: 8px 0; }
+    @page { size: 80mm 800mm; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; page-break-inside: avoid; break-inside: avoid; }
+    html, body { width: 80mm; height: auto; overflow: visible; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: 'Arial Black', 'Arial', sans-serif; color: #000; background: #fff; }
+    .wrap { width: 74mm; margin: 0 auto; padding: 4mm 0 8mm; page-break-after: avoid; }
+    .logo-block { text-align: center; padding-bottom: 10px; border-bottom: 3px solid #000; margin-bottom: 10px; }
+    .brand { font-size: 28px; font-weight: 900; letter-spacing: 5px; line-height: 1; }
+    .bar-rest { font-size: 12px; font-weight: 900; letter-spacing: 4px; margin-top: 3px; }
+    .event { font-size: 10px; font-weight: 900; letter-spacing: 3px; border: 2px solid #000; display: inline-block; padding: 3px 10px; margin-top: 5px; }
+    .loc { font-size: 9px; font-weight: 700; letter-spacing: 2px; margin-top: 4px; color: #222; }
+    .meta-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #aaa; }
+    .meta-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #444; }
+    .meta-val { font-size: 12px; font-weight: 900; }
+    .section-hdr { font-size: 9px; font-weight: 900; letter-spacing: 3px; padding: 7px 0 3px; border-bottom: 2px solid #000; margin-bottom: 2px; }
+    .divider { border: none; border-top: 2px solid #000; margin: 8px 0; }
     table { width: 100%; border-collapse: collapse; }
-    td { font-size: 12px; padding: 4px 0; }
-    .total-row td { font-size: 15px; font-weight: 900; letter-spacing: 1px; padding-top: 8px; }
-    .payment-row { font-size: 11px; color: #333; margin-top: 5px; }
-    .footer { text-align: center; margin-top: 14px; padding-top: 10px; border-top: 2px solid #000; }
-    .footer .thanks { font-size: 13px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
-    .footer .url    { font-size: 9px; letter-spacing: 2px; color: #444; }
-    .footer .wc     { font-size: 10px; letter-spacing: 3px; margin-top: 6px; }
-    @media print { 
-      html, body { width: 80mm; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
+    td { font-size: 13px; padding: 5px 0; font-weight: 700; }
+    .total-row td { font-size: 17px; font-weight: 900; letter-spacing: 1px; padding-top: 8px; border-top: 3px solid #000; }
+    .pay-row { display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; font-weight: 700; }
+    .footer { text-align: center; margin-top: 12px; padding-top: 8px; border-top: 3px double #000; }
+    .thanks { font-size: 14px; font-weight: 900; letter-spacing: 3px; margin-bottom: 4px; }
+    .url { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #222; }
+    .wc { font-size: 10px; font-weight: 900; letter-spacing: 3px; margin-top: 5px; }
   </style></head>
   <body><div class="wrap">
+
     <div class="logo-block">
       <div class="brand">EL MUNDO</div>
-      <div class="sub">BAR · REST · EST. 2009</div>
-      <div class="sub2">KRALENDIJK, BONAIRE</div>
+      <div class="bar-rest">BAR &amp; RESTAURANT</div>
+      <div class="event">WORLD CUP EVENT 2026</div>
+      <div class="loc">KRALENDIJK · BONAIRE · EST. 2009</div>
     </div>
-    <div class="meta">
-      <div class="row"><span class="lbl">Date</span><span>${dateStr}</span></div>
-      <div class="row"><span class="lbl">Time</span><span>${timeStr}</span></div>
-      <div class="row"><span class="lbl">Table</span><span><b>${ord.table_number}</b></span></div>
-      ${ord.order_number ? `<div class="row"><span class="lbl">Order #</span><span><b>${ord.order_number}</b></span></div>` : ""}
-    </div>
-    <hr class="divider"/>
-    <table>
-      <tbody>${items}</tbody>
-    </table>
-    <hr class="divider-solid"/>
-    <table>
-      <tbody>
-        <tr class="total-row">
-          <td>TOTAL</td>
-          <td style="text-align:right;">$${(+ord.total).toFixed(2)}</td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="payment-row">Payment: ${payLabel}</div>
+
+    <div class="meta-row"><span class="meta-lbl">Date</span><span class="meta-val">${dateStr}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Time</span><span class="meta-val">${timeStr}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${ord.table_number}</span></div>
+    ${ord.order_number ? `<div class="meta-row"><span class="meta-lbl">Order #</span><span class="meta-val">${ord.order_number}</span></div>` : ""}
+
+    <div class="divider"></div>
+    <div class="section-hdr">ORDER ITEMS</div>
+    <table><tbody>${items}</tbody></table>
+
+    <table><tbody>
+      <tr class="total-row">
+        <td>TOTAL</td>
+        <td style="text-align:right;">$${(+ord.total).toFixed(2)}</td>
+      </tr>
+    </tbody></table>
+    <div class="pay-row"><span>PAYMENT METHOD</span><span>${payLabel}</span></div>
+
     <div class="footer">
       <div class="thanks">THANK YOU!</div>
-      <div class="url">www.elmundobonaire.com</div>
       <div class="wc">⚽ WORLD CUP 2026 ⚽</div>
+      <div class="url">www.elmundobonaire.com</div>
     </div>
-  </div>
-  </body></html>`;
+
+  </div></body></html>`;
 
   // Use hidden iframe — no popup, no tab switch, print dialog appears directly
   const existing = document.getElementById("__receipt_frame");
@@ -4123,33 +7640,68 @@ function AdminHistory({ allOrders }) {
   );
 }
 
-/* ═══ ADMIN: FINANCIAL REPORT ════════════════════════════════════════════════ */
+/* ═══ ADMIN: SETTLEMENT REPORT ══════════════════════════════════════════════ */
 function AdminReport({ allOrders }) {
-  const iso = d => d.toISOString().slice(0,10);
-  const todayISO = iso(new Date());
+  // LOCAL date helpers — never use toISOString() which gives UTC and causes off-by-one errors
+  // (e.g. orders at 10 PM Bonaire = next day UTC)
+  const isoLocal = d => {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+  const localDate = ts => isoLocal(new Date(ts)); // convert UTC timestamp → local date string
+
+  const todayISO = isoLocal(new Date());
   const [preset,  setPreset ] = useState("today");
   const [finFrom, setFinFrom] = useState(todayISO);
   const [finTo,   setFinTo  ] = useState(todayISO);
+  const [topups,  setTopups ] = useState([]);
+
+  // Fetch top-ups from Supabase
+  useEffect(() => {
+    supabase.from("credit_topups").select("*").order("created_at", { ascending: false })
+      .then(({ data }) => { if (data) setTopups(data); });
+  }, []);
 
   const applyPreset = (p) => {
     const d = new Date();
     setPreset(p);
-    if (p === "today")     { setFinFrom(iso(d)); setFinTo(iso(d)); }
-    if (p === "yesterday") { const y=new Date(d); y.setDate(y.getDate()-1); setFinFrom(iso(y)); setFinTo(iso(y)); }
-    if (p === "week")      { const s=new Date(d); s.setDate(d.getDate()-d.getDay()); setFinFrom(iso(s)); setFinTo(iso(d)); }
-    if (p === "month")     { setFinFrom(iso(new Date(d.getFullYear(),d.getMonth(),1))); setFinTo(iso(d)); }
-    if (p === "all")       { setFinFrom("2024-01-01"); setFinTo(iso(d)); }
+    if (p === "today")     { setFinFrom(isoLocal(d)); setFinTo(isoLocal(d)); }
+    if (p === "yesterday") { const y=new Date(d); y.setDate(y.getDate()-1); setFinFrom(isoLocal(y)); setFinTo(isoLocal(y)); }
+    if (p === "week")      { const s=new Date(d); s.setDate(d.getDate()-d.getDay()); setFinFrom(isoLocal(s)); setFinTo(isoLocal(d)); }
+    if (p === "month")     { setFinFrom(isoLocal(new Date(d.getFullYear(),d.getMonth(),1))); setFinTo(isoLocal(d)); }
+    if (p === "all")       { setFinFrom("2024-01-01"); setFinTo(isoLocal(d)); }
   };
 
-  const filtered = allOrders.filter(o => {
-    if (!o.created_at) return false;
-    const d = o.created_at.slice(0,10);
-    return d >= finFrom && d <= finTo;
-  });
+  // Compare using LOCAL date of the timestamp (not raw UTC slice)
+  const inRange = (ts) => { if (!ts) return false; const d = localDate(ts); return d >= finFrom && d <= finTo; };
 
-  const totalRevenue = filtered.reduce((s,o) => s + (+o.total), 0);
-  const orderCount   = filtered.length;
-  const avgOrder     = orderCount > 0 ? totalRevenue / orderCount : 0;
+  const filtered = allOrders.filter(o => inRange(o.created_at));
+  const filteredTopups = topups.filter(t => inRange(t.created_at));
+
+  const totalRevenue    = filtered.reduce((s,o) => s + (+o.total), 0);
+  const orderCount      = filtered.length;
+
+  // By payment method
+  const byPay = {};
+  filtered.forEach(o => {
+    const m = o.payment_method || "unknown";
+    if (!byPay[m]) byPay[m] = { total:0, orders:0 };
+    byPay[m].total  += (+o.total);
+    byPay[m].orders++;
+  });
+  const creditPay = byPay["credits"] || { total:0, orders:0 };
+  const cashPay   = byPay["cash"]    || { total:0, orders:0 };
+  const cardPay   = byPay["card"]    || { total:0, orders:0 };
+
+  // Top-ups breakdown
+  const topupTotal  = filteredTopups.reduce((s,t) => s + (+t.amount), 0);
+  const topupByMethod = {};
+  filteredTopups.forEach(t => {
+    const m = t.method || "cash";
+    if (!topupByMethod[m]) topupByMethod[m] = { total:0, count:0 };
+    topupByMethod[m].total += (+t.amount);
+    topupByMethod[m].count++;
+  });
 
   // By table
   const byTable = {};
@@ -4172,28 +7724,109 @@ function AdminReport({ allOrders }) {
   });
   const topProducts = Object.entries(byProduct).sort((a,b) => b[1].qty - a[1].qty).slice(0,10);
 
-  // By payment method
-  const byPay = {};
-  filtered.forEach(o => {
-    const m = o.payment_method || "unknown";
-    if (!byPay[m]) byPay[m] = { total:0, orders:0 };
-    byPay[m].total  += (+o.total);
-    byPay[m].orders++;
-  });
+  // Build thermal receipt HTML string (no DOM dependency — avoids emoji/CSS issues in print window)
+  const buildReceiptHTML = () => {
+    const fmtDate = s => new Date(s+"T00:00:00").toLocaleDateString("en-US",{day:"numeric",month:"short",year:"numeric"});
+    const periodLabel = finFrom === finTo ? fmtDate(finFrom) : `${fmtDate(finFrom)} - ${fmtDate(finTo)}`;
+    const now = new Date().toLocaleString("en-US",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+    const pad = (left, right, w=32) => {
+      const gap = w - left.length - right.length;
+      return left + " ".repeat(Math.max(1, gap)) + right;
+    };
+    const cur = v => `$${(+v).toFixed(2)}`;
 
-  const statCard = (label, value, sub) => (
-    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"14px 12px",flex:1,minWidth:80}}>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:6}}>{label}</div>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:"#fff",lineHeight:1}}>{value}</div>
-      {sub && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:4}}>{sub}</div>}
-    </div>
-  );
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Settlement - El Mundo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    font-weight: 700;
+    background: #fff;
+    color: #000;
+    width: 72mm;
+    margin: 0 auto;
+    padding: 6mm 4mm 12mm;
+    -webkit-print-color-adjust: exact;
+  }
+  .center { text-align: center; }
+  .dim { color: #333; font-weight: 600; }
+  .row { white-space: pre; font-size: 14px; font-weight: 700; line-height: 1.9; }
+  .section { margin: 10px 0 5px; font-weight: 900; font-size: 13px; letter-spacing: 1px; text-decoration: underline; }
+  .divider { border: none; border-top: 1px dashed #555; margin: 7px 0; }
+  .solid { border: none; border-top: 3px solid #000; margin: 7px 0; }
+  .total-block { margin: 6px 0; }
+  .total-label { font-size: 14px; font-weight: 900; letter-spacing: 1px; }
+  .total-amount { font-size: 26px; font-weight: 900; text-align: right; }
+  @media print {
+    body { width: 100%; margin: 0; padding: 4mm; }
+    @page { margin: 4mm; size: 72mm auto; }
+  }
+</style>
+</head><body>
+  <div class="center" style="font-size:18px;font-weight:900;letter-spacing:2px;margin-bottom:3px">EL MUNDO BAR-REST</div>
+  <hr class="solid" style="margin:7px 0">
+  <div class="center" style="font-size:13px;font-weight:900;letter-spacing:1px">SETTLEMENT REPORT</div>
+  <div class="center dim" style="font-size:13px;margin-bottom:2px">${periodLabel}</div>
+  <div class="center dim" style="font-size:12px">Printed: ${now}</div>
+  <hr class="divider">
+
+  <div class="section">REVENUE SUMMARY</div>
+  <div class="row">${pad("Total Orders", String(orderCount))}</div>
+
+  <hr class="divider">
+  <div class="section">PAYMENT METHODS</div>
+  <div class="row">${pad("Credits", `${creditPay.orders}x  ${cur(creditPay.total)}`)}</div>
+  <div class="row">${pad("Cash", `${cashPay.orders}x  ${cur(cashPay.total)}`)}</div>
+  <div class="row">${pad("Card / Online", `${cardPay.orders}x  ${cur(cardPay.total)}`)}</div>
+  ${Object.entries(byPay).filter(([k])=>!["credits","cash","card"].includes(k)).map(([k,v])=>
+    `<div class="row">${pad(k.charAt(0).toUpperCase()+k.slice(1), `${v.orders}x  ${cur(v.total)}`)}</div>`
+  ).join("")}
+
+  <hr class="divider">
+  <div class="section">TOP-UP ACTIVITY</div>
+  <div class="row">${pad("Transactions", String(filteredTopups.length))}</div>
+  <div class="row">${pad("Total Top-Ups", cur(topupTotal))}</div>
+
+  <hr class="solid">
+  <div class="total-block">
+    <div class="total-label">TOTAL REVENUE</div>
+    <div class="total-amount">${cur(totalRevenue)}</div>
+  </div>
+  <hr class="solid">
+
+  <div style="height:6px"></div>
+  <div class="center dim" style="font-size:12px;letter-spacing:1px">EL MUNDO BAR-REST · BONAIRE</div>
+</body></html>`;
+  };
+
+  const handlePrint = () => {
+    const html = buildReceiptHTML();
+    const win = window.open("", "_blank", "width=400,height=700");
+    if (!win) { alert("Please allow popups to print."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 500);
+  };
 
   const PRESETS = [["today","TODAY"],["yesterday","YESTERDAY"],["week","THIS WEEK"],["month","THIS MONTH"],["all","ALL TIME"]];
+  const fmtDate = s => new Date(s+"T00:00:00").toLocaleDateString("en-US",{day:"numeric",month:"short",year:"numeric"});
+  const periodLabel = finFrom === finTo ? fmtDate(finFrom) : `${fmtDate(finFrom)} — ${fmtDate(finTo)}`;
 
   return (
-    <div style={{padding:"12px 14px 32px"}}>
-      {/* Quick preset buttons */}
+    <div style={{padding:"12px 14px 40px"}}>
+      {/* ── Controls bar ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)"}}>SETTLEMENT REPORT</div>
+        <button onClick={handlePrint} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 18px",background:"#fff",color:"#000",border:"none",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          PRINT RECEIPT
+        </button>
+      </div>
+
+      {/* ── Preset buttons ── */}
       <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
         {PRESETS.map(([v,l]) => (
           <button key={v} onClick={()=>applyPreset(v)} style={{
@@ -4205,8 +7838,9 @@ function AdminReport({ allOrders }) {
           }}>{l}</button>
         ))}
       </div>
-      {/* Custom date range */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",flexWrap:"wrap"}}>
+
+      {/* ── Custom date range ── */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:24,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",flexWrap:"wrap"}}>
         <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>CUSTOM</span>
         <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.25)"}}>FROM</span>
         <input type="date" value={finFrom} onChange={e=>{setFinFrom(e.target.value);setPreset("custom");}}
@@ -4216,53 +7850,107 @@ function AdminReport({ allOrders }) {
           style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12,colorScheme:"dark",cursor:"pointer",flex:1,minWidth:130}} />
       </div>
 
-      {/* Revenue stats */}
-      <div style={{display:"flex",gap:8,marginBottom:20}}>
-        {statCard("REVENUE", `$${totalRevenue.toFixed(2)}`)}
-        {statCard("ORDERS", orderCount)}
-        {statCard("AVG ORDER", `$${avgOrder.toFixed(2)}`)}
+      {/* ── On-screen preview ── */}
+      <div style={{marginBottom:24,paddingBottom:16,borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff",letterSpacing:2}}>EL MUNDO BAR & RESTAURANT</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4}}>{periodLabel.toUpperCase()}</div>
       </div>
 
-      {/* Payment breakdown */}
-      {Object.keys(byPay).length > 0 && (
-        <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-          {Object.entries(byPay).map(([m,d])=>(
-            <div key={m} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"12px",flex:1,minWidth:80}}>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>{m}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff"}}>${d.total.toFixed(2)}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>{d.orders} order{d.orders>1?"s":""}</div>
+      {/* ── SECTION 1: Revenue ── */}
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>REVENUE SUMMARY</div>
+      <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
+        {[
+          ["TOTAL REVENUE", `$${totalRevenue.toFixed(2)}`, `${orderCount} order${orderCount!==1?"s":""}`],
+          ["TOP-UPS", `$${topupTotal.toFixed(2)}`, `${filteredTopups.length} transaction${filteredTopups.length!==1?"s":""}`],
+        ].map(([label,val,sub]) => (
+          <div key={label} style={{flex:1,minWidth:110,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",padding:"14px 12px"}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.4)",fontWeight:700,marginBottom:5}}>{label}</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:"#fff",lineHeight:1}}>{val}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:4}}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── SECTION 2: Payment Methods ── */}
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>PAYMENT BREAKDOWN</div>
+      <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",padding:"4px 14px",marginBottom:24}}>
+        {[
+          ["Credits", creditPay, "#a3e635"],
+          ["Cash", cashPay, "#60a5fa"],
+          ["Card / Online", cardPay, "#f0c040"],
+          ...Object.entries(byPay).filter(([k])=>!["credits","cash","card"].includes(k)).map(([k,v])=>[k,v,"rgba(255,255,255,.5)"]),
+        ].map(([label,d,accent]) => (
+          <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+            <div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.7)",fontWeight:600}}>{label}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:1}}>{d.orders} order{d.orders!==1?"s":""}{totalRevenue>0?` · ${Math.round(d.total/totalRevenue*100)}%`:""}</div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Top tables */}
-      <div className="admin-section-lbl" style={{marginBottom:8}}>TOP TABLES</div>
-      {topTables.length === 0 && <div className="empty" style={{marginBottom:20}}>No data</div>}
-      {topTables.map(([name,d],i) => (
-        <div key={name} style={{display:"flex",alignItems:"center",padding:"11px 14px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",minWidth:28}}>#{i+1}</span>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{name}</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>{d.orders} order{d.orders>1?"s":""}</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:accent}}>${d.total.toFixed(2)}</div>
           </div>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fff"}}>${d.total.toFixed(2)}</span>
-        </div>
-      ))}
+        ))}
+      </div>
 
-      {/* Top products */}
-      <div className="admin-section-lbl" style={{marginTop:24,marginBottom:8}}>TOP PRODUCTS</div>
-      {topProducts.length === 0 && <div className="empty">No data</div>}
-      {topProducts.map(([name,d],i) => (
-        <div key={name} style={{display:"flex",alignItems:"center",padding:"11px 14px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",minWidth:28}}>#{i+1}</span>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{name}</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>{d.qty} sold</div>
+      {/* ── SECTION 3: Top-ups ── */}
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>TOP-UP ACTIVITY</div>
+      <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",marginBottom:24}}>
+        {filteredTopups.length === 0 ? (
+          <div style={{padding:"18px 14px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",textAlign:"center"}}>No top-ups in this period</div>
+        ) : (
+          <>
+            <div style={{padding:"12px 14px 10px",borderBottom:"1px solid rgba(255,255,255,.06)",display:"flex",gap:10,flexWrap:"wrap"}}>
+              {Object.entries(topupByMethod).map(([m,d])=>(
+                <div key={m} style={{flex:1,minWidth:90}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.4)",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>{m}</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#fff"}}>${d.total.toFixed(2)}</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>{d.count}x</div>
+                </div>
+              ))}
+              <div style={{flex:1,minWidth:90}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.4)",fontWeight:700,marginBottom:4}}>TOTAL</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#f0c040"}}>${topupTotal.toFixed(2)}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>{filteredTopups.length} total</div>
+              </div>
+            </div>
+            <div style={{maxHeight:160,overflowY:"auto"}}>
+              {filteredTopups.slice(0,20).map((t,i) => (
+                <div key={t.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                  <div>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.55)",textTransform:"capitalize"}}>{t.method||"cash"}</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",marginLeft:8}}>
+                      {t.created_at ? new Date(t.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"}
+                    </span>
+                  </div>
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff"}}>${(+t.amount).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── SECTION 4: Top Tables ── */}
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>TOP TABLES</div>
+      <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",marginBottom:24}}>
+        {topTables.length === 0 ? <div style={{padding:"16px 14px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",textAlign:"center"}}>No data</div>
+        : topTables.map(([name,d],i)=>(
+          <div key={name} style={{display:"flex",alignItems:"center",padding:"9px 14px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(255,255,255,.2)",minWidth:28}}>#{i+1}</span>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700}}>{name}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:1}}>{d.orders} order{d.orders!==1?"s":""}</div>
+            </div>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff"}}>${d.total.toFixed(2)}</span>
           </div>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:"rgba(255,255,255,.55)"}}>${d.revenue.toFixed(2)}</span>
+        ))}
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:14,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)"}}>
+          Generated {new Date().toLocaleString("en-US",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
         </div>
-      ))}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.2)"}}>El Mundo Bar-Rest · Bonaire</div>
+      </div>
     </div>
   );
 }
@@ -4299,6 +7987,225 @@ const FP_DEFAULT = [
   { id:25, x:614, y:428, w:64, h:64, shape:"round" },
   { id:26, x:318, y:520, w:64, h:64, shape:"round" },
 ];
+
+/* ═══ KITCHEN DISPLAY SYSTEM ════════════════════════════════════════════════ */
+function KitchenView({ user }) {
+  const [orders,    setOrders]    = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [markingId, setMarkingId] = useState(null);
+  const [now,       setNow]       = useState(Date.now());
+  const prevIdsRef = useRef(new Set());
+
+  const fetchOrders = async () => {
+    const { data } = await supabase.from("orders")
+      .select("*")
+      .in("kitchen_status", ["food_pending", "food_ready"])
+      .neq("status", "completed")
+      .order("created_at", { ascending: true });
+    if (data) setOrders(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    const ch = supabase.channel("kds-" + user.id)
+      .on("postgres_changes", { event:"*", schema:"public", table:"orders" }, fetchOrders)
+      .subscribe();
+    const tick = setInterval(() => setNow(Date.now()), 60000); // live timers update every minute
+    return () => { supabase.removeChannel(ch); clearInterval(tick); };
+  }, []);
+
+  // Play alert sound when new tickets arrive
+  useEffect(() => {
+    const pending = orders.filter(o => o.kitchen_status === "food_pending");
+    const newOnes = pending.filter(o => !prevIdsRef.current.has(o.id));
+    if (newOnes.length > 0) {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        [[1047,0],[1047,0.22],[1047,0.44]].forEach(([freq,delay]) => {
+          const osc = ac.createOscillator(); const g = ac.createGain();
+          osc.connect(g); g.connect(ac.destination);
+          osc.frequency.value = freq; osc.type = "sine";
+          g.gain.setValueAtTime(0, ac.currentTime+delay);
+          g.gain.linearRampToValueAtTime(0.3, ac.currentTime+delay+0.04);
+          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+delay+0.8);
+          osc.start(ac.currentTime+delay); osc.stop(ac.currentTime+delay+0.85);
+        });
+      } catch(e) {}
+    }
+    prevIdsRef.current = new Set(pending.map(o => o.id));
+  }, [orders]);
+
+  const markReady = async (orderId) => {
+    if (markingId) return;
+    setMarkingId(orderId);
+    await supabase.from("orders").update({ kitchen_status:"food_ready" }).eq("id", orderId);
+    setOrders(prev => prev.map(o => o.id===orderId ? {...o, kitchen_status:"food_ready"} : o));
+    setMarkingId(null);
+  };
+
+  const dismiss = async (orderId) => {
+    await supabase.from("orders").update({ kitchen_status:"food_done" }).eq("id", orderId);
+    setOrders(prev => prev.filter(o => o.id !== orderId));
+  };
+
+  // Timer helpers — color + label based on elapsed minutes
+  const getMins = (createdAt) => Math.floor((now - new Date(createdAt).getTime()) / 60000);
+  const timerColor = (mins) => mins < 5 ? "#4ade80" : mins < 10 ? "#fbbf24" : "#f87171";
+  const timerLabel = (mins) => mins < 1 ? "<1m" : `${mins}m`;
+
+  const pending = orders.filter(o => o.kitchen_status === "food_pending");
+  const ready   = orders.filter(o => o.kitchen_status === "food_ready");
+
+  // Live clock for header
+  const clockStr = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+  if (loading) return (
+    <div className="kds2-root"><div className="kds2-loading">Loading…</div></div>
+  );
+
+  return (
+    <div className="kds2-root">
+
+      {/* ── TOP BAR ── */}
+      <div className="kds2-topbar">
+        <div className="kds2-topbar-left">
+          <span className="kds2-brand">EL MUNDO</span>
+          <span className="kds2-brandbar">BAR-REST</span>
+        </div>
+        <div className="kds2-topbar-center">
+          <span className="kds2-clock">{clockStr}</span>
+        </div>
+        <div className="kds2-topbar-right">
+          {pending.length > 0 && (
+            <div className="kds2-counter kds2-counter-fire">
+              <span>{pending.length}</span>
+              <span>COOKING</span>
+            </div>
+          )}
+          {ready.length > 0 && (
+            <div className="kds2-counter kds2-counter-done">
+              <span>{ready.length}</span>
+              <span>READY</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── EMPTY STATE ── */}
+      {pending.length === 0 && ready.length === 0 && (
+        <div className="kds2-empty">
+          <div className="kds2-empty-check">✓</div>
+          <div className="kds2-empty-title">ALL CLEAR</div>
+          <div className="kds2-empty-sub">No tickets. Standing by for next order.</div>
+        </div>
+      )}
+
+      {/* ── TWO-LANE LAYOUT ── */}
+      {(pending.length > 0 || ready.length > 0) && (
+        <div className="kds2-lanes">
+
+          {/* LANE LEFT: COOKING */}
+          <div className="kds2-lane">
+            <div className="kds2-lane-header kds2-lane-header-fire">
+              <span className="kds2-lane-icon">🔥</span>
+              <span className="kds2-lane-title">COOKING</span>
+              <span className="kds2-lane-count">{pending.length}</span>
+            </div>
+            <div className="kds2-tickets">
+              {pending.length === 0 && (
+                <div className="kds2-lane-empty">No active tickets</div>
+              )}
+              {pending.map(order => {
+                const foodItems = (order.items||[]).filter(i => FOOD_CATS.has(i.category));
+                const mins = getMins(order.created_at);
+                const col  = timerColor(mins);
+                const urgent = mins >= 10;
+                return (
+                  <div key={order.id} className={`kds2-ticket${urgent ? " kds2-ticket-urgent" : ""}`} style={{"--ticket-color": col}}>
+                    {/* Ticket top */}
+                    <div className="kds2-ticket-head">
+                      <div className="kds2-ticket-table">T{order.table_number}</div>
+                      <div className="kds2-ticket-timer" style={{color: col, borderColor: col}}>
+                        {timerLabel(mins)}
+                      </div>
+                    </div>
+                    {/* Customer */}
+                    <div className="kds2-ticket-customer">{order.user_name}</div>
+                    {/* Dashed separator */}
+                    <div className="kds2-ticket-sep"/>
+                    {/* Items — large text for kitchen visibility */}
+                    <div className="kds2-ticket-items">
+                      {foodItems.map((item, idx) => (
+                        <div key={idx} className="kds2-ticket-item">
+                          <span className="kds2-item-qty">{item.qty}</span>
+                          <div className="kds2-item-right">
+                            <span className="kds2-item-name">{item.name.toUpperCase()}</span>
+                            {item.note && (
+                              <span className="kds2-item-note">📝 {item.note}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Action */}
+                    <button
+                      className="kds2-btn-ready"
+                      onClick={() => markReady(order.id)}
+                      disabled={markingId === order.id}
+                    >
+                      {markingId === order.id ? "…" : "DONE — SEND TO BAR"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* LANE RIGHT: READY */}
+          <div className="kds2-lane">
+            <div className="kds2-lane-header kds2-lane-header-done">
+              <span className="kds2-lane-icon">🔔</span>
+              <span className="kds2-lane-title">READY</span>
+              <span className="kds2-lane-count">{ready.length}</span>
+            </div>
+            <div className="kds2-tickets">
+              {ready.length === 0 && (
+                <div className="kds2-lane-empty">Nothing waiting pickup</div>
+              )}
+              {ready.map(order => {
+                const foodItems = (order.items||[]).filter(i => FOOD_CATS.has(i.category));
+                const mins = getMins(order.created_at);
+                return (
+                  <div key={order.id} className="kds2-ticket kds2-ticket-ready">
+                    <div className="kds2-ticket-head">
+                      <div className="kds2-ticket-table" style={{color:"#4ade80"}}>T{order.table_number}</div>
+                      <div className="kds2-ticket-ready-badge">READY ✓</div>
+                    </div>
+                    <div className="kds2-ticket-customer">{order.user_name}</div>
+                    <div className="kds2-ticket-sep"/>
+                    <div className="kds2-ticket-items">
+                      {foodItems.map((item, idx) => (
+                        <div key={idx} className="kds2-ticket-item kds2-item-done">
+                          <span className="kds2-item-qty" style={{opacity:.4}}>{item.qty}</span>
+                          <span className="kds2-item-name" style={{opacity:.5,textDecoration:"line-through"}}>{item.name.toUpperCase()}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="kds2-btn-dismiss" onClick={() => dismiss(order.id)}>
+                      ✓ PICKED UP
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
   const loadSaved = () => { try { const s = localStorage.getItem(FP_KEY); return s ? JSON.parse(s) : FP_DEFAULT; } catch { return FP_DEFAULT; } };
@@ -4372,6 +8279,30 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
   const statusColor = s => s==="pending"?"#f59e0b":s==="confirmed"?"#93c5fd":s==="ready"?"#fff":"rgba(255,255,255,.3)";
   const statusLabel = s => s==="pending"?"NEW ORDER":s==="confirmed"?"PREPARING":s==="ready"?"READY ↑":"";
 
+  const prevFoodReadyRef = useRef(new Set(allOrders.filter(o=>o.kitchen_status==="food_ready").map(o=>o.id)));
+  useEffect(() => {
+    const currentReady = new Set(allOrders.filter(o=>o.kitchen_status==="food_ready").map(o=>o.id));
+    const prevSet = prevFoodReadyRef.current;
+    const newOnes = [...currentReady].filter(id => !prevSet.has(id));
+    if (newOnes.length > 0) {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        [[523.25, 0, 0.35], [1046.5, 0, 0.18], [1568.75, 0, 0.1],
+         [523.25, 0.9, 0.35], [1046.5, 0.9, 0.18]].forEach(([freq, delay, vol]) => {
+          const osc = ac.createOscillator(); const g = ac.createGain();
+          osc.connect(g); g.connect(ac.destination);
+          osc.frequency.value = freq; osc.type = "sine";
+          g.gain.setValueAtTime(0, ac.currentTime + delay);
+          g.gain.linearRampToValueAtTime(vol, ac.currentTime + delay + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + delay + 2.5);
+          osc.start(ac.currentTime + delay); osc.stop(ac.currentTime + delay + 2.6);
+        });
+      } catch(e) {}
+    }
+    prevFoodReadyRef.current = currentReady;
+  }, [allOrders]);
+
+  const foodReadyOrders = activeOrders.filter(o => o.kitchen_status === "food_ready");
   const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
   const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
 
@@ -4557,91 +8488,165 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
     );
   };
 
-  // ── TABLE DETAIL PANEL — redesigned ──────────────────────────────────────
+  // ── TABLE DETAIL PANEL ────────────────────────────────────────────────────
+  // drink_status state machine:  null → "confirmed" → "ready"  (never backwards)
+  // kitchen_status state machine: null → "food_pending" → "food_ready" → "food_done" (never backwards)
+  // Auto-complete: when drinks="ready" (or no drinks) AND kitchen="food_done" (or no food) → print + complete
   const TableDetail = () => {
     const orders = (byTable[selectedTable]||[]);
+    const [busy, setBusy] = useState({});
+
+    const dItems = ord => (ord.items||[]).filter(i => !FOOD_CATS.has(i.category));
+    const fItems = ord => (ord.items||[]).filter(i =>  FOOD_CATS.has(i.category));
+
+    // Perform update + reload.
+    // Auto-kitchen: if confirming drinks on an order that has food and food hasn't been sent yet → send to kitchen now.
+    // Auto-complete: when drinks="ready" AND food="food_done" (or no drinks/food) → print receipt + complete.
+    const doUpdate = async (ordId, updates) => {
+      setBusy(p => ({...p, [ordId]: true}));
+      const ord = orders.find(o => o.id === ordId);
+      // If bar is confirming drinks and there's food not yet sent → auto-route food to kitchen
+      if (ord && updates.drink_status && fItems(ord).length > 0 && !ord.kitchen_status) {
+        updates.kitchen_status = "food_pending";
+      }
+      await supabase.from("orders").update(updates).eq("id", ordId);
+      // Check completion
+      const { data: fresh } = await supabase.from("orders").select("*").eq("id", ordId).maybeSingle();
+      if (fresh) {
+        const dDone = dItems(fresh).length === 0 || fresh.drink_status === "ready";
+        const fDone = fItems(fresh).length === 0 || fresh.kitchen_status === "food_done";
+        if (dDone && fDone) {
+          printReceipt({ ...fresh, table_number: selectedTable });
+          await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
+        }
+      }
+      await onLoad();
+      setBusy(p => ({...p, [ordId]: false}));
+    };
+
     return (
       <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
-        <div style={{
-          background:"#111", border:"1px solid rgba(255,255,255,.15)",
-          width:"92%", maxWidth:480, maxHeight:"80vh",
-          display:"flex", flexDirection:"column", borderRadius:4,
-          overflow:"hidden",
-        }} onClick={e=>e.stopPropagation()}>
+        <div style={{background:"#111",border:"1px solid rgba(255,255,255,.15)",width:"92%",maxWidth:480,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
-          <div style={{padding:"18px 20px",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,.04)"}}>
+          <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,.04)",flexShrink:0}}>
             <div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>TABLE {selectedTable}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4,fontWeight:600}}>
-                {orders.length} active order{orders.length!==1?"s":""}
-              </div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4,fontWeight:600}}>{orders.length} order{orders.length!==1?"s":""}</div>
             </div>
-            <button onClick={(e)=>{ e.stopPropagation(); setSelectedTable(null); }}
-              style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              ✕
-            </button>
+            <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
 
           {/* Orders */}
-          <div style={{overflowY:"auto",flex:1,padding:"12px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{overflowY:"auto",flex:1,padding:"12px 16px",display:"flex",flexDirection:"column",gap:16}}>
             {orders.length === 0 && (
               <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.3)"}}>No active orders</div>
             )}
-            {orders.map(ord => (
-              <div key={ord.id} style={{border:`1px solid ${statusColor(ord.status)}44`,borderRadius:4,overflow:"hidden"}}>
 
-                {/* Order status bar */}
-                <div style={{padding:"10px 14px",background:`${statusColor(ord.status)}18`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{width:8,height:8,borderRadius:"50%",background:statusColor(ord.status),boxShadow:`0 0 6px ${statusColor(ord.status)}`}}/>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:statusColor(ord.status)}}>{statusLabel(ord.status)}</span>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",fontWeight:600}}>
-                      {new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-                    </span>
-                  </div>
-                </div>
+            {orders.map(ord => {
+              const drinks  = dItems(ord);
+              const foods   = fItems(ord);
+              const hasDrinks = drinks.length > 0;
+              const hasFood   = foods.length > 0;
+              const ds = ord.drink_status;   // null | "confirmed" | "ready"
+              const ks = ord.kitchen_status; // null | "food_pending" | "food_ready" | "food_done"
+              const isBusy = !!busy[ord.id];
 
-                {/* Customer + items */}
-                <div style={{padding:"12px 14px"}}>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.45)",fontWeight:600,marginBottom:10}}>{ord.user_name}</div>
-                  {ord.items.map((it,i) => (
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"rgba(255,255,255,.5)",minWidth:28}}>{it.qty}×</span>
-                        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#fff",fontWeight:700}}>{it.name}</span>
+              // Section item list renderer
+              const ItemList = ({ items }) => (
+                <div style={{marginBottom:10}}>
+                  {items.map((it,i) => (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:17,color:"rgba(255,255,255,.45)",minWidth:28}}>{it.qty}×</span>
+                        <div>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{it.name}</div>
+                          {it.note && <div style={{fontSize:11,color:"rgba(255,255,255,.35)",fontStyle:"italic",marginTop:2}}>📝 {it.note}</div>}
+                        </div>
                       </div>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>${(it.price*it.qty).toFixed(2)}</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",flexShrink:0}}>${(it.price*it.qty).toFixed(2)}</span>
                     </div>
                   ))}
-                  {/* Total + action */}
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:10,borderTop:"1px solid rgba(255,255,255,.08)"}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff"}}>
-                      ${(+ord.total).toFixed(2)}
-                    </span>
-                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      {(nextStatus(ord.status) || ord.status === "ready") && (
-                        <button
-                          style={{padding:"12px 20px",background:"#fff",color:"#000",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,transition:"opacity .15s"}}
-                          onClick={()=>{
-                            if (ord.status === "ready") {
-                              onDeleteOrder(ord.id); onLoad();
-                            } else {
-                              if (ord.status === "pending") printReceipt({...ord, table_number: selectedTable});
-                              onUpdateStatus(ord.id, nextStatus(ord.status)); onLoad();
-                            }
-                          }}>
-                          {nextLabel(ord.status)}
-                        </button>
-                      )}
+                </div>
+              );
+
+              return (
+                <div key={ord.id} style={{border:"1px solid rgba(255,255,255,.1)"}}>
+                  {/* Order meta bar */}
+                  <div style={{padding:"9px 14px",background:"rgba(255,255,255,.03)",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:7,height:7,borderRadius:"50%",background:statusColor(ord.status),boxShadow:`0 0 5px ${statusColor(ord.status)}`}}/>
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:"rgba(255,255,255,.55)"}}>{ord.user_name}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
                     </div>
                   </div>
+
+                  <div style={{padding:"0 14px"}}>
+
+                    {/* ── DRINKS SECTION ── */}
+                    {hasDrinks && (<>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0 8px",borderBottom:"1px solid rgba(96,165,250,.15)"}}>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#60a5fa"}}>🍺 DRINKS</span>
+                        {ds === "ready" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.25)",padding:"3px 8px"}}>✓ SERVED</span>}
+                        {ds === "confirmed" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#60a5fa",background:"rgba(96,165,250,.1)",border:"1px solid rgba(96,165,250,.25)",padding:"3px 8px"}}>PREPARING</span>}
+                      </div>
+                      <ItemList items={drinks} />
+                      {/* Drinks button */}
+                      {ds !== "ready" && (
+                        <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{drink_status: ds==="confirmed"?"ready":"confirmed", status:"confirmed"})}
+                          style={{width:"100%",padding:"13px",marginBottom:10,border:"none",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",
+                            background: ds==="confirmed" ? "#4ade80" : "#fbbf24",
+                          }}>
+                          {isBusy ? "…" : ds === "confirmed" ? "🍺 DRINKS READY" : "✓ CONFIRM DRINKS"}
+                        </button>
+                      )}
+                    </>)}
+
+                    {/* ── FOOD SECTION ── */}
+                    {hasFood && (<>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0 8px",borderBottom:"1px solid rgba(192,132,252,.15)"}}>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#c084fc"}}>🍳 FOOD</span>
+                        {ks === "food_done"    && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.25)",padding:"3px 8px"}}>✓ SERVED</span>}
+                        {ks === "food_pending" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#c084fc",background:"rgba(192,132,252,.1)",border:"1px solid rgba(192,132,252,.25)",padding:"3px 8px"}}>⏳ KITCHEN</span>}
+                        {ks === "food_ready"   && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#fbbf24",background:"rgba(251,191,36,.1)",border:"1px solid rgba(251,191,36,.35)",padding:"3px 8px"}}>🔔 READY</span>}
+                      </div>
+                      <ItemList items={foods} />
+                      {/* Food button — auto-routed to kitchen on first confirm, bar only clears when ready */}
+                      {ks !== "food_done" && (
+                        ks === "food_pending" ? (
+                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.5)",textAlign:"center",boxSizing:"border-box"}}>
+                            ⏳ KITCHEN PREPARING…
+                          </div>
+                        ) : ks === "food_ready" ? (
+                          <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{kitchen_status:"food_done"})}
+                            style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#4ade80",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,animation:"kds-urgent-blink 1.2s ease-in-out infinite"}}>
+                            {isBusy ? "…" : "✓ FOOD DELIVERED — CLEAR"}
+                          </button>
+                        ) : (
+                          /* null state — auto-send to kitchen when bar confirms order */
+                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.15)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.4)",textAlign:"center",boxSizing:"border-box"}}>
+                            🍳 ROUTES TO KITCHEN ON CONFIRM
+                          </div>
+                        )
+                      )}
+                    </>)}
+
+                    {/* Total + print */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0 10px",borderTop:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#fff"}}>${(+ord.total).toFixed(2)}</span>
+                      <button onClick={()=>printReceipt({...ord,table_number:selectedTable})}
+                        style={{padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.45)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}>
+                        🖨 PRINT
+                      </button>
+                    </div>
+
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -4723,6 +8728,45 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
           </div>
         </>)}
       </div>
+
+      {/* ── FOOD READY — persistent right-side notification panel ─────────── */}
+      {foodReadyOrders.length > 0 && (
+        <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",zIndex:500,display:"flex",flexDirection:"column",gap:8,padding:"12px 0 12px 0",pointerEvents:"none"}}>
+          {foodReadyOrders.map(ord => {
+            const foodNames = (ord.items||[]).filter(i=>FOOD_CATS.has(i.category)).map(i=>`${i.qty}× ${i.name}`);
+            return (
+              <div key={ord.id} style={{
+                pointerEvents:"all",
+                display:"flex",alignItems:"stretch",
+                background:"#000",border:"2px solid #4ade80",
+                borderRight:"none",
+                boxShadow:"-4px 0 24px rgba(74,222,128,.25)",
+                animation:"fp-notif-slide 0.4s cubic-bezier(.16,1,.3,1) both",
+                maxWidth:220,
+              }}>
+                {/* Green left stripe */}
+                <div style={{width:4,background:"#4ade80",flexShrink:0,animation:"kds-urgent-blink 1.2s ease-in-out infinite"}}/>
+                <div style={{padding:"10px 12px",flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <span style={{fontSize:14}}>🔔</span>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#4ade80"}}>TABLE {ord.table_number}</span>
+                  </div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.5)",marginBottom:2,fontWeight:600}}>{ord.user_name}</div>
+                  {foodNames.slice(0,3).map((n,i)=>(
+                    <div key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.7)",fontWeight:700,lineHeight:1.4}}>{n}</div>
+                  ))}
+                  {foodNames.length > 3 && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)"}}>+{foodNames.length-3} more</div>}
+                  <button
+                    onClick={async()=>{ await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id); await onLoad(); }}
+                    style={{marginTop:8,width:"100%",padding:"7px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#000",cursor:"pointer"}}>
+                    ✓ DELIVERED
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── LIVE VIEW ───────────────────────────────────────────────────────── */}
       {fpView === "live" && (<>
@@ -4846,7 +8890,10 @@ const CSS = `
 
   /* ── SHELL ── */
   .shell{display:flex;flex-direction:column;height:100vh;background:#000;max-width:100%;margin:0 auto;position:relative}
-  .hdr{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 20px;background:#000;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:200;flex-shrink:0}
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 20px;background:#000;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:200;flex-shrink:0}
+  .hdr-logo-btn{background:none;border:none;padding:0;cursor:pointer;display:flex;align-items:center;opacity:.92;transition:opacity .15s, transform .15s}
+  .hdr-logo-btn:hover{opacity:1;transform:scale(1.04)}
+  .hdr-logo-btn:active{transform:scale(.97)}
   .hdr-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:900px;margin:0 auto}
   .hdr-l{display:flex;align-items:center;gap:12px}
   .hdr-r{display:flex;align-items:center;gap:10px}
@@ -4863,9 +8910,9 @@ const CSS = `
   .lang-toggle{padding:5px 10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1.5px;transition:all .15s}
   .lang-toggle:hover{background:rgba(255,255,255,.08);color:#fff}
   .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
-  .body{flex:1;overflow-y:auto;padding-bottom:64px}
+  .body{flex:1;overflow-y:auto;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
   .body-inner{max-width:900px;margin:0 auto}
-  .bot-nav{display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.07);height:60px;z-index:200}
+  .bot-nav{display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.07);height:calc(60px + env(safe-area-inset-bottom, 0px));padding-bottom:env(safe-area-inset-bottom, 0px);z-index:200}
   .bot-nav-inner{display:flex;width:100%;max-width:900px}
   .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent;border:none;color:rgba(255,255,255,.18);cursor:pointer;transition:color .2s;position:relative;padding:0}
   .bnav-on{color:#fff}
@@ -4962,6 +9009,130 @@ const CSS = `
   .lb-you-tag{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;background:#fff;color:#000;padding:2px 7px;flex-shrink:0}
   .lb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center}
   @keyframes lbRowIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+
+  /* ── Leaderboard tab toggle ── */
+  .lb-toggle{display:flex;gap:4px;padding:12px 16px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+  .lb-tog-btn{flex:1;background:none;border:none;color:rgba(255,255,255,.35);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;padding:10px 8px;cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .lb-tog-btn:hover{color:rgba(255,255,255,.7)}
+  .lb-tog-on{color:#fff!important;border-bottom-color:#fff!important}
+
+  /* ── Badges — same family, simple, premium ── */
+  .plr-badge{display:inline-flex;align-self:flex-start;width:fit-content;align-items:center;font-family:'Outfit',sans-serif;font-size:9px;font-weight:700;letter-spacing:3px;padding:4px 10px;border-radius:2px;white-space:nowrap;line-height:1;text-transform:uppercase}
+  .badge-owner{background:transparent;border:1px solid rgba(201,168,76,.6);color:#c9a84c}
+  .badge-admin{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.55)}
+  .badge-sponsor{background:transparent;border:1px solid rgba(201,168,76,.4);color:rgba(201,168,76,.8)}
+
+  /* ── Developer badge — unique ── */
+  .badge-dev{
+    position:relative;overflow:hidden;
+    display:inline-flex;align-self:flex-start;width:fit-content;
+    background:#000;
+    border:1px solid;
+    font-family:'Outfit',sans-serif;font-size:9px;font-weight:700;letter-spacing:4px;
+    padding:4px 12px;border-radius:2px;white-space:nowrap;line-height:1;
+    animation:devCycle 5s linear infinite;
+  }
+  .badge-dev::after{
+    content:'';position:absolute;top:0;left:-120%;width:60%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);
+    animation:devScan 3s ease-in-out infinite;
+  }
+  @keyframes devCycle{
+    0%  {border-color:#00f5ff;color:#00f5ff;box-shadow:0 0 10px rgba(0,245,255,.2),inset 0 0 8px rgba(0,245,255,.05)}
+    25% {border-color:#a78bfa;color:#a78bfa;box-shadow:0 0 10px rgba(167,139,250,.2),inset 0 0 8px rgba(167,139,250,.05)}
+    50% {border-color:#f472b6;color:#f472b6;box-shadow:0 0 10px rgba(244,114,182,.2),inset 0 0 8px rgba(244,114,182,.05)}
+    75% {border-color:#a78bfa;color:#a78bfa;box-shadow:0 0 10px rgba(167,139,250,.2),inset 0 0 8px rgba(167,139,250,.05)}
+    100%{border-color:#00f5ff;color:#00f5ff;box-shadow:0 0 10px rgba(0,245,255,.2),inset 0 0 8px rgba(0,245,255,.05)}
+  }
+  @keyframes devScan{
+    0%  {left:-120%;opacity:0}
+    15% {opacity:1}
+    85% {opacity:1}
+    100%{left:180%;opacity:0}
+  }
+
+  /* ── Player Search ── */
+  .ps-root{display:flex;flex-direction:column;padding:0 0 24px}
+  .ps-bar{display:flex;align-items:center;gap:12px;margin:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);padding:12px 16px;border-radius:8px}
+  .ps-bar-ico{font-size:18px;opacity:.5;font-style:normal}
+  .ps-inp{flex:1;background:none;border:none;outline:none;color:#fff;font-family:'Outfit',sans-serif;font-size:15px}
+  .ps-inp::placeholder{color:rgba(255,255,255,.28)}
+  .ps-clr{background:none;border:none;color:rgba(255,255,255,.35);cursor:pointer;font-size:14px;padding:0;transition:color .15s}
+  .ps-clr:hover{color:#fff}
+  .ps-empty{display:flex;flex-direction:column;align-items:center;padding:60px 20px;text-align:center}
+  .ps-empty-ico{font-size:48px;margin-bottom:14px}
+  .ps-empty-title{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:4px;color:rgba(255,255,255,.3)}
+  .ps-empty-sub{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.18);margin-top:6px}
+  .ps-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;transition:background .15s;animation:psRowIn .3s ease both}
+  .ps-row:hover{background:rgba(255,255,255,.04)}
+  .ps-row-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:20px;color:#fff;flex-shrink:0;letter-spacing:0}
+  .ps-row-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .ps-row-name{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.5px;color:#fff;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .ps-row-phone{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.3)}
+  .ps-row-arrow{font-size:22px;color:rgba(255,255,255,.25);flex-shrink:0}
+  .ps-you{font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;background:#fff;color:#000;padding:2px 7px;flex-shrink:0}
+  @keyframes psRowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .ps-row:nth-child(1){animation-delay:.03s}.ps-row:nth-child(2){animation-delay:.06s}.ps-row:nth-child(3){animation-delay:.09s}.ps-row:nth-child(4){animation-delay:.12s}.ps-row:nth-child(5){animation-delay:.15s}
+
+  /* ── Player Profile (full view) ── */
+  .ps-back{background:none;border:none;color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;padding:16px 16px 8px;cursor:pointer;text-align:left;transition:color .15s}
+  .ps-back:hover{color:#fff}
+  .ps-profile-card{display:flex;flex-direction:column;align-items:center;padding:32px 20px 28px;position:relative;overflow:hidden;border-bottom:1px solid rgba(255,255,255,.08)}
+  .ps-profile-glow{position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:200px;height:200px;border-radius:50%;opacity:.12;filter:blur(50px);pointer-events:none}
+  .ps-profile-avatar{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:38px;color:#fff;letter-spacing:0;margin-bottom:14px;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+  .ps-profile-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:2px;color:#fff;text-transform:uppercase;text-align:center;line-height:1.1}
+  .ps-profile-phone{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.35);margin-top:4px}
+  .ps-its-you{font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.4);margin-top:8px;font-weight:500}
+  .ps-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.08)}
+  .ps-stat-box{display:flex;flex-direction:column;align-items:center;padding:24px 8px;background:#000}
+  .ps-stat-num{font-family:'Anton',sans-serif;font-size:34px;color:#fff;line-height:1}
+  .ps-stat-lbl{font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.5);margin-top:6px;font-weight:600}
+  .ps-breakdown{padding:20px 16px}
+  .ps-bk-title{font-family:'Outfit',sans-serif;font-size:12px;letter-spacing:2px;color:rgba(255,255,255,.5);margin-bottom:12px;font-weight:600;text-transform:uppercase}
+  .ps-bk-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.08);margin-bottom:14px}
+  .ps-bk-seg{height:100%;transition:flex .4s ease}
+  .ps-bk-exact{background:#4ade80}
+  .ps-bk-winner{background:#fbbf24}
+  .ps-bk-wrong{background:rgba(255,255,255,.18)}
+  .ps-bk-legend{display:flex;flex-wrap:wrap;gap:12px 20px}
+  .ps-bk-legend span{display:flex;align-items:center;gap:6px;font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.7)}
+  .ps-bk-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .ps-no-preds{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.25);text-align:center;padding:32px 20px}
+
+  /* ── Sold out ── */
+  .menu-item-soldout{opacity:.45;pointer-events:none;position:relative}
+  .menu-item-soldout-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#000;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.8);font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;padding:5px 14px;white-space:nowrap;z-index:2;pointer-events:none}
+  .admin-soldout-btn{background:none;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.35);font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;padding:4px 9px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .admin-soldout-btn:hover{border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.7)}
+  .admin-soldout-btn.on{border-color:rgba(248,113,113,.5);color:#f87171}
+
+  /* ── Order item notes ── */
+  .cart-item-note-btn{background:none;border:none;color:rgba(255,255,255,.28);font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;transition:color .15s;display:block;margin-top:3px}
+  .cart-item-note-btn:hover{color:rgba(255,255,255,.6)}
+  .cart-item-note-inp{width:100%;background:none;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.75);font-family:'Outfit',sans-serif;font-size:12px;padding:5px 0;outline:none;margin-top:4px;transition:border-color .15s}
+  .cart-item-note-inp:focus{border-bottom-color:rgba(255,255,255,.4)}
+  .cart-item-note-inp::placeholder{color:rgba(255,255,255,.2)}
+  .order-item-note{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.38);font-style:italic;margin-top:2px}
+
+  /* ── Tournament Winner Screen ── */
+  .winner-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;overflow:hidden;text-align:center}
+  .winner-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .winner-trophy{font-size:72px;animation:trophyBounce 1.2s ease-in-out infinite alternate;margin-bottom:12px;filter:drop-shadow(0 0 24px rgba(201,168,76,.5))}
+  @keyframes trophyBounce{from{transform:scale(1) translateY(0)}to{transform:scale(1.1) translateY(-10px)}}
+  .winner-label{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:6px;color:rgba(255,255,255,.4);margin-bottom:6px}
+  .winner-event{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:4px;color:#c9a84c;margin-bottom:28px}
+  .winner-name{font-family:'Anton',sans-serif;font-size:clamp(36px,10vw,68px);color:#fff;line-height:1;margin-bottom:8px;animation:winnerIn .7s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes winnerIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+  .winner-pts{font-family:'Anton',sans-serif;font-size:24px;color:#c9a84c;letter-spacing:3px;margin-bottom:4px}
+  .winner-champion{font-family:'Outfit',sans-serif;font-size:12px;letter-spacing:4px;color:#c9a84c;font-weight:700;text-transform:uppercase;margin-bottom:36px}
+  .winner-podium{display:flex;gap:36px;margin-bottom:36px}
+  .winner-pod-item{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .winner-pod-pos{font-size:28px}
+  .winner-pod-name{font-family:'Anton',sans-serif;font-size:13px;color:rgba(255,255,255,.55);letter-spacing:1px;text-transform:uppercase}
+  .winner-pod-pts{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.3)}
+  .winner-close{background:none;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.4);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:3px;padding:11px 28px;cursor:pointer;transition:all .2s}
+  .winner-close:hover{border-color:rgba(255,255,255,.45);color:#fff}
+  @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
   .lb-row:nth-child(1){animation-delay:.05s}.lb-row:nth-child(2){animation-delay:.10s}.lb-row:nth-child(3){animation-delay:.15s}.lb-row:nth-child(4){animation-delay:.20s}.lb-row:nth-child(5){animation-delay:.25s}.lb-row:nth-child(6){animation-delay:.30s}.lb-row:nth-child(7){animation-delay:.35s}
   /* keep lrow/you-chip for TV leaderboard reuse */
   .you-chip{font-family:'Anton',sans-serif;font-size:6px;letter-spacing:2px;background:#fff;color:#000;padding:2px 8px;flex-shrink:0}
@@ -4995,7 +9166,15 @@ const CSS = `
   /* ── PROFILE ── */
   .prof-wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column}
   .prof-hero{background:linear-gradient(160deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.09);padding:44px 24px 36px;text-align:center;width:100%}
-  .prof-av{width:76px;height:76px;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;margin:0 auto 20px;border-radius:50%}
+  .sponsor-vip-hero{padding:40px 24px 28px;text-align:center;background:linear-gradient(160deg,rgba(255,255,255,.05) 0%,rgba(0,0,0,0) 100%)}
+  .sponsor-vip-tier-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:50px;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;margin-bottom:14px}
+  .sponsor-vip-name{font-family:'Anton',sans-serif;font-size:26px;color:#fff;letter-spacing:1px;margin-bottom:6px}
+  .sponsor-vip-sub{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.4);line-height:1.5}
+  .prof-av{width:76px;height:76px;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;border-radius:50%}
+  .prof-av-wrap{position:relative;width:76px;height:76px;margin:0 auto 20px}
+  .prof-av-img{width:76px;height:76px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.25);display:block}
+  .prof-av-upload{position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5);transition:transform .15s}
+  .prof-av-upload:hover{transform:scale(1.15)}
   .prof-name{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:1px;color:#fff;text-transform:uppercase;margin-bottom:8px}
   .prof-detail{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.5);margin-bottom:3px}
   .prof-leader-badge{margin-top:18px;display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:10px 24px;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;text-transform:uppercase;border-radius:6px}
@@ -5009,9 +9188,10 @@ const CSS = `
   .info-body{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.78}
   .info-body strong{color:#fff;font-weight:700}
 
-  /* ── ADMIN ── */
-  .admin-subtabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07)}
-  .admin-subtab{padding:16px 18px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.6);cursor:pointer;transition:all .2s;margin-bottom:-1px}
+  /* ── ADMIN / MENU INNER TABS ── */
+  .admin-subtabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07);overflow-x:auto;scrollbar-width:none}
+  .admin-subtabs::-webkit-scrollbar{display:none}
+  .admin-subtab{padding:11px 14px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.45);cursor:pointer;transition:all .2s;margin-bottom:-1px;white-space:nowrap;flex-shrink:0}
   .ast-on{color:#fff;border-bottom-color:#fff}
   .admin-topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 14px 0;margin-bottom:4px;gap:12px}
   .admin-add-btn{flex-shrink:0;padding:10px 18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:9.5px;letter-spacing:2.5px;transition:opacity .15s;white-space:nowrap}
@@ -5225,11 +9405,325 @@ const CSS = `
   .sponsor-hero{animation:heroReveal .5s cubic-bezier(.4,0,.2,1) both}
   .prof-wrap .stats-grid{animation:fadeUp .4s ease .15s both}
   .prof-wrap .info-card{animation:fadeUp .4s ease .28s both}
+
+  /* ── Share Card CTA ── */
+  .sc-cta-wrap{padding:20px 16px 8px;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .sc-cta-btn{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#1a1a1a,#111);border:1px solid rgba(240,192,64,0.45);color:#f0c040;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:3px;padding:16px 28px;border-radius:100px;cursor:pointer;width:100%;max-width:340px;justify-content:center;transition:all .25s;box-shadow:0 0 20px rgba(240,192,64,0.08)}
+  .sc-cta-btn:hover:not(:disabled){border-color:rgba(240,192,64,0.8);box-shadow:0 0 30px rgba(240,192,64,0.18);background:linear-gradient(135deg,#1f1a0a,#171200)}
+  .sc-cta-btn:active:not(:disabled){transform:scale(.97)}
+  .sc-cta-btn:disabled{opacity:.5;cursor:not-allowed}
+  .sc-cta-btn svg{flex-shrink:0;opacity:.85}
+  .sc-cta-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.2);letter-spacing:.5px;text-align:center}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .sc-cta-spinner{width:14px;height:14px;border:2px solid rgba(240,192,64,.25);border-top-color:#f0c040;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+
+  /* ── Share Card Modal ── */
+  .sc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(14px);animation:fadeIn .2s ease}
+  .sc-modal{background:#0e0e0e;border:1px solid rgba(240,192,64,.2);border-radius:20px;padding:24px 20px 28px;width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative;animation:fadeUp .3s cubic-bezier(.16,1,.3,1)}
+  .sc-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.07);border:none;color:rgba(255,255,255,.5);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .15s}
+  .sc-close:hover{background:rgba(255,255,255,.14);color:#fff}
+  .sc-title{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:4px;color:#fff;margin-bottom:4px;text-align:center}
+  .sc-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;text-align:center;margin-bottom:18px}
+  .sc-preview{width:100%;max-width:340px;border-radius:12px;display:block;border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .sc-actions{margin-top:18px;width:100%}
+  .sc-share-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:#f0c040;color:#000;border:none;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:3px;padding:16px 0;border-radius:100px;cursor:pointer;transition:opacity .15s,transform .15s}
+  .sc-share-btn:hover{opacity:.92}
+  .sc-share-btn:active{transform:scale(.97)}
+  .sc-hint{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.18);letter-spacing:.5px;text-align:center;margin-top:10px}
+
   .scard{animation:cardIn .32s ease both}
   .scard:nth-child(1){animation-delay:.06s}.scard:nth-child(2){animation-delay:.12s}.scard:nth-child(3){animation-delay:.18s}.scard:nth-child(4){animation-delay:.24s}
   .score-digit{animation:digitPop .3s cubic-bezier(.34,1.56,.64,1) both}
   .auth-panel{animation:fadeUp .5s cubic-bezier(.4,0,.2,1) .12s both}
   .auth-cta:active{transform:scale(.97)}
+
+  /* ── Who Predicted What ── */
+  .wpw-wrap{padding:10px 14px 14px;border-top:1px solid rgba(255,255,255,.06)}
+  .wpw-title{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:8px}
+  .wpw-bars{display:flex;gap:8px}
+  .wpw-bar-col{flex:1;display:flex;flex-direction:column;gap:4px}
+  .wpw-bar-track{height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+  .wpw-bar-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.4,0,.2,1)}
+  .wpw-home{background:#3b82f6}
+  .wpw-draw{background:rgba(255,255,255,.35)}
+  .wpw-away{background:#ef4444}
+  .wpw-bar-lbl{font-size:9px;color:rgba(255,255,255,.45);letter-spacing:.5px}
+  .wpw-draw-col .wpw-bar-lbl{text-align:center}
+  .wpw-bar-col:last-child .wpw-bar-lbl{text-align:right}
+
+  /* ── Moments ── */
+  /* ── MOMENTS ── */
+  .mom-root{padding-bottom:32px;max-width:500px;margin:0 auto;width:100%}
+  .mom-header{background:#000;position:sticky;top:0;z-index:50;max-width:500px;margin:0 auto;width:100%}
+  .mom-header-title{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:4px;color:#fff}
+  .mom-header-sub{font-size:10px;color:rgba(255,255,255,.3);letter-spacing:2px;margin-top:2px}
+  /* ── Feed Topbar ── */
+  .mom-topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:12px 14px 10px}
+  .mom-topbar-left{display:flex;align-items:center}
+  .mom-topbar-center{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px}
+  .mom-topbar-right{display:flex;align-items:center;gap:0;justify-content:flex-end}
+  .mom-logo-text{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:6px;color:#fff;line-height:1}
+  .mom-neon-sub{text-align:center;font-family:'Outfit',sans-serif;font-size:8px;font-weight:600;letter-spacing:5px;color:#f0c040;animation:neonBlink 2.8s ease-in-out infinite;padding:0}
+  @keyframes neonBlink{0%,100%{opacity:1;text-shadow:0 0 8px rgba(240,192,64,.9),0 0 20px rgba(240,192,64,.6),0 0 40px rgba(240,192,64,.25)}50%{opacity:.4;text-shadow:0 0 4px rgba(240,192,64,.2)}}
+  .mom-divider{height:1px;background:rgba(255,255,255,.07);margin:0}
+  .mom-icon-btn{background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:10px;transition:color .2s,transform .2s;position:relative;flex-shrink:0}
+  .mom-icon-btn:hover{color:#fff;transform:scale(1.12)}
+  .mom-icon-btn:active{transform:scale(.92)}
+  .mom-icon-add{color:rgba(255,255,255,.75)}
+  .mom-icon-add:hover{color:#fff;transform:scale(1.18)!important}
+  .mom-icon-badge{position:absolute;top:4px;right:4px;background:#e63946;color:#fff;font-size:7px;min-width:14px;height:14px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-family:'Anton',sans-serif;letter-spacing:0;animation:pulse 1.5s infinite;pointer-events:none}
+  .mom-my-av{cursor:pointer;border-radius:50%;transition:opacity .2s,transform .2s;flex-shrink:0}
+  .mom-my-av:hover{opacity:.75;transform:scale(1.08)}
+  .mom-post-fab{width:40px;height:40px;border-radius:50%;background:#fff;color:#000;border:none;font-size:22px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .15s;box-shadow:0 2px 12px rgba(255,255,255,.15)}
+  .mom-post-fab:active{transform:scale(.92)}
+  .mom-search-btn{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.12);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+  .mom-search-btn:hover{background:rgba(255,255,255,.14);color:#fff}
+  /* ══ ALL POPUPS ══ */
+  .psearch-overlay{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:600;display:flex;align-items:center;justify-content:center;padding:12px;backdrop-filter:blur(10px)}
+  .psearch-popup{position:relative;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:26px;width:100%;max-width:600px;height:90vh;max-height:820px;display:flex;flex-direction:column;overflow:hidden;animation:popIn .28s cubic-bezier(.16,1,.3,1);box-shadow:0 0 0 1px rgba(255,255,255,.04),0 40px 120px rgba(0,0,0,.95)}
+  @keyframes popIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  .psearch-close{position:absolute;top:14px;right:14px;background:#fff;border:none;color:#000;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;transition:transform .2s,background .2s;z-index:100}
+  .psearch-close:hover{background:rgba(255,255,255,.85);transform:scale(1.1)}
+
+  /* ── Search view ── */
+  .psearch-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:6px;color:rgba(255,255,255,.35);padding:28px 26px 16px;flex-shrink:0;text-transform:uppercase}
+  .psearch-input-wrap{display:flex;align-items:center;gap:10px;margin:0 18px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:0 16px;transition:all .2s;flex-shrink:0}
+  .psearch-input-wrap:focus-within{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.07)}
+  .psearch-ico{color:rgba(255,255,255,.3);flex-shrink:0}
+  .psearch-inp{flex:1;background:transparent;border:none;color:#fff;font-size:16px;padding:15px 0;outline:none;font-family:'Outfit',sans-serif}
+  .psearch-inp::placeholder{color:rgba(255,255,255,.2)}
+  .psearch-clear{background:transparent;border:none;color:rgba(255,255,255,.25);cursor:pointer;font-size:13px;padding:6px;flex-shrink:0;transition:color .15s}
+  .psearch-clear:hover{color:rgba(255,255,255,.6)}
+  .psearch-results{flex:1;overflow-y:auto;padding:0 10px 16px}
+  .psearch-hint{text-align:center;color:rgba(255,255,255,.18);font-size:12px;letter-spacing:1.5px;padding:40px 16px;font-family:'Outfit',sans-serif}
+  .psearch-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:14px;cursor:pointer;transition:background .18s;animation:psRowIn .3s ease both;border:1px solid transparent}
+  .psearch-row:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.07)}
+  @keyframes psRowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .psearch-row-info{flex:1;min-width:0}
+  .psearch-row-name{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.5px;color:#fff}
+  .psearch-row-sub{font-size:11px;color:rgba(255,255,255,.28);margin-top:3px;letter-spacing:.5px}
+  .psearch-arr{color:rgba(255,255,255,.15);font-size:20px;flex-shrink:0}
+
+  /* ── Profile view ── */
+  .psearch-back{background:transparent;border:none;color:rgba(255,255,255,.3);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;cursor:pointer;padding:22px 26px 4px;text-align:left;display:flex;align-items:center;gap:6px;transition:color .15s;flex-shrink:0;text-transform:uppercase}
+  .psearch-back:hover{color:rgba(255,255,255,.7)}
+  /* Profile header — centered layout */
+  .psearch-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:22px 26px 24px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0;text-align:center}
+  .psearch-pname{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:1px;color:#fff;line-height:1.1}
+  .psearch-pnum{font-size:12px;color:rgba(255,255,255,.25);margin-top:3px;letter-spacing:2px;font-family:'Outfit',sans-serif}
+  /* Badge glow in profile */
+  .psearch-badge-glow{margin-top:4px}
+  .psearch-badge-glow .plr-badge{font-size:11px;padding:6px 16px;letter-spacing:3px;position:relative;overflow:hidden}
+  .psearch-badge-glow .plr-badge::after{content:'';position:absolute;top:0;left:-120%;width:60%;height:100%;background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.38) 50%,transparent 100%);transform:skewX(-20deg);animation:badgeShimmer 3s ease-in-out infinite}
+  @keyframes badgeShimmer{0%{left:-120%}45%,100%{left:160%}}
+  /* Stats — no boxes, just numbers with dividers */
+  .psearch-stats{display:grid;grid-template-columns:1fr 1fr 1fr;padding:22px 20px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+  .psearch-stat{text-align:center;padding:0 10px;position:relative}
+  .psearch-stat:not(:last-child)::after{content:"";position:absolute;right:0;top:10%;height:80%;width:1px;background:rgba(255,255,255,.08)}
+  .psearch-stat-val{font-family:'Anton',sans-serif;font-size:38px;color:#fff;letter-spacing:-1px;line-height:1}
+  .psearch-stat-lbl{font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.25);margin-top:8px;font-family:'Outfit',sans-serif;font-weight:600;text-transform:uppercase}
+  /* Posts grid */
+  .psearch-posts-title{font-family:'Outfit',sans-serif;font-weight:700;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.25);padding:16px 26px 10px;flex-shrink:0;text-transform:uppercase}
+  .psearch-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;overflow-y:auto;flex:1}
+  .psearch-grid-img{width:100%;aspect-ratio:1;object-fit:cover;transition:opacity .2s}
+  .psearch-grid-img:hover{opacity:.8}
+  .mom-tabs{display:flex;gap:0;margin-top:14px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .mom-tab{flex:1;padding:10px 0;background:transparent;border:none;border-bottom:2px solid transparent;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.35);cursor:pointer;transition:all .2s;position:relative;margin-bottom:-1px}
+  .mom-tab-on{color:#fff;border-bottom-color:#fff}
+  .mom-notif-badge{position:absolute;top:6px;right:calc(50% - 22px);background:#ef4444;color:#fff;font-size:8px;min-width:16px;height:16px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;font-family:'Anton',sans-serif;letter-spacing:0;animation:pulse 1.5s infinite}
+  /* Sheet */
+  .mom-sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:flex-end}
+  .mom-sheet{background:#111;border-radius:20px 20px 0 0;padding:16px 16px calc(32px + env(safe-area-inset-bottom,0px));width:100%;max-height:90vh;overflow-y:auto;animation:slideUp .3s cubic-bezier(.16,1,.3,1);box-sizing:border-box}
+  .mom-sheet-handle{width:36px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 16px}
+  .mom-sheet-title{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:3px;color:#fff;margin-bottom:4px}
+  .mom-sheet-hint{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-bottom:12px}
+  .mom-pick-area{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1.5px dashed rgba(255,255,255,.18);border-radius:12px;padding:32px 16px;margin-bottom:12px;cursor:pointer;transition:border-color .2s}
+  .mom-pick-area:hover{border-color:rgba(255,255,255,.4)}
+  .mom-preview-wrap{position:relative;margin-bottom:12px;border-radius:12px;overflow:hidden}
+  .mom-preview-img{width:100%;max-height:260px;object-fit:cover;display:block;border-radius:12px}
+  .mom-preview-change{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:20px;padding:4px 10px;font-size:11px;cursor:pointer}
+  .mom-caption-inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;padding:10px 14px;font-size:13px;border-radius:10px;outline:none;box-sizing:border-box;margin-bottom:0}
+  .mom-caption-inp::placeholder{color:rgba(255,255,255,.25)}
+  .mom-upload-btn{padding:13px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;cursor:pointer;border:none;border-radius:10px;text-align:center;transition:opacity .2s}
+  .mom-cancel-btn{padding:13px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;border-radius:10px}
+  /* ── Feed ── */
+  .mom-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center}
+  /* Refresh bar */
+  .mom-feed-bar{display:flex;align-items:center;justify-content:flex-end;padding:6px 14px 2px}
+  .mom-refresh-btn{display:flex;align-items:center;gap:5px;background:transparent;border:none;color:rgba(255,255,255,.22);font-family:'Anton',sans-serif;font-size:8px;letter-spacing:2px;cursor:pointer;padding:5px 8px;border-radius:6px;transition:color .2s}
+  .mom-refresh-btn:hover{color:rgba(255,255,255,.6)}
+  .mom-refresh-btn:hover svg{transform:rotate(180deg)}
+  .mom-refresh-btn svg{transition:transform .45s ease}
+  /* Feed — flat list */
+  .mom-feed{display:flex;flex-direction:column;padding:0 0 100px}
+  /* Card — flat, separated by thin line */
+  .mom-card{background:#000;border-bottom:1px solid rgba(255,255,255,.06);animation:fadeUp .4s ease both}
+  .mom-card:first-child{border-top:1px solid rgba(255,255,255,.06)}
+  .mom-card-pending{border-left:2px solid #f59e0b}
+  /* Author row */
+  .mom-card-author{display:flex;align-items:center;gap:11px;padding:14px 16px 10px}
+  .mom-card-av{cursor:pointer;border-radius:50%;transition:opacity .15s;flex-shrink:0}
+  .mom-card-av:hover{opacity:.75}
+  .mom-photo-author{display:flex;flex-direction:column;justify-content:center;flex:1;min-width:0}
+  .mom-author-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .mom-poster-name{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:.5px;color:#fff;line-height:1.2}
+  .mom-time{font-size:10px;color:rgba(255,255,255,.25);margin-top:3px;letter-spacing:.3px;font-family:'Outfit',sans-serif}
+  .mom-delete-btn{background:transparent;border:none;color:rgba(255,255,255,.18);font-size:15px;cursor:pointer;padding:6px;border-radius:8px;transition:color .15s;flex-shrink:0}
+  .mom-delete-btn:hover{color:#ef4444}
+  /* Photo */
+  .mom-photo-wrap{width:100%;aspect-ratio:4/3;max-height:320px;overflow:hidden;background:#111;position:relative;cursor:pointer}
+  .mom-photo-top{display:none}
+  .mom-img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .25s}
+  .mom-card:hover .mom-img{opacity:.92}
+  .mom-img-tap-hint{position:absolute;bottom:10px;right:12px;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.2);font-family:'Outfit',sans-serif;pointer-events:none;opacity:0;transition:opacity .3s}
+  .mom-card:hover .mom-img-tap-hint{opacity:1}
+  /* Caption & badge override */
+  .mom-caption{padding:10px 16px 6px;font-size:13px;color:rgba(255,255,255,.7);line-height:1.6;font-family:'Outfit',sans-serif}
+  .mom-card .plr-badge{font-size:7px;padding:3px 7px;letter-spacing:2px}
+  /* 3-dots menu */
+  .mom-3dots-wrap{position:relative;flex-shrink:0}
+  .mom-3dots{background:transparent;border:none;cursor:pointer;padding:8px 6px;display:flex;flex-direction:column;gap:3.5px;align-items:center;justify-content:center;border-radius:8px;transition:background .15s}
+  .mom-3dots:hover{background:rgba(255,255,255,.08)}
+  .mom-3dots span{display:block;width:3.5px;height:3.5px;background:rgba(255,255,255,.5);border-radius:50%}
+  .mom-card-menu{position:absolute;top:calc(100% + 4px);right:0;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;min-width:170px;z-index:100;animation:popIn .18s cubic-bezier(.16,1,.3,1);box-shadow:0 12px 40px rgba(0,0,0,.8)}
+  .mom-card-menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:13px 16px;background:transparent;border:none;color:rgba(255,255,255,.8);font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background .15s;border-bottom:1px solid rgba(255,255,255,.06)}
+  .mom-card-menu-item:last-child{border-bottom:none}
+  .mom-card-menu-item:hover{background:rgba(255,255,255,.07);color:#fff}
+  .mom-card-menu-delete{color:#ef4444!important}
+  .mom-card-menu-delete:hover{background:rgba(239,68,68,.1)!important}
+  /* Lightbox */
+  .mom-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:800;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease;cursor:zoom-out}
+  .mom-lightbox-img{max-width:95vw;max-height:92vh;object-fit:contain;border-radius:8px;box-shadow:0 0 80px rgba(0,0,0,.8)}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  /* Heart SVG */
+  .mom-heart-svg{transition:transform .2s,fill .2s,stroke .2s;flex-shrink:0}
+  .mom-heart-svg-on{animation:heartPop .35s cubic-bezier(.36,.07,.19,.97) both}
+  /* Caption */
+  .mom-caption{padding:10px 14px 6px;font-size:13px;color:rgba(255,255,255,.75);line-height:1.6;font-style:italic}
+  /* Smaller badge inside cards */
+  .mom-card .plr-badge{font-size:7px;padding:3px 7px;letter-spacing:2px}
+  /* Actions */
+  .mom-actions{display:flex;gap:2px;padding:8px 8px 6px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}
+  .mom-like-btn,.mom-comment-toggle{background:transparent;border:none;color:rgba(255,255,255,.55);cursor:pointer;padding:8px 10px;display:flex;align-items:center;gap:7px;transition:all .2s;border-radius:10px}
+  .mom-like-btn:hover .mom-heart-svg{transform:scale(1.15)}
+  .mom-comment-toggle:hover{color:#fff;background:rgba(255,255,255,.06)}
+  .mom-liked .mom-heart-svg{filter:drop-shadow(0 0 6px rgba(230,57,70,.6))}
+  .mom-heart{font-size:21px;display:inline-block;transition:transform .15s}
+  .mom-heart-on{animation:heartPop .35s cubic-bezier(.36,.07,.19,.97) both}
+  .mom-like-count{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,.6)}
+  /* Heart burst particles */
+  .mom-heart-burst{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;pointer-events:none;animation:heartFloat .9s ease-out forwards}
+  @keyframes heartFloat{0%{opacity:1;transform:translate(-50%,-50%) translate(0,0) scale(1)}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.3)}}
+  @keyframes heartPop{0%{transform:scale(1)}40%{transform:scale(1.5)}70%{transform:scale(.9)}100%{transform:scale(1)}}
+  /* Comments */
+  .mom-comments{padding:8px 14px 4px;border-top:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.2)}
+  .mom-comment{display:flex;align-items:flex-start;gap:9px;margin-bottom:10px}
+  .mom-comment-body{flex:1;background:rgba(255,255,255,.04);border-radius:12px;padding:8px 12px}
+  .mom-comment-name{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1px;color:#fff;margin-right:6px}
+  .mom-comment-text{font-size:12px;color:rgba(255,255,255,.65);line-height:1.45}
+  .mom-del-comment{background:transparent;border:none;color:rgba(255,255,255,.15);font-size:14px;cursor:pointer;padding:4px;align-self:center;flex-shrink:0;transition:color .15s}
+  .mom-del-comment:hover{color:#ef4444}
+  .mom-comment-input-row{display:flex;align-items:center;gap:8px;padding:4px 0 12px}
+  .mom-comment-inp{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:10px 16px;color:#fff;font-size:13px;outline:none;transition:border-color .2s}
+  .mom-comment-inp:focus{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.08)}
+  .mom-comment-inp::placeholder{color:rgba(255,255,255,.2)}
+  .mom-comment-send{width:34px;height:34px;border-radius:50%;background:#fff;color:#000;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;transition:transform .15s,opacity .15s}
+  .mom-comment-send:active{transform:scale(.88)}
+  /* Pending banner */
+  .mom-pending-banner{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(245,158,11,.08);font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:#f59e0b;border-bottom:1px solid rgba(245,158,11,.12)}
+  .mom-approve-btn{margin-left:auto;background:#22c55e;color:#000;border:none;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1px;padding:5px 12px;cursor:pointer;border-radius:6px;transition:opacity .15s}
+  .mom-approve-btn:hover{opacity:.85}
+  /* ── Notifications popup ── */
+  .mom-notifs{display:flex;flex-direction:column}
+  .mom-notif-row{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.05);animation:fadeUp .3s ease both;transition:background .2s}
+  .mom-notif-row:hover{background:rgba(255,255,255,.03)}
+  .mom-notif-new{background:rgba(255,255,255,.025)}
+  .mom-notif-icon{font-size:18px;flex-shrink:0;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.08)}
+  .mom-notif-body{flex:1;min-width:0}
+  .mom-notif-name{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:.5px;color:#fff}
+  .mom-notif-text{font-size:12px;color:rgba(255,255,255,.45);font-family:'Outfit',sans-serif}
+  .mom-notif-time{font-size:10px;color:rgba(255,255,255,.2);margin-top:3px;letter-spacing:.5px;font-family:'Outfit',sans-serif}
+  .mom-notif-thumb{width:52px;height:52px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid rgba(255,255,255,.08)}
+  /* ── Post popup ── */
+  .mom-pick-area{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1.5px dashed rgba(255,255,255,.12);border-radius:16px;padding:40px 16px;cursor:pointer;transition:all .2s;background:rgba(255,255,255,.02)}
+  .mom-pick-area:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.04)}
+  .mom-caption-inp{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#fff;padding:13px 16px;font-size:14px;border-radius:12px;outline:none;box-sizing:border-box;font-family:'Outfit',sans-serif;transition:all .2s}
+  .mom-caption-inp:focus{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.07)}
+  .mom-caption-inp::placeholder{color:rgba(255,255,255,.2)}
+  .mom-upload-btn{padding:14px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:3px;cursor:pointer;border:none;border-radius:12px;text-align:center;transition:opacity .2s,transform .15s}
+  .mom-upload-btn:hover{opacity:.9;transform:scale(1.01)}
+  .mom-cancel-btn{padding:14px;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;border-radius:12px;transition:all .2s}
+  .mom-cancel-btn:hover{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
+  .mom-preview-wrap{position:relative;margin-bottom:0;border-radius:14px;overflow:hidden}
+  .mom-preview-img{width:100%;object-fit:cover;display:block;border-radius:14px}
+  .mom-preview-change{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.75);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;backdrop-filter:blur(4px);transition:all .15s}
+  .mom-preview-change:hover{color:#fff;background:rgba(0,0,0,.9)}
+
+  /* ── Stories row ── */
+  .mom-stories-row{display:flex;gap:0;overflow-x:auto;padding:14px 12px 10px;border-bottom:1px solid rgba(255,255,255,.06);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .mom-stories-row::-webkit-scrollbar{display:none}
+  .mom-story-item{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;padding:0 8px;min-width:72px}
+  .mom-story-av{width:60px;height:60px;border-radius:50%;position:relative;padding:2px;background:linear-gradient(135deg,#f0c040,#ff6b35,#e63946);flex-shrink:0}
+  .mom-story-av-ring{background:linear-gradient(135deg,#f0c040,#e63946)}
+  .mom-story-av-me{background:linear-gradient(135deg,#22c55e,#16a34a)}
+  .mom-story-av-ring > div,.mom-story-av-me > div,.mom-story-add > div{border:2.5px solid #000;border-radius:50%}
+  .mom-story-add{background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(255,255,255,.05));border:2px dashed rgba(255,255,255,.2)}
+  .mom-story-plus{position:absolute;bottom:0;right:0;width:18px;height:18px;background:#fff;color:#000;border-radius:50%;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1;border:2px solid #000}
+  .mom-story-name{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.3px;text-align:center;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+
+  /* ── Feed card upgrade ── */
+  .mom-card{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;animation:fadeUp .4s ease both}
+  .mom-card-av-ring{padding:2px;background:linear-gradient(135deg,#f0c040,#e63946);border-radius:50%}
+  .mom-card-av-ring > div{border:2px solid #000;border-radius:50%}
+
+  /* ── Empty state CTA ── */
+  .mom-empty-cta{margin-top:24px;background:#fff;color:#000;border:none;font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;padding:14px 28px;cursor:pointer;border-radius:100px;transition:transform .15s,opacity .15s}
+  .mom-empty-cta:hover{opacity:.88;transform:scale(1.03)}
+
+  /* ── Match card share ── */
+  .mcard-share-row{padding:4px 14px 12px}
+  .mcard-share-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.5);font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;padding:8px 14px;border-radius:100px;cursor:pointer;transition:all .2s;width:100%;justify-content:center}
+  .mcard-share-btn:hover{border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.85);background:rgba(255,255,255,.03)}
+  .mcard-share-btn svg{flex-shrink:0;opacity:.7}
+  .mcard-share-panel{display:flex;flex-direction:column;gap:8px;animation:fadeUp .25s ease}
+  .mcard-share-preview{display:flex;flex-direction:column;gap:3px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px}
+  .mcard-share-preview-match{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1px;color:rgba(255,255,255,.75)}
+  .mcard-share-preview-score{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
+  .mcard-share-inp{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#fff;padding:10px 13px;font-size:13px;border-radius:10px;outline:none;font-family:'Outfit',sans-serif;transition:border-color .2s}
+  .mcard-share-inp:focus{border-color:rgba(255,255,255,.3)}
+  .mcard-share-inp::placeholder{color:rgba(255,255,255,.2)}
+  .mcard-share-cancel{flex:1;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;padding:11px 0;border-radius:10px;cursor:pointer;transition:all .2s}
+  .mcard-share-cancel:hover{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
+  .mcard-share-post{flex:2;background:#fff;color:#000;border:none;font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;padding:11px 0;border-radius:10px;cursor:pointer;transition:opacity .15s}
+  .mcard-share-post:disabled{opacity:.4;cursor:not-allowed}
+  .mcard-share-posted{display:flex;align-items:center;gap:6px;color:#22c55e;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;justify-content:center;padding:8px 0}
+
+  /* ── Prediction post card in feed ── */
+  .mom-pred-card{margin:0 14px 2px;border-radius:14px;background:linear-gradient(145deg,#0d0d0d,#111);border:1px solid rgba(255,255,255,.1);overflow:hidden}
+  .mom-pred-label{padding:10px 14px 0;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.35)}
+  .mom-pred-matchup{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:14px 14px 10px;gap:8px}
+  .mom-pred-team{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .mom-pred-team-r{align-items:center}
+  .mom-pred-flag{font-size:30px;line-height:1}
+  .mom-pred-tname{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1px;color:rgba(255,255,255,.7);text-align:center;line-height:1.2}
+  .mom-pred-scores{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:80px}
+  .mom-pred-final{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;background:rgba(255,255,255,.06);border-radius:10px;padding:6px 10px;position:relative}
+  .mom-pred-fnum{font-family:'Anton',sans-serif;font-size:26px;color:#fff;line-height:1}
+  .mom-pred-fcolon{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.5);line-height:1}
+  .mom-pred-final-lbl{width:100%;text-align:center;font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-top:2px}
+  .mom-pred-pick{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px 10px}
+  .mom-pred-pnum{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.65);line-height:1}
+  .mom-pred-pcolon{font-family:'Anton',sans-serif;font-size:15px;color:rgba(255,255,255,.3);line-height:1}
+  .mom-pred-pick-lbl{width:100%;text-align:center;font-family:'Anton',sans-serif;font-size:7px;letter-spacing:2px;color:rgba(255,255,255,.25);margin-top:2px}
+  .mom-pred-meta{text-align:center;font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.5px;padding:0 14px 10px}
+  .mom-pred-result{display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 14px;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;border-top:1px solid rgba(255,255,255,.06)}
+  .mom-pred-exact{color:#22c55e;background:rgba(34,197,94,.06)}
+  .mom-pred-winner{color:#f59e0b;background:rgba(245,158,11,.06)}
+  .mom-pred-wrong{color:rgba(255,255,255,.35);background:rgba(255,255,255,.02)}
+  .mom-pred-result-ico{font-size:14px}
+  .mom-pred-user-caption{padding:10px 14px;font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.5;border-top:1px solid rgba(255,255,255,.06)}
+
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 
   @keyframes screenShake{0%{transform:translate(0,0)}8%{transform:translate(-16px,-12px) rotate(-1.2deg)}16%{transform:translate(18px,14px) rotate(1.2deg)}24%{transform:translate(-16px,8px) rotate(-.8deg)}32%{transform:translate(14px,-14px) rotate(.8deg)}42%{transform:translate(-10px,10px) rotate(-.4deg)}52%{transform:translate(9px,-8px) rotate(.4deg)}63%{transform:translate(-6px,6px)}74%{transform:translate(4px,-4px)}86%{transform:translate(-2px,2px)}100%{transform:translate(0,0)}}
   @keyframes flashOut{0%{opacity:1}100%{opacity:0}}
@@ -5277,6 +9771,8 @@ const CSS = `
   .fp-history-btn-on{background:rgba(255,255,255,.1);border-color:#fff;color:#fff}
   @keyframes fpBlink{0%,100%{opacity:1}50%{opacity:.4}}
   .fp-blink{animation:fpBlink 1.2s ease-in-out infinite}
+  @keyframes cdGlow{0%,100%{opacity:1;text-shadow:0 0 8px currentColor}50%{opacity:.55;text-shadow:0 0 2px currentColor}}
+  .cd-urgent{animation:cdGlow 2s ease-in-out infinite}
 
   /* ── MENU & ORDER ── */
   .wallet-header{display:flex;align-items:center;justify-content:space-between;padding:20px 16px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.1)}
@@ -5288,6 +9784,11 @@ const CSS = `
   .wallet-topup-btn:hover{opacity:.85}
 
   /* Sticky category pill bar */
+  .menu-section-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px 0;background:#000}
+  .menu-sec-btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;cursor:pointer;transition:all .2s;border-radius:10px}
+  .menu-sec-btn-icon{font-size:18px;line-height:1}
+  .menu-sec-btn:hover{background:rgba(255,255,255,.09);color:#fff}
+  .menu-sec-btn-on{background:#fff !important;color:#000 !important;border-color:#fff !important}
   .menu-pills-bar{position:sticky;top:0;z-index:20;display:flex;gap:8px;padding:10px 16px;background:#000;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0}
   .menu-pills-bar::-webkit-scrollbar{display:none}
   .menu-cat-pill{display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.55);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1.5px;cursor:pointer;white-space:nowrap;transition:all .2s;flex-shrink:0}
@@ -5311,7 +9812,7 @@ const CSS = `
   .menu-item-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
   .menu-item-row:hover{background:rgba(255,255,255,.025)}
   .menu-item-info{flex:1;min-width:0}
-  .menu-item-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;margin-bottom:4px}
+  .menu-item-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;margin-bottom:4px;text-transform:capitalize}
   .menu-item-desc{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-bottom:5px;line-height:1.4}
   .menu-item-price{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.8);letter-spacing:1px}
   .menu-add-btn{padding:11px 20px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;transition:opacity .15s;flex-shrink:0}
@@ -5320,8 +9821,8 @@ const CSS = `
   .menu-qty-btn{width:40px;height:40px;background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;font-family:'Anton',sans-serif;display:flex;align-items:center;justify-content:center;transition:background .15s}
   .menu-qty-btn:hover{background:rgba(255,255,255,.1)}
   .menu-qty-val{font-family:'Anton',sans-serif;font-size:18px;color:#fff;min-width:32px;text-align:center}
-  .cart-fab{position:sticky;bottom:72px;margin:0 16px;padding:16px 20px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;text-align:center;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,.5);transition:opacity .15s}
-  .cart-fab:hover{opacity:.9}
+  .cart-fab{position:fixed;left:16px;right:16px;bottom:calc(72px + env(safe-area-inset-bottom, 0px));padding:15px 20px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;text-align:center;cursor:pointer;box-shadow:0 8px 32px rgba(0,0,0,.6);transition:opacity .15s,transform .15s;border-radius:12px;z-index:190}
+  .cart-fab:hover{opacity:.9;transform:translateY(-1px)}
 
   .cart-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);gap:12px}
   .cart-row-name{font-family:'Anton',sans-serif;font-size:16px;color:#fff;flex:1;letter-spacing:.5px}
@@ -5485,8 +9986,8 @@ const CSS = `
   .go-member-items{padding-left:4px}
   .go-menu-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
   .go-menu-row:hover{background:rgba(255,255,255,.025)}
-  .go-menu-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px}
-  .go-menu-desc{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-bottom:5px;line-height:1.4}
+  .go-menu-name{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:.5px;text-transform:capitalize}
+  .go-menu-desc{font-family:'Outfit',sans-serif;font-size:13px;color:rgba(255,255,255,.5);margin-bottom:5px;line-height:1.4;text-transform:lowercase}
   .go-menu-price{font-family:'Anton',sans-serif;font-size:18px;color:rgba(255,255,255,.8);letter-spacing:1px}
   .go-add-btn{padding:8px 14px;background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .15s;white-space:nowrap}
   .go-add-btn:hover{border-color:#fff;color:#fff}
@@ -5501,7 +10002,11 @@ const CSS = `
   .go-modal-title{font-family:'Anton',sans-serif;font-size:20px;color:#fff;letter-spacing:2px}
   .go-modal-close{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);width:34px;height:34px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
   .go-modal-close:hover{border-color:#fff;color:#fff}
-  .go-modal-cats{display:flex;gap:8px;padding:14px 16px 10px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+  .go-modal-section-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 16px 6px;flex-shrink:0}
+  .go-modal-sec-btn{display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:12px;letter-spacing:2px;cursor:pointer;transition:all .2s;border-radius:8px}
+  .go-modal-sec-btn:hover{background:rgba(255,255,255,.09);color:#fff}
+  .go-modal-sec-on{background:#fff !important;color:#000 !important;border-color:#fff !important}
+  .go-modal-cats{display:flex;gap:8px;padding:10px 16px 10px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
   .go-modal-cats::-webkit-scrollbar{display:none}
   .go-modal-cat-pill{padding:7px 16px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
   .go-modal-cat-pill:hover{border-color:rgba(255,255,255,.5);color:rgba(255,255,255,.8)}
@@ -5526,4 +10031,132 @@ const CSS = `
   .go-pay-total-row{display:flex;justify-content:space-between;font-family:'Anton',sans-serif;font-size:16px;color:#fff;padding-top:8px;margin-top:4px}
   .go-assign-btn{padding:8px 14px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;border-radius:2px}
   .go-assign-btn:hover{border-color:#fff;color:#fff}
+
+  /* ── KDS (Kitchen Display System) ── */
+  .kds-root{padding:0 0 80px;min-height:100vh;background:#000}
+  .kds-loading{display:flex;align-items:center;justify-content:center;height:60vh;color:rgba(255,255,255,.4);font-family:'Outfit',sans-serif;font-size:14px}
+  .kds-header{display:flex;align-items:center;justify-content:space-between;padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.97);position:sticky;top:0;z-index:10}
+  .kds-header-left{display:flex;align-items:center;gap:12px}
+  .kds-header-icon{font-size:26px;line-height:1}
+  .kds-header-title{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:2px;color:#fff;line-height:1}
+  .kds-header-sub{font-size:9px;color:rgba(255,255,255,.3);letter-spacing:1.5px;margin-top:4px;text-transform:uppercase;font-family:'Outfit',sans-serif}
+  .kds-header-counts{display:flex;gap:8px}
+  .kds-count-badge{display:flex;flex-direction:column;align-items:center;padding:8px 14px;gap:2px;border:1px solid;min-width:56px}
+  .kds-count-badge span:first-child{font-family:'Anton',sans-serif;font-size:22px;line-height:1}
+  .kds-count-badge span:last-child{font-size:8px;letter-spacing:1.5px;font-family:'Anton',sans-serif}
+  .kds-count-pending{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.4);color:#fbbf24}
+  .kds-count-ready{background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.4);color:#4ade80}
+  .kds-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 32px;text-align:center}
+  .kds-empty-icon{font-size:56px;color:rgba(255,255,255,.12);margin-bottom:20px;font-family:'Anton',sans-serif}
+  .kds-empty-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:10px}
+  .kds-empty-sub{font-size:13px;color:rgba(255,255,255,.18);line-height:1.6;max-width:270px;font-family:'Outfit',sans-serif}
+  .kds-section{padding:20px 14px 4px}
+  .kds-section-label{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;color:rgba(255,255,255,.3);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .kds-tickets{display:flex;flex-direction:column;gap:14px}
+  .kds-ticket{padding:20px;border:1px solid;position:relative;overflow:hidden;transition:box-shadow .3s}
+  .kds-ticket-pending{background:rgba(251,191,36,.05);border-color:rgba(251,191,36,.3)}
+  .kds-ticket-urgent{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.5);animation:kds-urgent-blink 1.4s ease-in-out infinite}
+  .kds-ticket-done{background:rgba(74,222,128,.04);border-color:rgba(74,222,128,.2)}
+  @keyframes kds-urgent-blink{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 3px rgba(239,68,68,.18),inset 0 0 20px rgba(239,68,68,.04)}}
+  .kds-ticket-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+  .kds-ticket-table{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:2px;color:#fff;line-height:1}
+  .kds-ticket-time{font-size:12px;color:rgba(255,255,255,.35);font-family:'Outfit',sans-serif;font-weight:600;margin-top:4px}
+  .kds-ticket-time-urgent{color:#f87171;animation:countdown-pulse 1s ease-in-out infinite}
+  .kds-ticket-done-badge{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.5px;color:#4ade80;background:rgba(74,222,128,.1);padding:5px 10px;border:1px solid rgba(74,222,128,.3);margin-top:2px}
+  .kds-ticket-name{font-size:11px;color:rgba(255,255,255,.35);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;font-family:'Outfit',sans-serif;font-weight:600}
+  .kds-ticket-items{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+  .kds-ticket-item{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .kds-ticket-item-done{opacity:.5}
+  .kds-ticket-qty{font-family:'Anton',sans-serif;font-size:15px;color:rgba(255,255,255,.4);min-width:28px;flex-shrink:0}
+  .kds-ticket-itemname{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.5px;color:#fff;flex:1}
+  .kds-ticket-note{font-size:11px;color:rgba(251,191,36,.7);font-family:'Outfit',sans-serif;font-style:italic;width:100%;padding-left:38px}
+  .kds-ready-btn{width:100%;padding:16px;background:#fbbf24;border:none;font-family:'Anton',sans-serif;font-size:14px;letter-spacing:2.5px;color:#000;cursor:pointer;transition:all .15s;margin-top:4px}
+  .kds-ready-btn:hover{background:#f59e0b;transform:translateY(-1px)}
+  .kds-ready-btn:active{transform:translateY(0)}
+  .kds-ready-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .kds-dismiss-btn{width:100%;padding:11px;background:transparent;border:1px solid rgba(255,255,255,.12);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.35);cursor:pointer;transition:all .15s;margin-top:4px}
+  .kds-dismiss-btn:hover{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
+  .kds-food-ready-text{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1.5px;color:#4ade80}
+  @keyframes fp-notif-slide{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}
+
+  /* ─── KDS v2 — Premium Kitchen Display ──────────────────────────────────── */
+  .kds2-root{min-height:100vh;background:#0a0a0a;padding-bottom:32px;font-family:'Outfit',sans-serif}
+  .kds2-loading{display:flex;align-items:center;justify-content:center;height:70vh;color:rgba(255,255,255,.3);font-size:15px;letter-spacing:2px;font-family:'Anton',sans-serif}
+
+  /* TOP BAR */
+  .kds2-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#000;border-bottom:2px solid rgba(255,255,255,.06);position:sticky;top:0;z-index:20}
+  .kds2-topbar-left{display:flex;flex-direction:column;gap:1px}
+  .kds2-brand{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:3px;color:#fff;line-height:1}
+  .kds2-brandbar{font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.3);text-transform:uppercase;font-family:'Outfit',sans-serif;font-weight:600}
+  .kds2-topbar-center{flex:1;display:flex;justify-content:center}
+  .kds2-clock{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:4px;color:rgba(255,255,255,.15)}
+  .kds2-topbar-right{display:flex;gap:8px;align-items:center}
+  .kds2-counter{display:flex;flex-direction:column;align-items:center;padding:6px 14px;gap:1px;border:1px solid;min-width:52px}
+  .kds2-counter span:first-child{font-family:'Anton',sans-serif;font-size:22px;line-height:1}
+  .kds2-counter span:last-child{font-size:7px;letter-spacing:2px;font-family:'Anton',sans-serif}
+  .kds2-counter-fire{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.35);color:#fbbf24}
+  .kds2-counter-done{background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80}
+
+  /* EMPTY STATE */
+  .kds2-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;text-align:center;gap:14px}
+  .kds2-empty-check{font-family:'Anton',sans-serif;font-size:72px;color:rgba(74,222,128,.2);line-height:1}
+  .kds2-empty-title{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:4px;color:rgba(255,255,255,.2)}
+  .kds2-empty-sub{font-size:13px;color:rgba(255,255,255,.15);letter-spacing:1px;max-width:260px;line-height:1.7}
+
+  /* TWO-LANE GRID */
+  .kds2-lanes{display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:calc(100vh - 80px)}
+  .kds2-lane{display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.06)}
+  .kds2-lane:last-child{border-right:none}
+
+  /* LANE HEADERS */
+  .kds2-lane-header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:65px;z-index:10;background:#0a0a0a}
+  .kds2-lane-header-fire{border-bottom-color:rgba(251,191,36,.2)}
+  .kds2-lane-header-done{border-bottom-color:rgba(74,222,128,.2)}
+  .kds2-lane-icon{font-size:18px;line-height:1}
+  .kds2-lane-title{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:3px;color:rgba(255,255,255,.7);flex:1}
+  .kds2-lane-count{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.3)}
+  .kds2-lane-header-fire .kds2-lane-count{color:#fbbf24}
+  .kds2-lane-header-done .kds2-lane-count{color:#4ade80}
+
+  /* TICKETS LIST */
+  .kds2-tickets{display:flex;flex-direction:column;gap:10px;padding:12px 10px}
+  .kds2-lane-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,.15);font-size:12px;letter-spacing:2px;text-transform:uppercase;font-family:'Anton',sans-serif}
+
+  /* TICKET CARD */
+  .kds2-ticket{background:#111;border:1px solid rgba(255,255,255,.08);padding:16px;position:relative;overflow:hidden;transition:box-shadow .3s,border-color .3s}
+  .kds2-ticket::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ticket-color,rgba(255,255,255,.1))}
+  .kds2-ticket-urgent{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.04);animation:kds2-pulse 1.6s ease-in-out infinite}
+  .kds2-ticket-ready{border-color:rgba(74,222,128,.25);background:rgba(74,222,128,.04)}
+  .kds2-ticket-ready::before{background:#4ade80}
+  @keyframes kds2-pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 3px rgba(239,68,68,.15),inset 0 0 20px rgba(239,68,68,.04)}}
+
+  /* TICKET HEAD (table + timer) */
+  .kds2-ticket-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px}
+  .kds2-ticket-table{font-family:'Anton',sans-serif;font-size:38px;letter-spacing:1px;color:#fff;line-height:1}
+  .kds2-ticket-timer{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.5px;padding:4px 9px;border:1px solid;line-height:1;align-self:flex-start;margin-top:6px}
+  .kds2-ticket-ready-badge{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.5px;color:#4ade80;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);padding:4px 9px;align-self:flex-start;margin-top:8px}
+
+  /* CUSTOMER */
+  .kds2-ticket-customer{font-size:10px;color:rgba(255,255,255,.3);letter-spacing:1.5px;text-transform:uppercase;font-weight:600;margin-bottom:14px}
+
+  /* DASHED SEPARATOR */
+  .kds2-ticket-sep{border:none;border-top:1px dashed rgba(255,255,255,.1);margin-bottom:14px}
+
+  /* ITEMS */
+  .kds2-ticket-items{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+  .kds2-ticket-item{display:flex;align-items:flex-start;gap:10px}
+  .kds2-item-done{opacity:.45}
+  .kds2-item-qty{font-family:'Anton',sans-serif;font-size:20px;color:rgba(255,255,255,.4);min-width:28px;flex-shrink:0;line-height:1.2}
+  .kds2-item-right{display:flex;flex-direction:column;gap:3px}
+  .kds2-item-name{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.5px;color:#fff;line-height:1.2}
+  .kds2-item-note{font-size:11px;color:rgba(251,191,36,.7);font-style:italic;line-height:1.4}
+
+  /* ACTION BUTTONS */
+  .kds2-btn-ready{width:100%;padding:14px;background:#fbbf24;border:none;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;color:#000;cursor:pointer;transition:background .15s,transform .1s}
+  .kds2-btn-ready:hover{background:#f59e0b;transform:translateY(-1px)}
+  .kds2-btn-ready:active{transform:translateY(0)}
+  .kds2-btn-ready:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .kds2-btn-dismiss{width:100%;padding:11px;background:transparent;border:1px solid rgba(74,222,128,.25);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;color:#4ade80;cursor:pointer;transition:all .15s}
+  .kds2-btn-dismiss:hover{background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.5)}
 `;
+
