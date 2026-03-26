@@ -8516,7 +8516,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
         const dDone = dItems(fresh).length === 0 || fresh.drink_status === "ready";
         const fDone = fItems(fresh).length === 0 || fresh.kitchen_status === "food_done";
         if (dDone && fDone) {
-          printReceipt({ ...fresh, table_number: selectedTable });
+          try { printReceipt({ ...fresh, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
           await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
         }
       }
@@ -8764,7 +8764,19 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                   ))}
                   {foodNames.length > 3 && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)"}}>+{foodNames.length-3} more</div>}
                   <button
-                    onClick={async()=>{ await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id); await onLoad(); }}
+                    onClick={async()=>{
+                      await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id);
+                      // Auto-complete: if no drinks (or drinks done) → mark completed + print
+                      const { data: fresh } = await supabase.from("orders").select("*").eq("id",ord.id).maybeSingle();
+                      if (fresh) {
+                        const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
+                        if (dDone) {
+                          try { printReceipt({ ...fresh, table_number: fresh.table_number }); } catch(e) { console.error("printReceipt error", e); }
+                          await supabase.from("orders").update({ status: "completed" }).eq("id",ord.id);
+                        }
+                      }
+                      await onLoad();
+                    }}
                     style={{marginTop:8,width:"100%",padding:"7px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#000",cursor:"pointer"}}>
                     ✓ DELIVERED
                   </button>
