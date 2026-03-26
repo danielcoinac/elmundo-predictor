@@ -8649,6 +8649,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                         🖨 PRINT
                       </button>
                     </div>
+                    {/* Manual close — shown when everything is served but order wasn't auto-completed */}
+                    {(() => {
+                      const dDone = dItems(ord).length === 0 || ds === "ready";
+                      const fDone = fItems(ord).length === 0 || ks === "food_done";
+                      return (dDone && fDone) ? (
+                        <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{status:"completed"})}
+                          style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#fff",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1}}>
+                          {isBusy ? "…" : "✓ CLOSE ORDER"}
+                        </button>
+                      ) : null;
+                    })()}
 
                   </div>
                 </div>
@@ -8738,35 +8749,43 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
 
       {/* ── FOOD READY — persistent right-side notification panel ─────────── */}
       {foodReadyOrders.length > 0 && (
-        <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",zIndex:500,display:"flex",flexDirection:"column",gap:8,padding:"12px 0 12px 0",pointerEvents:"none"}}>
-          {foodReadyOrders.map(ord => {
+        <div style={{position:"fixed",top:80,right:0,zIndex:500,display:"flex",flexDirection:"column",gap:10,padding:"0",pointerEvents:"none",maxHeight:"calc(100vh - 100px)",overflowY:"auto"}}>
+          {foodReadyOrders.map((ord,idx) => {
             const foodNames = (ord.items||[]).filter(i=>FOOD_CATS.has(i.category)).map(i=>`${i.qty}× ${i.name}`);
             return (
               <div key={ord.id} style={{
                 pointerEvents:"all",
                 display:"flex",alignItems:"stretch",
-                background:"#000",border:"2px solid #4ade80",
+                background:"#0a0a0a",
+                border:"1px solid #4ade80",
                 borderRight:"none",
-                boxShadow:"-4px 0 24px rgba(74,222,128,.25)",
-                animation:"fp-notif-slide 0.4s cubic-bezier(.16,1,.3,1) both",
-                maxWidth:220,
+                boxShadow:"-6px 0 32px rgba(74,222,128,.3), inset 0 0 0 1px rgba(74,222,128,.08)",
+                animation:`fp-notif-slide 0.45s cubic-bezier(.16,1,.3,1) ${idx*0.08}s both`,
+                width:280,
               }}>
-                {/* Green left stripe */}
-                <div style={{width:4,background:"#4ade80",flexShrink:0,animation:"kds-urgent-blink 1.2s ease-in-out infinite"}}/>
-                <div style={{padding:"10px 12px",flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                    <span style={{fontSize:14}}>🔔</span>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#4ade80"}}>TABLE {ord.table_number}</span>
+                {/* Pulsing green accent bar */}
+                <div style={{width:5,background:"#4ade80",flexShrink:0,animation:"kds-urgent-blink 1.4s ease-in-out infinite"}}/>
+                <div style={{padding:"14px 16px",flex:1,minWidth:0}}>
+                  {/* Header */}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",animation:"kds-urgent-blink 1.4s ease-in-out infinite"}}/>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:2.5,color:"#fff"}}>TABLE {ord.table_number}</span>
+                    </div>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",background:"rgba(74,222,128,.12)",border:"1px solid rgba(74,222,128,.3)",padding:"3px 8px"}}>FOOD READY</span>
                   </div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.5)",marginBottom:2,fontWeight:600}}>{ord.user_name}</div>
-                  {foodNames.slice(0,3).map((n,i)=>(
-                    <div key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.7)",fontWeight:700,lineHeight:1.4}}>{n}</div>
-                  ))}
-                  {foodNames.length > 3 && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)"}}>+{foodNames.length-3} more</div>}
+                  {/* Customer */}
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",fontWeight:600,marginBottom:8,letterSpacing:.5}}>{ord.user_name}</div>
+                  {/* Items */}
+                  <div style={{borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:8,marginBottom:12}}>
+                    {foodNames.map((n,i)=>(
+                      <div key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.85)",fontWeight:700,lineHeight:1.6}}>{n}</div>
+                    ))}
+                  </div>
+                  {/* Deliver button */}
                   <button
                     onClick={async()=>{
                       await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id);
-                      // Auto-complete: if no drinks (or drinks done) → mark completed + print
                       const { data: fresh } = await supabase.from("orders").select("*").eq("id",ord.id).maybeSingle();
                       if (fresh) {
                         const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
@@ -8777,7 +8796,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder }) {
                       }
                       await onLoad();
                     }}
-                    style={{marginTop:8,width:"100%",padding:"7px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#000",cursor:"pointer"}}>
+                    style={{width:"100%",padding:"11px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#000",cursor:"pointer",transition:"opacity .15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.opacity=".8"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
                     ✓ DELIVERED
                   </button>
                 </div>
@@ -10096,7 +10116,7 @@ const CSS = `
   .kds-dismiss-btn{width:100%;padding:11px;background:transparent;border:1px solid rgba(255,255,255,.12);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.35);cursor:pointer;transition:all .15s;margin-top:4px}
   .kds-dismiss-btn:hover{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
   .kds-food-ready-text{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1.5px;color:#4ade80}
-  @keyframes fp-notif-slide{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}
+  @keyframes fp-notif-slide{from{opacity:0;transform:translateX(110%)}to{opacity:1;transform:translateX(0)}}
 
   /* ─── KDS v2 — Premium Kitchen Display ──────────────────────────────────── */
   .kds2-root{min-height:100vh;background:#0a0a0a;padding-bottom:32px;font-family:'Outfit',sans-serif}
