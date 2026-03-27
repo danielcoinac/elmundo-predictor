@@ -2102,7 +2102,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches"     && <MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} />}
-          {appTab === "moments"     && <MomentsView user={user} isAdmin={isAdmin} users={users} />}
+          {appTab === "moments"     && <MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} />}
           {appTab === "leaderboard" && <LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} />}
           {appTab === "menu" && <MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
@@ -2634,7 +2634,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
 }
 
 /* ═══ MOMENTS ═══════════════════════════════════════════════════════════════ */
-function MomentsView({ user, isAdmin, users = {} }) {
+function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0 }) {
   const [feedTab,  setFeedTab]  = useState("feed"); // "feed" | "notifs"
   const [showSearch, setShowSearch] = useState(false);
   const [searchFromFeed, setSearchFromFeed] = useState(false); // opened via card author click
@@ -6826,6 +6826,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   }, [tab, activeSection, allActiveCats.length]);
 
   const openOrderModal = (payMethod) => {
+    if (!table.trim()) {
+      setTableErr("Please select your table");
+      onToast?.("⚠ Please scan a table QR code first", false);
+      tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" });
+      return;
+    }
     setPendingPayMethod(payMethod);
     setShowOrderTypeModal(true);
   };
@@ -6837,8 +6843,9 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
     else handleStripeOrder();
   };
 
+  const tableRef = useRef(null);
   const handleOrder = async () => {
-    if (!table.trim()) { setTableErr("Please select your table"); return; }
+    if (!table.trim()) { setTableErr("Please select your table"); onToast?.("⚠ Please select your table first"); tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
     const tableNum = parseInt(table.trim());
     if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
       setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
@@ -6862,7 +6869,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
   };
 
   const handleStripeOrder = async () => {
-    if (!table.trim()) { setTableErr("Please select your table"); return; }
+    if (!table.trim()) { setTableErr("Please select your table"); onToast?.("⚠ Please select your table first"); tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
     const tableNum = parseInt(table.trim());
     if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
       setTableErr(`Table ${table} doesn't exist. Valid tables: 1–26`); return;
@@ -7087,7 +7094,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder,
               </div>
               <div style={{padding:"0 16px"}}>
                 {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
-                <div className="afield" style={{marginBottom:14}}>
+                <div className="afield" ref={tableRef} style={{marginBottom:14}}>
                   <label className="afield-lbl">{t('selectTable')}</label>
                   {table ? (
                     <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",
