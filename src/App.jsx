@@ -303,7 +303,7 @@ export default function App() {
           const { data: menuRows } = await supabase.from("menu_items").select("*").order("sort_order");
           if (menuRows) setMenuItems(menuRows);
           const { data: credRow } = await supabase.from("user_credits").select("balance").eq("user_id", session.user.id).maybeSingle();
-          if (credRow) setMyCredits(credRow.balance || 0);
+          if (credRow) setMyCredits(+(credRow.balance) || 0);
           const { data: sgRows } = await supabase.from("sponsor_gifts").select("*").order("tier");
           if (sgRows) setSponsorGifts(sgRows);
           const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
@@ -504,6 +504,7 @@ export default function App() {
       supabase.removeChannel(predSub);
       supabase.removeChannel(creditSub);
       supabase.removeChannel(orderSub);
+      supabase.removeChannel(creditNotifSub);
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
       clearInterval(fallback);
     };
@@ -2868,7 +2869,14 @@ function MomentsView({ user, isAdmin, users = {} }) {
                   {getPlayerBadge(searchSel) && <div className="psearch-badge-glow"><PlayerBadge u={searchSel}/></div>}
                 </div>
                 <div className="psearch-stats">
-                  {[{l:"POINTS",v:searchSel.pts??0},{l:"CORRECT",v:searchSel.correct??0},{l:"ACCURACY",v:searchSel.accuracy!=null?`${searchSel.accuracy}%`:"—"}].map(s=>(
+                  {(() => {
+                    const fin = matches.filter(m => m.status === "finished");
+                    const selPts = pts(searchSel.id);
+                    const sub = fin.filter(m => !!preds[`${searchSel.id}__${m.id}`]).length;
+                    const corr = fin.filter(m => { const p = preds[`${searchSel.id}__${m.id}`]; return p && calcPts(p, m.hs, m.as) === 5; }).length;
+                    const acc = sub > 0 ? Math.round(corr / sub * 100) : null;
+                    return [{l:"POINTS",v:selPts},{l:"CORRECT",v:sub>0?`${corr}/${sub}`:"—"},{l:"ACCURACY",v:acc!=null?`${acc}%`:"—"}];
+                  })().map(s=>(
                     <div key={s.l} className="psearch-stat">
                       <div className="psearch-stat-val">{s.v}</div>
                       <div className="psearch-stat-lbl">{s.l}</div>
@@ -9988,6 +9996,9 @@ const CSS = `
   @keyframes fpBlink{0%,100%{opacity:1}50%{opacity:.4}}
   .fp-blink{animation:fpBlink 1.2s ease-in-out infinite}
   @keyframes cdGlow{0%,100%{opacity:1;text-shadow:0 0 8px currentColor}50%{opacity:.55;text-shadow:0 0 2px currentColor}}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.15)}}
+  @keyframes countdown-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes showcaseBtnShine{0%{background-position:200% 0}50%{background-position:0% 0}100%{background-position:-200% 0}}
   .cd-urgent{animation:cdGlow 2s ease-in-out infinite}
 
   /* ── MENU & ORDER ── */
