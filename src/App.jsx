@@ -301,6 +301,7 @@ export default function App() {
           if (payload.new && payload.new.payment_method !== "card_pending") {
             // Ignore ghost orders from Stripe sessions not yet completed
             playOrderAlert();
+            try { navigator.vibrate?.([200, 100, 200]); } catch(e) {}
             setNewOrderAlert(true);
             toast$(`🔔 New order — Table ${payload.new.table_number}`, true);
             setAllOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
@@ -711,6 +712,8 @@ export default function App() {
     const { error: upsertErr } = await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
     if (upsertErr) { toast$("Error adding credits: " + upsertErr.message, false); return; }
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
+    // Audit log for accountability
+    await supabase.from("credit_transactions").insert({ admin_id: user.id, target_user_id: userId, amount, new_balance: newBal }).catch(() => {});
     // Update users state so Credits tab reflects new balance immediately
     setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);

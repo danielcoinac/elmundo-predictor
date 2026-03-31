@@ -689,6 +689,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       ? Math.floor((now - Math.min(...pendingOrds.map(o => new Date(o.created_at).getTime()))) / 60000)
       : null;
     const firstInitial = orders.length > 0 ? (orders[0].user_name || "?").charAt(0).toUpperCase() : null;
+    const hasSponsor = orders.some(o => o.payment_method === "sponsor_gift");
+    const payIcon = hasSponsor ? "★" : null;
     const isSel = editSel === tbl.id;
     const isDraggingThis = dragging?.id === tbl.id;
 
@@ -742,6 +744,11 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {/* Customer initial */}
         {!editMode && firstInitial && s!=="empty" && (
           <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{firstInitial}</div>
+        )}
+
+        {/* Payment type icon — sponsor gift star */}
+        {!editMode && payIcon && (
+          <div style={{position:"absolute",bottom:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"rgba(251,191,36,.25)",border:"1px solid rgba(251,191,36,.6)",fontSize:9,color:"#fbbf24",display:"flex",alignItems:"center",justifyContent:"center"}}>{payIcon}</div>
         )}
 
         {/* EDIT: shape toggle (top-left) */}
@@ -1019,6 +1026,36 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         </div>
         {/* Table detail panel */}
         {selectedTable && !editMode && <TableDetail />}
+
+        {/* ── PENDING ITEMS SUMMARY ── */}
+        {!editMode && (() => {
+          const pendingItems = {};
+          activeOrders.filter(o => o.status === "pending").forEach(o => {
+            (o.items || []).forEach(it => {
+              const key = it.name;
+              if (!pendingItems[key]) pendingItems[key] = { name: it.name, qty: 0 };
+              pendingItems[key].qty += it.qty;
+            });
+          });
+          const sorted = Object.values(pendingItems).sort((a, b) => b.qty - a.qty);
+          if (sorted.length === 0) return null;
+          return (
+            <div style={{margin:"0 14px 16px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",padding:"14px 16px"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.4)",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span>PENDING ITEMS</span>
+                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:"rgba(255,255,255,.25)",letterSpacing:0}}>{sorted.reduce((s,i)=>s+i.qty,0)} total</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {sorted.map(it => (
+                  <div key={it.name} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.08)",padding:"6px 10px"}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#fbbf24",lineHeight:1}}>{it.qty}</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.6)",fontWeight:600}}>{it.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </>)}
 
       {/* ── HISTORY VIEW ────────────────────────────────────────────────────── */}
