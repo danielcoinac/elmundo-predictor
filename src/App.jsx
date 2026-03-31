@@ -2847,38 +2847,17 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
         <>
-          {/* Stories row — players who have posts */}
-          {(() => {
-            const storyUsers = [];
-            const seen = new Set();
-            moments.filter(m=>(m.approved||isAdmin)&&m.image_url&&m.image_url!=="").forEach(m => {
-              if (!seen.has(m.posted_by)) {
-                seen.add(m.posted_by);
-                storyUsers.push(users[m.posted_by] || { id: m.posted_by, name: m.poster_name, avatar_url: m.poster_avatar });
-              }
-            });
-            if (storyUsers.length === 0) return null;
-            return (
-              <div className="mom-stories-row">
-                {/* My story / post button */}
-                <div className="mom-story-item" onClick={()=>setShowPost(true)}>
-                  <div className="mom-story-av mom-story-add">
-                    <Av u={user} size={52} fontSize={20}/>
-                    <div className="mom-story-plus">+</div>
-                  </div>
-                  <div className="mom-story-name">Your Story</div>
-                </div>
-                {storyUsers.map(u => (
-                  <div key={u.id} className="mom-story-item" onClick={()=>{setSearchSel(u);setShowSearch(true);setSearchFromFeed(true);}}>
-                    <div className={`mom-story-av ${u.id===user.id?"mom-story-av-me":"mom-story-av-ring"}`}>
-                      <Av u={u} size={52} fontSize={20}/>
-                    </div>
-                    <div className="mom-story-name">{(u.name||"").split(" ")[0]}</div>
-                  </div>
-                ))}
+          {/* Animated World Cup banner */}
+          <div className="mom-banner">
+            <div className="mom-banner-bg"/>
+            <div className="mom-banner-content">
+              <div className="mom-banner-flag-row">
+                <span>🇲🇽</span><span>🇺🇸</span><span>🇨🇦</span><span>🇧🇷</span><span>🇦🇷</span><span>🇫🇷</span><span>🇩🇪</span><span>🇪🇸</span><span>🏴󠁧󠁢󠁥󠁮󠁧󠁿</span><span>🇳🇱</span><span>🇵🇹</span><span>🇯🇵</span>
               </div>
-            );
-          })()}
+              <div className="mom-banner-title">WORLD CUP 2026</div>
+              <div className="mom-banner-sub">Share your best moments from El Mundo</div>
+            </div>
+          </div>
 
           {moments.filter(m=>isAdmin||m.approved).length === 0 ? (
             <div className="mom-empty">

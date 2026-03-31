@@ -809,17 +809,28 @@
   .mom-preview-change{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.75);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;backdrop-filter:blur(4px);transition:all .15s}
   .mom-preview-change:hover{color:#fff;background:rgba(0,0,0,.9)}
 
-  /* ── Stories row ── */
-  .mom-stories-row{display:flex;gap:0;overflow-x:auto;padding:14px 12px 10px;border-bottom:1px solid rgba(255,255,255,.06);scrollbar-width:none;-webkit-overflow-scrolling:touch}
-  .mom-stories-row::-webkit-scrollbar{display:none}
-  .mom-story-item{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;padding:0 8px;min-width:72px}
-  .mom-story-av{width:60px;height:60px;border-radius:50%;position:relative;padding:2px;background:linear-gradient(135deg,#f0c040,#ff6b35,#e63946);flex-shrink:0}
-  .mom-story-av-ring{background:linear-gradient(135deg,#f0c040,#e63946)}
-  .mom-story-av-me{background:linear-gradient(135deg,#22c55e,#16a34a)}
-  .mom-story-av-ring > div,.mom-story-av-me > div,.mom-story-add > div{border:2.5px solid #000;border-radius:50%}
-  .mom-story-add{background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(255,255,255,.05));border:2px dashed rgba(255,255,255,.2)}
-  .mom-story-plus{position:absolute;bottom:0;right:0;width:18px;height:18px;background:#fff;color:#000;border-radius:50%;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1;border:2px solid #000}
-  .mom-story-name{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.3px;text-align:center;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+  /* ── Mundogram animated banner ── */
+  .mom-banner{position:relative;overflow:hidden;margin:0 12px 6px;border-radius:16px;border:1px solid rgba(255,255,255,.08)}
+  .mom-banner-bg{position:absolute;inset:0;background:linear-gradient(135deg,#0a0a0a 0%,#1a0a20 40%,#0a1520 70%,#0a0a0a 100%);animation:mom-banner-shift 8s ease-in-out infinite alternate}
+  .mom-banner-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(240,192,64,.08) 0%,transparent 60%),radial-gradient(circle at 70% 50%,rgba(230,57,70,.06) 0%,transparent 60%)}
+  .mom-banner-content{position:relative;z-index:1;padding:18px 16px 14px;text-align:center}
+  .mom-banner-flag-row{display:flex;justify-content:center;gap:6px;font-size:15px;margin-bottom:10px;overflow:hidden}
+  .mom-banner-flag-row span{animation:mom-flag-float 3s ease-in-out infinite;display:inline-block}
+  .mom-banner-flag-row span:nth-child(2){animation-delay:.15s}
+  .mom-banner-flag-row span:nth-child(3){animation-delay:.3s}
+  .mom-banner-flag-row span:nth-child(4){animation-delay:.45s}
+  .mom-banner-flag-row span:nth-child(5){animation-delay:.6s}
+  .mom-banner-flag-row span:nth-child(6){animation-delay:.75s}
+  .mom-banner-flag-row span:nth-child(7){animation-delay:.9s}
+  .mom-banner-flag-row span:nth-child(8){animation-delay:1.05s}
+  .mom-banner-flag-row span:nth-child(9){animation-delay:1.2s}
+  .mom-banner-flag-row span:nth-child(10){animation-delay:1.35s}
+  .mom-banner-flag-row span:nth-child(11){animation-delay:1.5s}
+  .mom-banner-flag-row span:nth-child(12){animation-delay:1.65s}
+  .mom-banner-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:6px;color:#fff;text-shadow:0 0 30px rgba(240,192,64,.15)}
+  .mom-banner-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;letter-spacing:1px;font-weight:500}
+  @keyframes mom-banner-shift{0%{background-position:0% 50%}100%{background-position:100% 50%}}
+  @keyframes mom-flag-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 
   /* ── Feed card upgrade ── */
   .mom-card{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;animation:fadeUp .4s ease both}
