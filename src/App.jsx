@@ -513,8 +513,6 @@ export default function App() {
     if (credRow) setMyCredits(+credRow.balance);
     if (orderRows) setMyOrders(orderRows);
     setPage("app");
-    const seen = localStorage.getItem(ONBOARDING_KEY);
-    if (!seen) setShowOnboarding(true);
     toast$(`Welcome back, ${profile.name}! ⚽`);
   };
 
