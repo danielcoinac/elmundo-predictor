@@ -6,7 +6,7 @@ import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
 import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, FOOD_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { printReceipt, KitchenView, FloorPlan } from "./components/StaffViews";
+import { printReceipt, FloorPlan } from "./components/StaffViews";
 import "./styles.css";
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -417,45 +417,6 @@ export default function App() {
     } catch(e) {}
   };
 
-  const playKitchenAlert = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [[1047, 0], [1047, 0.22], [1047, 0.44]].forEach(([freq, delay]) => {
-        const osc = ctx.createOscillator(); const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = freq; osc.type = "sine";
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + delay + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.8);
-        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.85);
-      });
-    } catch(e) {}
-  };
-
-  const playFoodReadyBell = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [[523.25, 0, 0.35], [1046.5, 0, 0.18], [1568.75, 0, 0.1]].forEach(([freq, delay, vol]) => {
-        const osc = ctx.createOscillator(); const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = freq; osc.type = "sine";
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + delay + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 2.5);
-        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 2.6);
-      });
-      [[523.25, 0.9, 0.35], [1046.5, 0.9, 0.18]].forEach(([freq, delay, vol]) => {
-        const osc = ctx.createOscillator(); const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = freq; osc.type = "sine";
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + delay + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 2.5);
-        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 2.6);
-      });
-    } catch(e) {}
-  };
-
   const toast$ = (msg, ok = true) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, ok });
@@ -720,12 +681,6 @@ export default function App() {
     toast$(tier ? `VIP access granted ✓ — sponsor will see the PERKS tab instantly` : "VIP access removed ✓");
   };
 
-  const adminSetKitchenAccess = async (userId, grant) => {
-    const { error } = await supabase.from("profiles").update({ kitchen_access: grant }).eq("id", userId);
-    if (error) { toast$("DB error — run migration first: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS kitchen_access BOOLEAN DEFAULT FALSE", false); return; }
-    setUsers(u => ({ ...u, [userId]: { ...u[userId], kitchen_access: grant } }));
-    toast$(grant ? "Kitchen access granted ✓" : "Kitchen access removed ✓");
-  };
 
   const adminSetFloorplanAccess = async (userId, grant) => {
     const { error } = await supabase.from("profiles").update({ floorplan_access: grant }).eq("id", userId);
@@ -1179,7 +1134,6 @@ export default function App() {
           adminSetSponsorTier={adminSetSponsorTier}
           adminSaveSponsorGifts={adminSaveSponsorGifts}
           adminBanUsers={adminBanUsers}
-          adminSetKitchenAccess={adminSetKitchenAccess}
           adminSetFloorplanAccess={adminSetFloorplanAccess}
           appSettings={appSettings}
           onSaveAppSettings={saveAppSettings}
@@ -1888,7 +1842,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 payGroupShareCredits, hostPayAllCredits,
                 calcMyGroupShare,
                 resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast,
-                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetKitchenAccess = () => {}, adminSetFloorplanAccess = () => {},
+                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetFloorplanAccess = () => {},
                 appSettings = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }, onSaveAppSettings = () => {},
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
@@ -1907,7 +1861,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     ...(appSettings.showMenu !== false ? [{ id:"menu", label:t('menu'), ico:<MenuIco /> }] : []),
     { id:"profile", label:t('profile'), ico:<PersonIco /> },
     ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
-    ...(user?.kitchen_access ? [{ id:"kitchen", label:"KITCHEN", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6z"/><line x1="6" y1="17" x2="18" y2="17"/></svg> }] : []),
     ...(user?.floorplan_access ? [{ id:"floorplan", label:"FLOOR", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
@@ -1969,7 +1922,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
           {appTab === "vip" && user?.sponsor_tier && (
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
-          {appTab === "kitchen" && user?.kitchen_access && <ErrorBoundary name="kitchen"><KitchenView user={user} onToast={onToast} /></ErrorBoundary>}
           {appTab === "floorplan" && user?.floorplan_access && (
             <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
           )}
@@ -1988,7 +1940,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSetSponsorTier={adminSetSponsorTier}
               onSaveSponsorGifts={adminSaveSponsorGifts}
               onBanUsers={adminBanUsers}
-              onSetKitchenAccess={adminSetKitchenAccess}
               onSetFloorplanAccess={adminSetFloorplanAccess}
               appSettings={appSettings}
               onSaveAppSettings={onSaveAppSettings}
@@ -4167,7 +4118,7 @@ function AdminDashboard({ allOrders, users, board }) {
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetKitchenAccess, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{} }) {
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{} }) {
   const [section, setSection] = useState("dashboard");
 
   const GROUPS = [
@@ -4188,7 +4139,6 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
         { id:"tables",      label:"Tables"      },
         { id:"tableqr",     label:"Table QR"    },
         { id:"credits",     label:"Credits"     },
-        { id:"kitchen",     label:"Kitchen"     },
         { id:"fpAccess",    label:"Floor Plan"  },
         { id:"appSettings", label:"App Settings"},
       ]
@@ -4281,7 +4231,6 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "tableqr"    && <AdminTableQR />}
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
-      {section === "kitchen"    && <AdminKitchenAccess users={users} onSetAccess={onSetKitchenAccess} />}
       {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
       {section === "appSettings" && <AdminAppSettings appSettings={appSettings} onSave={onSaveAppSettings} />}
     </div>
@@ -4381,80 +4330,6 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
               </div>
             </div>
           ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Admin: Kitchen Access Management ── */
-function AdminKitchenAccess({ users, onSetAccess }) {
-  const [search, setSearch] = useState("");
-  const userList = Object.values(users).filter(u => !u.is_admin);
-  const filtered = search.trim()
-    ? userList.filter(u => (u.name||"").toLowerCase().includes(search.toLowerCase()))
-    : userList;
-
-  return (
-    <div className="vpad">
-      <div className="section-banner">
-        <div className="sb-label">KITCHEN ACCESS</div>
-        <div className="sb-sub">Grant staff access to the Kitchen Display System</div>
-      </div>
-      <div style={{padding:"0 14px 12px"}}>
-        <input
-          className="afield-inp"
-          placeholder="Search by name…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{width:"100%",marginBottom:12}}
-        />
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map(u => (
-            <div key={u.id} style={{
-              display:"flex",alignItems:"center",gap:12,
-              padding:"12px 14px",
-              background:"rgba(255,255,255,.03)",
-              border:`1px solid ${u.kitchen_access ? "rgba(74,222,128,.2)" : "rgba(255,255,255,.07)"}`,
-            }}>
-              {u.avatar_url ? (
-                <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
-              ) : (
-                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>
-                  {(u.name||"?")[0].toUpperCase()}
-                </div>
-              )}
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                {u.kitchen_access && (
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",padding:"3px 8px",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.3)"}}>
-                    KITCHEN ✓
-                  </span>
-                )}
-                <button
-                  onClick={() => onSetAccess(u.id, !u.kitchen_access)}
-                  style={{
-                    fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,
-                    padding:"7px 14px",border:"1px solid",cursor:"pointer",
-                    background: u.kitchen_access ? "rgba(239,68,68,.1)" : "rgba(74,222,128,.1)",
-                    borderColor: u.kitchen_access ? "rgba(239,68,68,.4)" : "rgba(74,222,128,.4)",
-                    color: u.kitchen_access ? "#f87171" : "#4ade80",
-                    whiteSpace:"nowrap",
-                  }}
-                >
-                  {u.kitchen_access ? "REVOKE" : "GRANT"}
-                </button>
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,.25)",fontSize:13,fontFamily:"'Outfit',sans-serif"}}>
-              No players found
-            </div>
-          )}
         </div>
       </div>
     </div>

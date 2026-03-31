@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import { FOOD_CATS } from "../lib/utils";
+/* FOOD_CATS no longer needed — kitchen system removed */
 
 function printReceipt(ord) {
   const date = new Date(ord.created_at);
@@ -517,242 +517,6 @@ const FP_DEFAULT = [
   { id:26, x:318, y:520, w:64, h:64, shape:"round" },
 ];
 
-/* ═══ KITCHEN DISPLAY SYSTEM ════════════════════════════════════════════════ */
-function KitchenView({ user, onToast = ()=>{} }) {
-  const [orders,    setOrders]    = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [markingId, setMarkingId] = useState(null);
-  const [now,       setNow]       = useState(Date.now());
-  const prevIdsRef = useRef(new Set());
-
-  const fetchOrders = async () => {
-    const { data } = await supabase.from("orders")
-      .select("*")
-      .in("kitchen_status", ["food_pending", "food_ready"])
-      .neq("status", "completed")
-      .neq("status", "cancelled")
-      .order("created_at", { ascending: true });
-    if (data) setOrders(data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    const ch = supabase.channel("kds-" + user.id)
-      .on("postgres_changes", { event:"*", schema:"public", table:"orders" }, fetchOrders)
-      .subscribe();
-    const tick = setInterval(() => setNow(Date.now()), 60000); // live timers update every minute
-    return () => { supabase.removeChannel(ch); clearInterval(tick); };
-  }, []);
-
-  // Play alert sound when new tickets arrive
-  useEffect(() => {
-    const pending = orders.filter(o => o.kitchen_status === "food_pending");
-    const newOnes = pending.filter(o => !prevIdsRef.current.has(o.id));
-    if (newOnes.length > 0) {
-      try {
-        const ac = new (window.AudioContext || window.webkitAudioContext)();
-        [[1047,0],[1047,0.22],[1047,0.44]].forEach(([freq,delay]) => {
-          const osc = ac.createOscillator(); const g = ac.createGain();
-          osc.connect(g); g.connect(ac.destination);
-          osc.frequency.value = freq; osc.type = "sine";
-          g.gain.setValueAtTime(0, ac.currentTime+delay);
-          g.gain.linearRampToValueAtTime(0.3, ac.currentTime+delay+0.04);
-          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+delay+0.8);
-          osc.start(ac.currentTime+delay); osc.stop(ac.currentTime+delay+0.85);
-        });
-      } catch(e) {}
-    }
-    prevIdsRef.current = new Set(pending.map(o => o.id));
-  }, [orders]);
-
-  const markReady = async (orderId) => {
-    if (markingId) return;
-    setMarkingId(orderId);
-    const { error } = await supabase.from("orders").update({ kitchen_status:"food_ready" }).eq("id", orderId);
-    if (error) { onToast("Failed to update — check connection", false); setMarkingId(null); return; }
-    setOrders(prev => prev.map(o => o.id===orderId ? {...o, kitchen_status:"food_ready"} : o));
-    setMarkingId(null);
-  };
-
-  const dismiss = async (orderId) => {
-    const { error } = await supabase.from("orders").update({ kitchen_status:"food_done" }).eq("id", orderId);
-    if (error) { onToast("Failed to dismiss — check connection", false); return; }
-    setOrders(prev => prev.filter(o => o.id !== orderId));
-  };
-
-  // Timer helpers — color + label based on elapsed minutes
-  const getMins = (createdAt) => Math.floor((now - new Date(createdAt).getTime()) / 60000);
-  const timerColor = (mins) => mins < 5 ? "#4ade80" : mins < 10 ? "#fbbf24" : "#f87171";
-  const timerLabel = (mins) => mins < 1 ? "<1m" : `${mins}m`;
-
-  // Sort rush orders first, then by created_at (oldest first)
-  const sortKds = (a,b) => (b.is_rush?1:0) - (a.is_rush?1:0) || new Date(a.created_at) - new Date(b.created_at);
-  const pending = orders.filter(o => o.kitchen_status === "food_pending").sort(sortKds);
-  const ready   = orders.filter(o => o.kitchen_status === "food_ready").sort(sortKds);
-
-  // Live clock for header
-  const clockStr = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-
-  if (loading) return (
-    <div className="kds2-root"><div className="kds2-loading">Loading…</div></div>
-  );
-
-  return (
-    <div className="kds2-root">
-
-      {/* ── TOP BAR ── */}
-      <div className="kds2-topbar">
-        <div className="kds2-topbar-left">
-          <span className="kds2-brand">EL MUNDO</span>
-          <span className="kds2-brandbar">BAR-REST</span>
-        </div>
-        <div className="kds2-topbar-center">
-          <span className="kds2-clock">{clockStr}</span>
-        </div>
-        <div className="kds2-topbar-right">
-          {pending.length > 0 && (
-            <div className="kds2-counter kds2-counter-fire">
-              <span>{pending.length}</span>
-              <span>COOKING</span>
-            </div>
-          )}
-          {ready.length > 0 && (
-            <div className="kds2-counter kds2-counter-done">
-              <span>{ready.length}</span>
-              <span>READY</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── EMPTY STATE ── */}
-      {pending.length === 0 && ready.length === 0 && (
-        <div className="kds2-empty">
-          <div className="kds2-empty-check">✓</div>
-          <div className="kds2-empty-title">ALL CLEAR</div>
-          <div className="kds2-empty-sub">No tickets. Standing by for next order.</div>
-        </div>
-      )}
-
-      {/* ── TWO-LANE LAYOUT ── */}
-      {(pending.length > 0 || ready.length > 0) && (
-        <div className="kds2-lanes">
-
-          {/* LANE LEFT: COOKING */}
-          <div className="kds2-lane">
-            <div className="kds2-lane-header kds2-lane-header-fire">
-              <span className="kds2-lane-icon">🔥</span>
-              <span className="kds2-lane-title">COOKING</span>
-              <span className="kds2-lane-count">{pending.length}</span>
-            </div>
-            <div className="kds2-tickets">
-              {pending.length === 0 && (
-                <div className="kds2-lane-empty">No active tickets</div>
-              )}
-              {pending.map(order => {
-                const foodItems = (order.items||[]).filter(i => FOOD_CATS.has(i.category));
-                const mins = getMins(order.created_at);
-                const col  = timerColor(mins);
-                const urgent = mins >= 10;
-                return (
-                  <div key={order.id} className={`kds2-ticket${urgent ? " kds2-ticket-urgent" : ""}`} style={{"--ticket-color": col}}>
-                    {/* Ticket top */}
-                    <div className="kds2-ticket-head">
-                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                        <div className="kds2-ticket-table">T{order.table_number}</div>
-                        {order.order_number && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:700}}>#{order.order_number}</span>}
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        {order.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.5)",padding:"2px 7px",animation:"kds-urgent-blink 1s ease-in-out infinite"}}>⚡ RUSH</span>}
-                        <div className="kds2-ticket-timer" style={{color: col, borderColor: col}}>
-                          {timerLabel(mins)}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Customer */}
-                    <div className="kds2-ticket-customer">{order.user_name}</div>
-                    {/* Dashed separator */}
-                    <div className="kds2-ticket-sep"/>
-                    {/* Items — large text for kitchen visibility */}
-                    <div className="kds2-ticket-items">
-                      {foodItems.map((item, idx) => (
-                        <div key={idx} className="kds2-ticket-item">
-                          <span className="kds2-item-qty">{item.qty}</span>
-                          <div className="kds2-item-right">
-                            <span className="kds2-item-name">{item.name.toUpperCase()}</span>
-                            {item.note && (
-                              <span className="kds2-item-note">📝 {item.note}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Action */}
-                    <button
-                      className="kds2-btn-ready"
-                      onClick={() => markReady(order.id)}
-                      disabled={markingId === order.id}
-                    >
-                      {markingId === order.id ? "…" : "DONE — SEND TO BAR"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* LANE RIGHT: READY */}
-          <div className="kds2-lane">
-            <div className="kds2-lane-header kds2-lane-header-done">
-              <span className="kds2-lane-icon">🔔</span>
-              <span className="kds2-lane-title">READY</span>
-              <span className="kds2-lane-count">{ready.length}</span>
-            </div>
-            <div className="kds2-tickets">
-              {ready.length === 0 && (
-                <div className="kds2-lane-empty">Nothing waiting pickup</div>
-              )}
-              {ready.map(order => {
-                const foodItems = (order.items||[]).filter(i => FOOD_CATS.has(i.category));
-                const mins = getMins(order.created_at);
-                return (
-                  <div key={order.id} className="kds2-ticket kds2-ticket-ready">
-                    <div className="kds2-ticket-head">
-                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                        <div className="kds2-ticket-table" style={{color:"#4ade80"}}>T{order.table_number}</div>
-                        {order.order_number && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)",fontWeight:700}}>#{order.order_number}</span>}
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        {order.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.5)",padding:"2px 7px"}}>⚡</span>}
-                        <div className="kds2-ticket-ready-badge">READY ✓</div>
-                      </div>
-                    </div>
-                    <div className="kds2-ticket-customer">{order.user_name}</div>
-                    <div className="kds2-ticket-sep"/>
-                    <div className="kds2-ticket-items">
-                      {foodItems.map((item, idx) => (
-                        <div key={idx} className="kds2-ticket-item kds2-item-done">
-                          <span className="kds2-item-qty" style={{opacity:.4}}>{item.qty}</span>
-                          <span className="kds2-item-name" style={{opacity:.5,textDecoration:"line-through"}}>{item.name.toUpperCase()}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <button className="kds2-btn-dismiss" onClick={() => dismiss(order.id)}>
-                      ✓ PICKED UP
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
   const loadSaved = () => { try { const s = localStorage.getItem(FP_KEY); return s ? JSON.parse(s) : FP_DEFAULT; } catch { return FP_DEFAULT; } };
   const [selectedTable, setSelectedTable] = useState(null);
@@ -808,60 +572,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       return "new";                      // green — fresh order just came in
     }
     if (hasReady) return "ready";        // white pulse — ready to be picked up
-    return "preparing";                  // blue — confirmed, being prepared
+    return "confirmed";                  // blue — confirmed by bar
   };
 
   const statusStyle = (s) => ({
     empty:     { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", dot:null,      blink:false },
     new:       { bg:"rgba(34,197,94,.15)",   border:"rgba(34,197,94,.8)",     color:"#4ade80",               dot:"#4ade80", blink:false },
-    preparing: { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
+    confirmed: { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
     ready:     { bg:"rgba(255,255,255,.12)", border:"rgba(255,255,255,.9)",   color:"#fff",                  dot:"#fff",    blink:false },
     warning:   { bg:"rgba(251,191,36,.15)",  border:"rgba(251,191,36,.85)",   color:"#fbbf24",               dot:"#fbbf24", blink:false },
     urgent:    { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               dot:"#f87171", blink:true  },
   }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", dot:null, blink:false });
 
-  const nextStatus  = s => s==="pending"?"confirmed":s==="confirmed"?"ready":null;
-  const nextLabel   = s => s==="pending"?"✓ CONFIRM":s==="confirmed"?"🔔 READY":s==="ready"?"✓ CLEAR":null;
   const statusColor = s => s==="pending"?"#f59e0b":s==="confirmed"?"#93c5fd":s==="ready"?"#fff":"rgba(255,255,255,.3)";
-  const statusLabel = s => s==="pending"?"NEW ORDER":s==="confirmed"?"PREPARING":s==="ready"?"READY ↑":"";
-
-  const prevFoodReadyRef = useRef(new Set(allOrders.filter(o=>o.kitchen_status==="food_ready").map(o=>o.id)));
-  useEffect(() => {
-    const currentReady = new Set(allOrders.filter(o=>o.kitchen_status==="food_ready").map(o=>o.id));
-    const prevSet = prevFoodReadyRef.current;
-    const newOnes = [...currentReady].filter(id => !prevSet.has(id));
-    if (newOnes.length > 0) {
-      try {
-        const ac = new (window.AudioContext || window.webkitAudioContext)();
-        [[523.25, 0, 0.35], [1046.5, 0, 0.18], [1568.75, 0, 0.1],
-         [523.25, 0.9, 0.35], [1046.5, 0.9, 0.18]].forEach(([freq, delay, vol]) => {
-          const osc = ac.createOscillator(); const g = ac.createGain();
-          osc.connect(g); g.connect(ac.destination);
-          osc.frequency.value = freq; osc.type = "sine";
-          g.gain.setValueAtTime(0, ac.currentTime + delay);
-          g.gain.linearRampToValueAtTime(vol, ac.currentTime + delay + 0.03);
-          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + delay + 2.5);
-          osc.start(ac.currentTime + delay); osc.stop(ac.currentTime + delay + 2.6);
-        });
-      } catch(e) {}
-    }
-    prevFoodReadyRef.current = currentReady;
-  }, [allOrders]);
-
-  const foodReadyOrders = activeOrders.filter(o => o.kitchen_status === "food_ready");
-
-  // Shared completion check — used by both TableDetail and notification panel
-  // Receipt is NOT printed here — it's printed on first confirm action in doUpdate
-  const completeIfDone = async (ordId) => {
-    const { data: fresh } = await supabase.from("orders").select("*").eq("id", ordId).maybeSingle();
-    if (!fresh) return;
-    const dDone = (fresh.items||[]).filter(i=>!FOOD_CATS.has(i.category)).length === 0 || fresh.drink_status === "ready";
-    const fDone = (fresh.items||[]).filter(i=> FOOD_CATS.has(i.category)).length === 0 || fresh.kitchen_status === "food_done";
-    if (dDone && fDone) {
-      await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
-      onToast("Order #" + (fresh.order_number || ordId.slice(0,6)) + " completed ✓");
-    }
-  };
+  const statusLabel = s => s==="pending"?"NEW ORDER":s==="confirmed"?"CONFIRMED":s==="ready"?"READY":"";
 
   const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
   const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
@@ -1049,38 +773,19 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   };
 
   // ── TABLE DETAIL PANEL ────────────────────────────────────────────────────
-  // drink_status state machine:  null → "confirmed" → "ready"  (never backwards)
-  // kitchen_status state machine: null → "food_pending" → "food_ready" → "food_done" (never backwards)
-  // Auto-complete: when drinks="ready" (or no drinks) AND kitchen="food_done" (or no food) → print + complete
+  // Simplified flow: CONFIRM (prints receipt + completes) or CANCEL
   const TableDetail = () => {
     const orders = (byTable[selectedTable]||[]);
     const [busy, setBusy] = useState({});
 
-    const dItems = ord => (ord.items||[]).filter(i => !FOOD_CATS.has(i.category));
-    const fItems = ord => (ord.items||[]).filter(i =>  FOOD_CATS.has(i.category));
-
-    // Perform update + reload.
-    // Auto-kitchen: if confirming drinks on an order that has food and food hasn't been sent yet → send to kitchen now.
-    // Receipt prints on FIRST confirm (drinks confirmed or food sent to kitchen), not at end.
-    // Auto-complete: when drinks="ready" AND food="food_done" (or no drinks/food) → complete (no receipt — already printed).
-    const doUpdate = async (ordId, updates) => {
+    const doConfirm = async (ordId) => {
       setBusy(p => ({...p, [ordId]: true}));
       const ord = orders.find(o => o.id === ordId);
-      // If bar is confirming drinks and there's food not yet sent → auto-route food to kitchen
-      if (ord && updates.drink_status && fItems(ord).length > 0 && !ord.kitchen_status) {
-        updates.kitchen_status = "food_pending";
-      }
-      // Print receipt on first confirm action (drinks confirmed or food-only sent to kitchen)
       if (ord) {
-        const isFirstDrinkConfirm = updates.drink_status === "confirmed" && !ord.drink_status;
-        const isFoodOnlySend = updates.kitchen_status === "food_pending" && !updates.drink_status && !ord.kitchen_status;
-        if (isFirstDrinkConfirm || isFoodOnlySend) {
-          try { printReceipt({ ...ord, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
-        }
+        try { printReceipt({ ...ord, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
       }
-      await supabase.from("orders").update(updates).eq("id", ordId);
-      // Check completion via shared function (no receipt — already printed on confirm)
-      await completeIfDone(ordId);
+      await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
+      onToast("Order #" + (ord?.order_number || ordId.slice(0,6)) + " confirmed ✓");
       await onLoad();
       setBusy(p => ({...p, [ordId]: false}));
     };
@@ -1105,31 +810,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             )}
 
             {orders.map(ord => {
-              const drinks  = dItems(ord);
-              const foods   = fItems(ord);
-              const hasDrinks = drinks.length > 0;
-              const hasFood   = foods.length > 0;
-              const ds = ord.drink_status;   // null | "confirmed" | "ready"
-              const ks = ord.kitchen_status; // null | "food_pending" | "food_ready" | "food_done"
+              const items = ord.items || [];
               const isBusy = !!busy[ord.id];
-
-              // Section item list renderer
-              const ItemList = ({ items }) => (
-                <div style={{marginBottom:10}}>
-                  {items.map((it,i) => (
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:17,color:"rgba(255,255,255,.45)",minWidth:28}}>{it.qty}×</span>
-                        <div>
-                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{it.name}</div>
-                          {it.note && <div style={{fontSize:11,color:"rgba(255,255,255,.35)",fontStyle:"italic",marginTop:2}}>📝 {it.note}</div>}
-                        </div>
-                      </div>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",flexShrink:0}}>${(it.price*it.qty).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
 
               return (
                 <div key={ord.id} style={{border:"1px solid rgba(255,255,255,.1)"}}>
@@ -1140,104 +822,53 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:"rgba(255,255,255,.55)"}}>{ord.user_name}</span>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {ord.is_rush && <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,color:"#f59e0b",background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.4)",padding:"2px 6px"}}>⚡ RUSH</span>}
                       {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
                     </div>
                   </div>
 
                   <div style={{padding:"0 14px"}}>
-
-                    {/* ── DRINKS SECTION ── */}
-                    {hasDrinks && (<>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0 8px",borderBottom:"1px solid rgba(96,165,250,.15)"}}>
-                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#60a5fa"}}>🍺 DRINKS</span>
-                        {ds === "ready" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.25)",padding:"3px 8px"}}>✓ SERVED</span>}
-                        {ds === "confirmed" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#60a5fa",background:"rgba(96,165,250,.1)",border:"1px solid rgba(96,165,250,.25)",padding:"3px 8px"}}>PREPARING</span>}
-                      </div>
-                      <ItemList items={drinks} />
-                      {/* Drinks button */}
-                      {ds !== "ready" && (
-                        <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{drink_status: ds==="confirmed"?"ready":"confirmed", status:"confirmed"})}
-                          style={{width:"100%",padding:"13px",marginBottom:10,border:"none",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",
-                            background: ds==="confirmed" ? "#4ade80" : "#fbbf24",
-                          }}>
-                          {isBusy ? "…" : ds === "confirmed" ? "🍺 DRINKS READY" : "✓ CONFIRM DRINKS"}
-                        </button>
-                      )}
-                    </>)}
-
-                    {/* ── FOOD SECTION ── */}
-                    {hasFood && (<>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0 8px",borderBottom:"1px solid rgba(192,132,252,.15)"}}>
-                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#c084fc"}}>🍳 FOOD</span>
-                        {ks === "food_done"    && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#4ade80",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.25)",padding:"3px 8px"}}>✓ SERVED</span>}
-                        {ks === "food_pending" && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#c084fc",background:"rgba(192,132,252,.1)",border:"1px solid rgba(192,132,252,.25)",padding:"3px 8px"}}>⏳ KITCHEN</span>}
-                        {ks === "food_ready"   && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#fbbf24",background:"rgba(251,191,36,.1)",border:"1px solid rgba(251,191,36,.35)",padding:"3px 8px"}}>🔔 READY</span>}
-                      </div>
-                      <ItemList items={foods} />
-                      {/* Food button — auto-routed to kitchen on first confirm, bar only clears when ready */}
-                      {ks !== "food_done" && (
-                        ks === "food_pending" ? (
-                          <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.2)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.5)",textAlign:"center",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                            <span>⏳ KITCHEN PREPARING…</span>
-                            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:"rgba(192,132,252,.7)",background:"rgba(192,132,252,.12)",padding:"2px 6px",borderRadius:3}}>{(() => { const m = Math.floor((Date.now() - new Date(ord.created_at).getTime()) / 60000); return m < 1 ? "<1m" : m + "m"; })()}</span>
-                          </div>
-                        ) : ks === "food_ready" ? (
-                          <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{kitchen_status:"food_done"})}
-                            style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#4ade80",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,animation:"kds-urgent-blink 1.2s ease-in-out infinite"}}>
-                            {isBusy ? "…" : "✓ FOOD DELIVERED — CLEAR"}
-                          </button>
-                        ) : (
-                          /* null state — food-only: direct button; mixed order: auto-routes when drinks confirmed */
-                          !hasDrinks ? (
-                            <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{kitchen_status:"food_pending",status:"confirmed"})}
-                              style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#c084fc",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s"}}>
-                              {isBusy ? "…" : "🍳 SEND TO KITCHEN"}
-                            </button>
-                          ) : (
-                            <div style={{width:"100%",padding:"13px",marginBottom:10,background:"rgba(192,132,252,.06)",border:"1px solid rgba(192,132,252,.15)",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(192,132,252,.4)",textAlign:"center",boxSizing:"border-box"}}>
-                              🍳 ROUTES TO KITCHEN ON CONFIRM
+                    {/* All items */}
+                    <div style={{padding:"10px 0"}}>
+                      {items.map((it,i) => (
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontFamily:"'Anton',sans-serif",fontSize:17,color:"rgba(255,255,255,.45)",minWidth:28}}>{it.qty}×</span>
+                            <div>
+                              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{it.name}</div>
+                              {it.note && <div style={{fontSize:11,color:"rgba(255,255,255,.35)",fontStyle:"italic",marginTop:2}}>📝 {it.note}</div>}
                             </div>
-                          )
-                        )
-                      )}
-                    </>)}
+                          </div>
+                          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",flexShrink:0}}>${(it.price*it.qty).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
 
-                    {/* Total + actions */}
+                    {/* Total */}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0 6px",borderTop:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
                       <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#fff"}}>${(+ord.total).toFixed(2)}</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"rgba(255,255,255,.35)"}}>{ord.payment_method === "credits" ? "CREDITS" : "CARD"}</span>
                     </div>
-                    {/* Rush + Cancel row */}
-                    <div style={{display:"flex",gap:8,paddingBottom:10}}>
-                      <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{is_rush:!ord.is_rush})}
-                        style={{flex:1,padding:"9px",border:"1px solid",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:isBusy?"not-allowed":"pointer",
-                          background:ord.is_rush?"rgba(245,158,11,.12)":"transparent",
-                          borderColor:ord.is_rush?"rgba(245,158,11,.5)":"rgba(255,255,255,.1)",
-                          color:ord.is_rush?"#f59e0b":"rgba(255,255,255,.35)",
-                        }}>
-                        {ord.is_rush ? "⚡ RUSH ON" : "⚡ RUSH"}
-                      </button>
-                      <button disabled={isBusy} onClick={async()=>{
-                        if(!window.confirm("Cancel this order? This cannot be undone.")) return;
-                        await supabase.from("orders").update({status:"cancelled"}).eq("id",ord.id);
-                        await onLoad();
-                      }}
-                        style={{padding:"9px 14px",border:"1px solid rgba(239,68,68,.3)",background:"transparent",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(239,68,68,.6)",cursor:isBusy?"not-allowed":"pointer"}}>
-                        ✕ CANCEL
-                      </button>
-                    </div>
-                    {/* Manual close — shown when everything is served but order wasn't auto-completed */}
-                    {(() => {
-                      const dDone = dItems(ord).length === 0 || ds === "ready";
-                      const fDone = fItems(ord).length === 0 || ks === "food_done";
-                      return (dDone && fDone) ? (
-                        <button disabled={isBusy} onClick={()=>doUpdate(ord.id,{status:"completed"})}
-                          style={{width:"100%",padding:"13px",marginBottom:10,border:"none",background:"#fff",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1}}>
-                          {isBusy ? "…" : "✓ CLOSE ORDER"}
+
+                    {/* Action buttons */}
+                    {ord.status !== "completed" && (
+                      <div style={{display:"flex",gap:8,paddingBottom:12,paddingTop:4}}>
+                        <button disabled={isBusy} onClick={()=>doConfirm(ord.id)}
+                          style={{flex:1,padding:"14px",border:"none",background:"#4ade80",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s"}}>
+                          {isBusy ? "…" : "✓ CONFIRM"}
                         </button>
-                      ) : null;
-                    })()}
+                        <button disabled={isBusy} onClick={async()=>{
+                          if(!window.confirm("Cancel this order? This cannot be undone.")) return;
+                          setBusy(p => ({...p, [ord.id]: true}));
+                          await supabase.from("orders").update({status:"cancelled"}).eq("id",ord.id);
+                          await onLoad();
+                          setBusy(p => ({...p, [ord.id]: false}));
+                        }}
+                          style={{padding:"14px 16px",border:"1px solid rgba(239,68,68,.3)",background:"transparent",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"rgba(239,68,68,.6)",cursor:isBusy?"not-allowed":"pointer"}}>
+                          ✕ CANCEL
+                        </button>
+                      </div>
+                    )}
 
                   </div>
                 </div>
@@ -1311,7 +942,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
           {/* Row 3: color legend — pill badges */}
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#93c5fd",label:"PREPARING"},{color:"#fff",label:"READY"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
+            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#93c5fd",label:"CONFIRMED"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
               <div key={label} style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:20,padding:"4px 10px 4px 8px"}}>
                 <div style={{width:6,height:6,borderRadius:"50%",background:color,boxShadow:`0 0 6px ${color}88`,flexShrink:0}}/>
                 <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,color:"rgba(255,255,255,.45)"}}>{label}</span>
@@ -1320,60 +951,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         </>)}
       </div>
-
-      {/* ── FOOD READY — persistent right-side notification panel ─────────── */}
-      {foodReadyOrders.length > 0 && (
-        <div style={{position:"fixed",top:80,right:0,zIndex:500,display:"flex",flexDirection:"column",gap:8,pointerEvents:"none",maxHeight:"calc(100vh - 100px)",overflowY:"auto",paddingRight:0}}>
-          {foodReadyOrders.map((ord,idx) => {
-            const foodNames = (ord.items||[]).filter(i=>FOOD_CATS.has(i.category)).map(i=>`${i.qty}× ${i.name}`);
-            return (
-              <div key={ord.id} style={{
-                pointerEvents:"all",
-                display:"flex",alignItems:"stretch",
-                background:"rgba(10,10,10,.95)",
-                backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
-                borderLeft:"3px solid #4ade80",
-                borderTop:"1px solid rgba(74,222,128,.15)",
-                borderBottom:"1px solid rgba(74,222,128,.15)",
-                boxShadow:"-8px 0 40px rgba(0,0,0,.6), -2px 0 20px rgba(74,222,128,.15), inset 0 0 0 1px rgba(74,222,128,.05)",
-                animation:`fp-notif-slide 0.5s cubic-bezier(.16,1,.3,1) ${idx*0.1}s both`,
-                width:300,
-                borderRadius:"8px 0 0 8px",
-              }}>
-                <div style={{padding:"16px 18px",flex:1,minWidth:0}}>
-                  {/* Header */}
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 10px #4ade80, 0 0 20px rgba(74,222,128,.3)",animation:"kds-urgent-blink 1.4s ease-in-out infinite"}}/>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff"}}>TABLE {ord.table_number}</span>
-                    </div>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"#4ade80",background:"rgba(74,222,128,.1)",border:"1px solid rgba(74,222,128,.2)",padding:"3px 8px",borderRadius:3}}>FOOD READY</span>
-                  </div>
-                  {/* Customer */}
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600,marginBottom:10,letterSpacing:.3}}>{ord.user_name}</div>
-                  {/* Items */}
-                  <div style={{borderTop:"1px dashed rgba(255,255,255,.08)",paddingTop:10,marginBottom:14}}>
-                    {foodNames.map((n,i)=>(
-                      <div key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.8)",fontWeight:700,lineHeight:1.7}}>{n}</div>
-                    ))}
-                  </div>
-                  {/* Deliver button */}
-                  <button
-                    onClick={async()=>{
-                      await supabase.from("orders").update({kitchen_status:"food_done"}).eq("id",ord.id);
-                      await completeIfDone(ord.id);
-                      await onLoad();
-                    }}
-                    style={{width:"100%",padding:"11px 0",background:"#4ade80",border:"none",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"#000",cursor:"pointer",transition:"all .15s",borderRadius:4}}
-                    onMouseEnter={e=>e.currentTarget.style.opacity=".85"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
-                    ✓ DELIVERED
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* ── LIVE VIEW ───────────────────────────────────────────────────────── */}
       {fpView === "live" && (<>
@@ -1454,4 +1031,4 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   );
 }
 
-export { printReceipt, AdminHistory, AdminReport, KitchenView, FloorPlan };
+export { printReceipt, AdminHistory, AdminReport, FloorPlan };
