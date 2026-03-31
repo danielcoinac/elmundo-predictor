@@ -785,10 +785,10 @@ export default function App() {
     if (error) { toast$("Error cancelling order", false); return; }
     // Refund credits if paid with credits
     if (ord.payment_method === "credits" && ord.total > 0) {
-      const { data: cred } = await supabase.from("credits").select("balance").eq("user_id", user.id).maybeSingle();
+      const { data: cred } = await supabase.from("user_credits").select("balance").eq("user_id", user.id).maybeSingle();
       if (cred) {
         const newBal = +(cred.balance) + +(ord.total);
-        await supabase.from("credits").update({ balance: newBal }).eq("user_id", user.id);
+        await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
         setMyCredits(newBal);
       }
     }
@@ -2566,6 +2566,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   const handlePickPhoto = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert("File too large — max 10MB"); e.target.value = ""; return; }
     setPreviewFile(file);
     const reader = new FileReader();
     reader.onload = ev => setPreview(ev.target.result);
@@ -3167,7 +3168,7 @@ const compressImage = (file) => new Promise((resolve) => {
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 400;
+      const MAX = 1200;
       let w = img.width, h = img.height;
       if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
       else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
@@ -3909,6 +3910,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert("File too large — max 10MB"); e.target.value = ""; return; }
     setUploading(true);
     try {
       const compressed = await compressImage(file);
