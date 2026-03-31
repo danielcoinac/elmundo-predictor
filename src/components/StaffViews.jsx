@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-/* FOOD_CATS no longer needed — kitchen system removed */
 
 function printReceipt(ord) {
   const date = new Date(ord.created_at);
@@ -708,7 +707,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
           boxShadow: editMode
             ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
-            : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)` : s==="ready" ? `0 0 16px rgba(255,255,255,.2), 0 0 35px rgba(255,255,255,.08), inset 0 0 12px rgba(255,255,255,.05)` : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)` : s==="preparing" ? `0 0 12px rgba(96,165,250,.2), inset 0 0 8px rgba(96,165,250,.05)` : "0 1px 4px rgba(0,0,0,.3)"),
+            : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)` : s==="ready" ? `0 0 16px rgba(255,255,255,.2), 0 0 35px rgba(255,255,255,.08), inset 0 0 12px rgba(255,255,255,.05)` : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)` : s==="confirmed" ? `0 0 12px rgba(96,165,250,.2), inset 0 0 8px rgba(96,165,250,.05)` : "0 1px 4px rgba(0,0,0,.3)"),
           userSelect:"none", touchAction:"none",
           zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
         }}

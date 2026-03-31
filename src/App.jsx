@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import jsQR from "jsqr";
 import { supabase } from "./lib/supabase";
 import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
-import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, FOOD_CATS, catMeta } from "./lib/utils";
+import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { printReceipt, FloorPlan } from "./components/StaffViews";
