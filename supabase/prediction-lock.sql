@@ -13,7 +13,7 @@ AS $$
   SELECT COALESCE(
     now() < (
       SELECT MIN(
-        (m.date || ' ' || COALESCE(m.time, '23:59'))::timestamptz - interval '1 hour'
+        (m.match_date || ' ' || COALESCE(m.match_time, '23:59'))::timestamptz - interval '1 hour'
       )
       FROM matches m
       WHERE m.status != 'finished'
