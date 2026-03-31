@@ -1163,6 +1163,7 @@ export default function App() {
           adminAddCredits={adminAddCredits}
           updateOrderStatus={updateOrderStatus}
           deleteOrder={deleteOrder}
+          cancelOrder={cancelOrder}
           loadAllOrders={loadAllOrders}
           allOrders={allOrders}
           matchesLoaded={matchesLoaded}
@@ -1881,7 +1882,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 adminSaveRules, adminSaveSponsors,
                 menuItems, myCredits, myOrders, placeOrder,
                 saveMenuItem, deleteMenuItem, toggleMenuItemAvail, toggleMenuItemSoldOut,
-                adminAddCredits, updateOrderStatus, deleteOrder, loadAllOrders, allOrders, matchesLoaded,
+                adminAddCredits, updateOrderStatus, deleteOrder, cancelOrder, loadAllOrders, allOrders, matchesLoaded,
                 activeGroup, groupMembers, groupItems,
                 createGroupOrder, joinGroupOrder, leaveGroupOrder,
                 addGroupItem, removeGroupItem,
