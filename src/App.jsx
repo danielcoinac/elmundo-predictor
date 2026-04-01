@@ -2164,6 +2164,8 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
   const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
 
+  const [matchTab, setMatchTab] = useState("upcoming");
+
   // Date filter
   const allDates = [...new Set(sortMatches(matches).map(m => m.date).filter(Boolean))];
   const [selDate, setSelDate] = useState("all");
@@ -2199,6 +2201,27 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
 
   return (
     <div>
+      {/* ── Premium global countdown ── */}
+      {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
+
+      {/* ── Upcoming / Results tabs ── */}
+      <div className="match-tab-bar">
+        <button
+          className={`match-tab-btn ${matchTab === "upcoming" ? "match-tab-btn-on" : ""}`}
+          onClick={() => setMatchTab("upcoming")}>
+          <span className="match-tab-icon">⏱</span>
+          <span>UPCOMING</span>
+          {upcoming.length > 0 && <span className="match-tab-count">{upcoming.length}</span>}
+        </button>
+        <button
+          className={`match-tab-btn ${matchTab === "results" ? "match-tab-btn-on" : ""}`}
+          onClick={() => setMatchTab("results")}>
+          <span className="match-tab-icon">🏁</span>
+          <span>RESULTS</span>
+          {finished.length > 0 && <span className="match-tab-count">{finished.length}</span>}
+        </button>
+      </div>
+
       {/* Date filter */}
       {allDates.length > 1 && (
         <div className="date-filter-bar">
@@ -2209,11 +2232,8 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
         </div>
       )}
 
-      {/* ── Premium global countdown ── */}
-      {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
-
       {/* Prediction ban notice */}
-      {isBanned && (
+      {isBanned && matchTab === "upcoming" && (
         <div style={{margin:"8px 16px",padding:"14px 16px",borderRadius:10,
           background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.35)",
           display:"flex",gap:12,alignItems:"flex-start"}}>
@@ -2229,23 +2249,19 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
         </div>
       )}
 
-      <div className="section-banner">
-        <span className="section-banner-title">UPCOMING</span>
-        <span className="section-banner-sub">Exact score = 5 pts · Correct winner = 1 pt</span>
-      </div>
+      {matchTab === "upcoming" && (
+        <div className="card-stack">
+          {visUpcoming.length === 0 && <div className="empty">No upcoming matches{selDate!=="all"?` on ${selDate}`:""}</div>}
+          {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} isBanned={isBanned} allPreds={allPreds} user={user} />)}
+        </div>
+      )}
 
-      <div className="card-stack">
-        {visUpcoming.length === 0 && <div className="empty">No upcoming matches{selDate!=="all"?` on ${selDate}`:""}</div>}
-        {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} isBanned={isBanned} allPreds={allPreds} user={user} />)}
-      </div>
-      <div className="section-banner section-banner-dim">
-        <span className="section-banner-title">RESULTS</span>
-        <span className="section-banner-sub">Final scores & your predictions</span>
-      </div>
-      <div className="card-stack">
-        {visFinished.length === 0 && <div className="empty">No results{selDate!=="all"?` on ${selDate}`:""}</div>}
-        {visFinished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} allPreds={allPreds} user={user} />)}
-      </div>
+      {matchTab === "results" && (
+        <div className="card-stack">
+          {visFinished.length === 0 && <div className="empty">No results yet{selDate!=="all"?` on ${selDate}`:""}</div>}
+          {visFinished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} allPreds={allPreds} user={user} />)}
+        </div>
+      )}
     </div>
   );
 }
@@ -6802,12 +6818,13 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* ── Group order banner ── */}
           {activeGroup && (
-            <div style={{margin:"0 12px 8px",padding:"10px 14px",background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.3)",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:18}}>👥</span>
-              <div>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#c9a84c"}}>GROUP ORDER ACTIVE</div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.45)",marginTop:2}}>Items added go to your group cart, not individual</div>
+            <div style={{margin:"0 0 4px",padding:"11px 16px",background:"rgba(255,255,255,.04)",borderBottom:"1px solid rgba(255,255,255,.12)",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 18px rgba(255,255,255,.06)"}}>
+              <span style={{fontSize:16,opacity:.85}}>👥</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.95)",textTransform:"uppercase"}}>Group Order Active</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Items go to group cart</div>
               </div>
+              <div style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",flexShrink:0}}/>
             </div>
           )}
 

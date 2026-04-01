@@ -91,6 +91,17 @@
   .card-stack{display:flex;flex-direction:column}
   .empty{text-align:center;color:rgba(255,255,255,.14);padding:56px 0;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;text-transform:uppercase}
 
+  /* ── MATCH TABS (Upcoming / Results) ── */
+  .match-tab-bar{display:flex;border-bottom:1px solid rgba(255,255,255,.08);background:#000}
+  .match-tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px 0;background:transparent;border:none;color:rgba(255,255,255,.3);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;cursor:pointer;position:relative;transition:color .2s;text-transform:uppercase}
+  .match-tab-btn::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:transparent;transition:background .2s}
+  .match-tab-btn:hover{color:rgba(255,255,255,.65)}
+  .match-tab-btn-on{color:#fff!important}
+  .match-tab-btn-on::after{background:#fff}
+  .match-tab-icon{font-size:14px;line-height:1}
+  .match-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:rgba(255,255,255,.1);border-radius:9px;font-size:9px;letter-spacing:0}
+  .match-tab-btn-on .match-tab-count{background:rgba(255,255,255,.2)}
+
   /* ── DATE FILTER BAR ── */
   .date-filter-bar{display:flex;gap:8px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid rgba(255,255,255,.07);scrollbar-width:none}
   .date-filter-bar::-webkit-scrollbar{display:none}
@@ -1264,6 +1275,11 @@
     padding-left: 18px;
   }
   .section-banner-title{ letter-spacing: 3px; }
+
+  /* ── Match tabs: gold active indicator ── */
+  .match-tab-btn-on{ color: var(--gold) !important; }
+  .match-tab-btn-on::after{ background: var(--gold) !important; box-shadow: 0 0 8px rgba(201,168,76,.5); }
+  .match-tab-btn-on .match-tab-count{ background: rgba(201,168,76,.2); }
 
   /* ── Date filter: gold active chip ── */
   .date-chip-on{
