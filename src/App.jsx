@@ -3064,7 +3064,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                               <span className="mom-comment-name">{c.user_name}</span>
                               <span className="mom-comment-text"> {c.body}</span>
                             </div>
-                            {(isAdmin||c.user_id===user.id||mom.user_id===user.id)&&<button className="mom-del-comment" onClick={()=>deleteComment(c.id,mom.id)}>×</button>}
+                            {(isAdmin||c.user_id===user.id||mom.posted_by===user.id)&&<button className="mom-del-comment" onClick={()=>deleteComment(c.id,mom.id)}>×</button>}
                           </div>
                         ))}
                         {momComments.length > 2 && (
