@@ -7177,6 +7177,16 @@ function AdminCredits({ users, onAddCredits }) {
   const [search,    setSearch]    = useState("");
   const [amounts,   setAmounts]   = useState({});
   const [confirm,   setConfirm]   = useState(null); // {userId, amount, name}
+  const [showHistory, setShowHistory] = useState(false);
+  const [topUpHistory, setTopUpHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    const { data } = await supabase.from("credit_topups").select("*").order("created_at", { ascending: false }).limit(100);
+    setTopUpHistory(data || []);
+    setHistoryLoading(false);
+  };
 
   // Auto-lock after 15 minutes of inactivity
   useEffect(() => {
@@ -7283,7 +7293,48 @@ function AdminCredits({ users, onAddCredits }) {
       ))}
       {userList.length === 0 && <div className="empty">No players found</div>}
 
-      <div style={{padding:"16px 14px 8px",borderTop:"1px solid rgba(255,255,255,.07)",marginTop:16}}>
+      {/* Top-Up History */}
+      <div style={{padding:"16px 14px 0",borderTop:"1px solid rgba(255,255,255,.07)",marginTop:16}}>
+        <button style={{width:"100%",padding:"12px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}
+          onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
+          {showHistory ? "▲ HIDE TOP-UP HISTORY" : "▼ TOP-UP HISTORY"}
+        </button>
+      </div>
+      {showHistory && (
+        <div style={{padding:"8px 14px 16px"}}>
+          {historyLoading ? (
+            <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading...</div>
+          ) : topUpHistory.length === 0 ? (
+            <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups recorded yet</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {topUpHistory.map((tx,i) => {
+                const player = Object.values(users).find(u => u.id === tx.user_id);
+                const admin = Object.values(users).find(u => u.id === tx.added_by);
+                const dt = new Date(tx.created_at);
+                return (
+                  <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#4ade80",minWidth:65,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {player?.name || "Unknown player"}
+                        {player?.player_number ? ` (#${player.player_number})` : ""}
+                      </div>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>
+                        by {admin?.name || "Admin"} · {tx.method || "cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button style={{marginTop:8,padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}
+            onClick={loadHistory}>↻ REFRESH</button>
+        </div>
+      )}
+
+      <div style={{padding:"12px 14px 8px"}}>
         <button style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",padding:0}}
           onClick={()=>{setUnlocked(false);setPinInput("");}}>
           🔒 Lock credits panel
