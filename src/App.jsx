@@ -511,8 +511,9 @@ export default function App() {
     try {
       // ── Server-side time check (defeats device clock manipulation) ──────
       // Fetch real server time from Supabase — device clock changes are irrelevant
-      const { data: tsData } = await supabase.rpc("get_server_time");
-      const serverNow = tsData ? new Date(tsData).getTime() : Date.now();
+      const { data: tsData, error: tsErr } = await supabase.rpc("get_server_time");
+      if (tsErr || !tsData) { toast$("Cannot verify server time — please try again", false); return; }
+      const serverNow = new Date(tsData).getTime();
       const lockMs = getGlobalLockMs(matches);
       if (lockMs && serverNow >= lockMs) {
         toast$("⛔ Prediction window is closed — the tournament has started", false);
@@ -533,6 +534,13 @@ export default function App() {
   };
 
   const adminUpdateMatch = async (updated) => {
+    // Validate scores when marking finished
+    if (updated.status === "finished") {
+      const h = Number(updated.hs), a = Number(updated.as);
+      if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0 || h > 99 || a > 99) {
+        toast$("Invalid scores — must be whole numbers 0–99", false); return;
+      }
+    }
     const { error } = await supabase.from("matches").upsert({
       id: updated.id, home: updated.home, away: updated.away,
       match_group: updated.group, match_date: updated.date,
@@ -541,6 +549,10 @@ export default function App() {
     });
     if (error) { toast$("Error saving match: " + error.message, false); return; }
     setMatches(m => m.map(x => x.id === updated.id ? updated : x));
+    // Audit log — records who changed what and when
+    await supabase.from("match_audit_log").insert({
+      admin_id: user.id, match_id: updated.id, action: "update", new_data: updated
+    }).catch(() => {});
     toast$("Match updated ✓");
   };
   const adminAddMatch = async (newMatch) => {
@@ -553,12 +565,19 @@ export default function App() {
     });
     if (error) { toast$("Error adding match: " + error.message, false); return; }
     setMatches(m => [...m, { ...newMatch, id }]);
+    await supabase.from("match_audit_log").insert({
+      admin_id: user.id, match_id: id, action: "insert", new_data: { ...newMatch, id }
+    }).catch(() => {});
     toast$("Match added ✓");
   };
   const adminDeleteMatch = async (id) => {
+    const deleted = matches.find(m => m.id === id);
     const { error } = await supabase.from("matches").delete().eq("id", id);
     if (error) { toast$("Error removing match: " + error.message, false); return; }
     setMatches(m => m.filter(x => x.id !== id));
+    await supabase.from("match_audit_log").insert({
+      admin_id: user.id, match_id: id, action: "delete", new_data: deleted ?? null
+    }).catch(() => {});
     toast$("Match removed ✓");
   };
 
@@ -633,26 +652,39 @@ export default function App() {
     }
   };
 
+  const VALID_PAYMENT_METHODS = ["credits", "cash", "card_pending", "sponsor_gift"];
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
-    if (paymentMethod === "credits") {
-      if (myCredits < total) { toast$("Not enough credits", false); return false; }
+    if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
+      toast$("Invalid payment method", false); return false;
     }
-    // Insert order FIRST — if this fails, no credits are deducted
-    const { data, error } = await supabase.from("orders").insert({
-      user_id: user.id,
-      user_name: user.name,
-      table_number: tableNumber,
-      items,
-      total,
-      payment_method: paymentMethod,
-      status: "pending",
-    }).select().single();
-    if (error) { toast$("Error placing order", false); return false; }
-    // Deduct credits only after order is confirmed in DB
+    // Atomically deduct credits FIRST — uses DB-level lock, defeats race conditions
     if (paymentMethod === "credits") {
-      const newBal = +(myCredits - total).toFixed(2);
-      await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+      const { data: newBal, error: deductErr } = await supabase.rpc("deduct_credits", {
+        p_user_id: user.id, p_amount: total
+      });
+      if (deductErr) {
+        if (deductErr.message?.includes("insufficient_balance")) toast$("Not enough credits", false);
+        else toast$("Payment error — please try again", false);
+        return false;
+      }
       setMyCredits(newBal);
+      // Insert order after successful deduction
+      const { error } = await supabase.from("orders").insert({
+        user_id: user.id, user_name: user.name, table_number: tableNumber,
+        items, total, payment_method: paymentMethod, status: "pending",
+      });
+      if (error) {
+        // Order failed after credits deducted — refund automatically
+        const { data: refundBal } = await supabase.rpc("add_credits", { p_user_id: user.id, p_amount: total });
+        if (refundBal != null) setMyCredits(refundBal);
+        toast$("Error placing order — credits refunded", false); return false;
+      }
+    } else {
+      const { error } = await supabase.from("orders").insert({
+        user_id: user.id, user_name: user.name, table_number: tableNumber,
+        items, total, payment_method: paymentMethod, status: "pending",
+      });
+      if (error) { toast$("Error placing order", false); return false; }
     }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
     return true;
@@ -1026,15 +1058,21 @@ export default function App() {
 
   const payGroupShareCredits = async () => {
     if (!activeGroup) return false;
-    // Fetch fresh members from DB — don't rely on potentially stale React state
+    // Fetch fresh data from DB — don't rely on potentially stale React state
     const { data: freshMembers } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
-    const { data: freshItems } = await supabase.from("group_order_items").select("*").eq("group_order_id", activeGroup.id);
+    const { data: freshItems }   = await supabase.from("group_order_items").select("*").eq("group_order_id", activeGroup.id);
     const myShare = calcMyGroupShare(user.id, freshMembers || groupMembers, freshItems || groupItems);
-    if (myCredits < myShare) { toast$("Not enough credits", false); return false; }
-    const newBal = +(myCredits - myShare).toFixed(2);
-    await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+    // Atomic credit deduction — DB lock prevents double-spend
+    const { data: newBal, error: deductErr } = await supabase.rpc("deduct_credits", {
+      p_user_id: user.id, p_amount: myShare
+    });
+    if (deductErr) {
+      if (deductErr.message?.includes("insufficient_balance")) toast$("Not enough credits", false);
+      else toast$("Payment error — please try again", false);
+      return false;
+    }
     setMyCredits(newBal);
-    // Mark me and anyone assigned to me as paid (fresh from DB to avoid stale state bugs)
+    // Mark me and anyone assigned to me as paid
     const assignedToMe = (freshMembers || groupMembers).filter(m => m.pay_for_user_id === user.id).map(m => m.user_id);
     await supabase.from("group_order_members").update({ payment_status: "paid" })
       .eq("group_order_id", activeGroup.id).in("user_id", [user.id, ...assignedToMe]);
@@ -1047,9 +1085,15 @@ export default function App() {
   const hostPayAllCredits = async () => {
     if (!activeGroup) return false;
     const total = groupItems.reduce((s, i) => s + i.price * i.qty, 0);
-    if (myCredits < total) { toast$("Not enough credits", false); return false; }
-    const newBal = +(myCredits - total).toFixed(2);
-    await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
+    // Atomic credit deduction — DB lock prevents double-spend
+    const { data: newBal, error: deductErr } = await supabase.rpc("deduct_credits", {
+      p_user_id: user.id, p_amount: +total.toFixed(2)
+    });
+    if (deductErr) {
+      if (deductErr.message?.includes("insufficient_balance")) toast$("Not enough credits", false);
+      else toast$("Payment error — please try again", false);
+      return false;
+    }
     setMyCredits(newBal);
     await supabase.from("group_order_members").update({ payment_status: "paid" }).eq("group_order_id", activeGroup.id);
     const { data } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
