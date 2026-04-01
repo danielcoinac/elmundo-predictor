@@ -296,6 +296,8 @@ export default function App() {
           setMyOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
         } else if (payload.eventType === "UPDATE") {
           setMyOrders(o => o.map(x => x.id === payload.new.id ? payload.new : x));
+        } else if (payload.eventType === "DELETE") {
+          setMyOrders(o => o.filter(x => x.id !== payload.old.id));
         }
       }).subscribe();
 
@@ -312,7 +314,18 @@ export default function App() {
             toast$(`🔔 New order — Table ${payload.new.table_number}`, true);
             setAllOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
           }
-        }).subscribe();
+        })
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"orders" }, payload => {
+          if (payload.new) {
+            setAllOrders(o => o.map(x => x.id === payload.new.id ? payload.new : x));
+          }
+        })
+        .on("postgres_changes", { event:"DELETE", schema:"public", table:"orders" }, payload => {
+          if (payload.old) {
+            setAllOrders(o => o.filter(x => x.id !== payload.old.id));
+          }
+        })
+        .subscribe();
     }
 
     // ── 9. GLOBAL EVENTS (winner announcement broadcast to all clients) ──────
