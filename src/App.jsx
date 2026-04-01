@@ -4035,7 +4035,8 @@ function AdminDashboard({ allOrders, users, board }) {
   const creditRevenue = todayCreditOrders.reduce((s,o) => s + (+o.total), 0);
   const cardRevenue   = todayCardOrders.reduce((s,o) => s + (+o.total), 0);
 
-  const totalUsers = Object.keys(users).length;
+  const allUsers   = Object.values(users);
+  const totalUsers = allUsers.filter(u => !u.is_banned).length;
   const topPlayer  = board[0] || null;
 
   // Top product today
@@ -7180,12 +7181,25 @@ function AdminCredits({ users, onAddCredits }) {
   const [showHistory, setShowHistory] = useState(false);
   const [topUpHistory, setTopUpHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedPlayer, setExpandedPlayer] = useState(null); // userId for per-player history
+  const [playerHistory, setPlayerHistory] = useState({}); // { [userId]: [...topups] }
+  const [playerHistLoading, setPlayerHistLoading] = useState(null);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
     const { data } = await supabase.from("credit_topups").select("*").order("created_at", { ascending: false }).limit(100);
     setTopUpHistory(data || []);
     setHistoryLoading(false);
+  };
+
+  const loadPlayerHistory = async (userId) => {
+    if (expandedPlayer === userId) { setExpandedPlayer(null); return; }
+    setExpandedPlayer(userId);
+    if (playerHistory[userId]) return; // already cached
+    setPlayerHistLoading(userId);
+    const { data } = await supabase.from("credit_topups").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
+    setPlayerHistory(h => ({ ...h, [userId]: data || [] }));
+    setPlayerHistLoading(null);
   };
 
   // Auto-lock after 15 minutes of inactivity
@@ -7251,7 +7265,7 @@ function AdminCredits({ users, onAddCredits }) {
               Add <strong>${(+confirm.amount).toFixed(2)}</strong> credits to <strong>{confirm.name}</strong>{confirm.playerNumber ? ` (Player #${confirm.playerNumber})` : ""}?
             </p>
             <div className="modal-actions">
-              <button className="modal-del-btn" onClick={()=>{ onAddCredits(confirm.userId, +confirm.amount, confirm.name); setAmounts(a=>({...a,[confirm.userId]:""})); setConfirm(null); }}>Yes, Add</button>
+              <button className="modal-del-btn" onClick={()=>{ onAddCredits(confirm.userId, +confirm.amount, confirm.name); setAmounts(a=>({...a,[confirm.userId]:""})); setPlayerHistory(h => { const n={...h}; delete n[confirm.userId]; return n; }); setConfirm(null); }}>Yes, Add</button>
               <button className="modal-cancel-btn" onClick={()=>setConfirm(null)}>Cancel</button>
             </div>
           </div>
@@ -7266,29 +7280,63 @@ function AdminCredits({ users, onAddCredits }) {
           onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box"}} />
       </div>
       {userList.map(u => (
-        <div key={u.id} className="admin-row">
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              {u.player_number && (
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",flexShrink:0}}>
-                  #{u.player_number}
-                </span>
-              )}
-              <div className="admin-row-teams">{u.name}</div>
+        <div key={u.id}>
+          <div className="admin-row" style={{cursor:"pointer"}} onClick={()=>loadPlayerHistory(u.id)}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {u.player_number && (
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",flexShrink:0}}>
+                    #{u.player_number}
+                  </span>
+                )}
+                <div className="admin-row-teams">{u.name}</div>
+                <span style={{fontSize:9,color:"rgba(255,255,255,.25)",marginLeft:"auto",fontFamily:"'Outfit',sans-serif"}}>{expandedPlayer===u.id ? "▲" : "▼"}</span>
+              </div>
+              <div className="admin-row-dt">{u.phone||"No phone"}</div>
             </div>
-            <div className="admin-row-dt">{u.phone||"No phone"}</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+              <input className="afield-inp" type="number" min="1" step="1" placeholder="$"
+                style={{width:64,textAlign:"center",padding:"6px 8px",fontSize:14}}
+                value={amounts[u.id]||""}
+                onChange={e=>setAmounts(a=>({...a,[u.id]:e.target.value}))} />
+              <button className="admin-save-btn" style={{padding:"7px 14px",fontSize:9,letterSpacing:1}}
+                disabled={!amounts[u.id]||+amounts[u.id]<=0}
+                onClick={()=>setConfirm({userId:u.id, amount:amounts[u.id], name:u.name, playerNumber:u.player_number})}>
+                ADD
+              </button>
+            </div>
           </div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <input className="afield-inp" type="number" min="1" step="1" placeholder="$"
-              style={{width:64,textAlign:"center",padding:"6px 8px",fontSize:14}}
-              value={amounts[u.id]||""}
-              onChange={e=>setAmounts(a=>({...a,[u.id]:e.target.value}))} />
-            <button className="admin-save-btn" style={{padding:"7px 14px",fontSize:9,letterSpacing:1}}
-              disabled={!amounts[u.id]||+amounts[u.id]<=0}
-              onClick={()=>setConfirm({userId:u.id, amount:amounts[u.id], name:u.name, playerNumber:u.player_number})}>
-              ADD
-            </button>
-          </div>
+          {/* Per-player top-up history */}
+          {expandedPlayer === u.id && (
+            <div style={{padding:"0 14px 10px",background:"rgba(255,255,255,.02)",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+              {playerHistLoading === u.id ? (
+                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.25)"}}>Loading...</div>
+              ) : !playerHistory[u.id] || playerHistory[u.id].length === 0 ? (
+                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)"}}>No top-ups for this player</div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:6}}>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.3)",marginBottom:4}}>TOP-UP HISTORY — {u.name?.toUpperCase()}</div>
+                  {playerHistory[u.id].map((tx,i) => {
+                    const admin = Object.values(users).find(a => a.id === tx.added_by);
+                    const dt = new Date(tx.created_at);
+                    return (
+                      <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:"#4ade80",minWidth:55,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.5)"}}>
+                            by <strong style={{color:"rgba(255,255,255,.7)"}}>{admin?.name || "Admin"}</strong> · {tx.method || "cash"}
+                          </div>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",marginTop:1}}>
+                            {dt.toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
       {userList.length === 0 && <div className="empty">No players found</div>}

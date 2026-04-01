@@ -200,6 +200,13 @@ function AdminReport({ allOrders }) {
     if (p === "all")       { setFinFrom("2024-01-01"); setFinTo(isoLocal(d)); }
   };
 
+  // Clean payment method label for display
+  const payMethodLabel = (key) => ({
+    credits: "Credits", cash: "Cash", card: "Card / Online",
+    group: "Group Order", group_host: "Group Order (Host)", group_individual: "Group Order",
+    sponsor_gift: "Complimentary (Gift)",
+  }[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+
   // Compare using LOCAL date of the timestamp (not raw UTC slice)
   const inRange = (ts) => { if (!ts) return false; const d = localDate(ts); return d >= finFrom && d <= finTo; };
 
@@ -209,10 +216,11 @@ function AdminReport({ allOrders }) {
   const totalRevenue    = filtered.reduce((s,o) => s + (+o.total), 0);
   const orderCount      = filtered.length;
 
-  // By payment method
+  // By payment method — consolidate group variants into single bucket
+  const normalizePay = (m) => m?.startsWith("group") ? "group" : (m || "unknown");
   const byPay = {};
   filtered.forEach(o => {
-    const m = o.payment_method || "unknown";
+    const m = normalizePay(o.payment_method);
     if (!byPay[m]) byPay[m] = { total:0, orders:0 };
     byPay[m].total  += (+o.total);
     byPay[m].orders++;
@@ -309,7 +317,7 @@ function AdminReport({ allOrders }) {
   <div class="row">${pad("Cash", `${cashPay.orders}x  ${cur(cashPay.total)}`)}</div>
   <div class="row">${pad("Card / Online", `${cardPay.orders}x  ${cur(cardPay.total)}`)}</div>
   ${Object.entries(byPay).filter(([k])=>!["credits","cash","card"].includes(k)).map(([k,v])=>
-    `<div class="row">${pad(k.charAt(0).toUpperCase()+k.slice(1), `${v.orders}x  ${cur(v.total)}`)}</div>`
+    `<div class="row">${pad(payMethodLabel(k), `${v.orders}x  ${cur(v.total)}`)}</div>`
   ).join("")}
 
   <hr class="divider">
@@ -406,7 +414,7 @@ function AdminReport({ allOrders }) {
           ["Credits", creditPay, "#a3e635"],
           ["Cash", cashPay, "#60a5fa"],
           ["Card / Online", cardPay, "#f0c040"],
-          ...Object.entries(byPay).filter(([k])=>!["credits","cash","card"].includes(k)).map(([k,v])=>[k,v,"rgba(255,255,255,.5)"]),
+          ...Object.entries(byPay).filter(([k])=>!["credits","cash","card"].includes(k)).map(([k,v])=>[payMethodLabel(k),v,"rgba(255,255,255,.5)"]),
         ].map(([label,d,accent]) => (
           <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
             <div>
