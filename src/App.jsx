@@ -9,6 +9,11 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { printReceipt, FloorPlan } from "./components/StaffViews";
 import "./styles.css";
 
+/** Read event branding from localStorage — works in any context (outside React components) */
+function getEventLabel() {
+  try { const s = JSON.parse(localStorage.getItem("em_app_settings")||"{}"); return `${s.eventName||"WORLD CUP"} ${s.eventYear||2026}`; } catch { return "WORLD CUP 2026"; }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    ROOT
 ═══════════════════════════════════════════════════════════════════════════ */
@@ -47,7 +52,7 @@ export default function App() {
   const [sponsorGifts, setSponsorGifts] = useState([]);
   const [showWinner,   setShowWinner]   = useState(false);
   const [winnerData,   setWinnerData]   = useState(null);
-  const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false };
+  const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
   useEffect(() => {
@@ -446,9 +451,9 @@ export default function App() {
     const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`;
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
-    // Auto-assign next player number — use MAX to avoid duplicates from race conditions
-    const { data: maxRow } = await supabase.from("profiles").select("player_number").order("player_number", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-    const playerNumber = (maxRow?.player_number || 0) + 1;
+    // Auto-assign next player number atomically via DB sequence (no race condition)
+    const { data: seqNum } = await supabase.rpc("next_player_number");
+    const playerNumber = seqNum || 1;
     await supabase.from("profiles").upsert({ id: data.user.id, name: fullName, phone: form.phone, player_number: playerNumber });
     setUser({ ...data.user, name: fullName, phone: form.phone, is_admin: false, player_number: playerNumber });
     setPage("app");
@@ -1147,7 +1152,7 @@ export default function App() {
       {page === "auth"   && (
         <Auth tab={authTab} setTab={setAuthTab} form={form} setForm={setForm}
               err={formErr} setErr={setFormErr} onLogin={doLogin} onRegister={doRegister}
-              publicBoard={publicBoard} />
+              publicBoard={publicBoard} appSettings={appSettings} />
       )}
       {page === "app" && (
         <Main
@@ -1326,7 +1331,7 @@ function Splash({ onSkip }) {
             <div ref={divRef}  className="sp-sign-divider" style={{opacity:0}} />
             <div ref={sub2Ref} className="sp-neon-sub2">BAR · REST · BONAIRE</div>
             <div ref={sepRef}  className="sp-sign-sep"  style={{opacity:0}} />
-            <div ref={goldRef} className="sp-neon-gold">WORLD CUP 2026</div>
+            <div ref={goldRef} className="sp-neon-gold">{getEventLabel()}</div>
             <div ref={tagRef}  className="sp-neon-tag" style={{opacity:0}}>⚽ PREDICTION GAME ⚽</div>
           </div>
         </div>
@@ -1558,8 +1563,9 @@ function StadiumSky() {
 
 
 /* ═══ AUTH ══════════════════════════════════════════════════════════════════ */
-function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard }) {
+function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard, appSettings = {} }) {
   const { t } = useLang();
+  const evLabel = `${appSettings.eventName||"WORLD CUP"} ${appSettings.eventYear||2026}`;
   const [showTV,  setShowTV]  = useState(false);
   const [phase,   setPhase]   = useState(0); // 0=hidden 1=logo-in 2=text-neon 3=settle 4=done
   const timersRef = useRef([]);
@@ -1625,7 +1631,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
               color:"rgba(255,200,50,.18)", textTransform:"uppercase", whiteSpace:"nowrap",
               animation: phase >= 2 ? "neonGoldOn 3.2s ease forwards" : "none",
             }}>
-              WORLD CUP EVENT 2026
+              {evLabel} EVENT
             </span>
             <span style={{height:1,width:44,background:"rgba(255,200,50,.35)",display:"block"}} />
           </div>
@@ -1654,7 +1660,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
           <Logo w={220} />
           <div className="auth-event">
             <span className="auth-event-rule" />
-            <span className="auth-event-text">WORLD CUP EVENT 2026</span>
+            <span className="auth-event-text">{evLabel} EVENT</span>
             <span className="auth-event-rule" />
           </div>
         </div>
@@ -1920,6 +1926,14 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
 
+  // When settings change (e.g. event turned off), redirect to first available tab
+  useEffect(() => {
+    if (!tabs.find(t => t.id === appTab)) {
+      const first = tabs[0];
+      if (first) switchTab(first.id);
+    }
+  }, [appSettings.noEventMode, appSettings.showMatches, appSettings.showLeaderboard, appSettings.showMundogram, appSettings.showMenu]);
+
   return (
     <div className="shell">
       <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
@@ -2013,6 +2027,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <TournamentWinnerScreen
               board={board}
               isAdmin={isAdmin}
+              appSettings={appSettings}
               onClose={() => setShowWinner(false)}
             />
           )}
@@ -2224,7 +2239,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
 
 function matchKickoff(m) {
   try {
-    const year = 2026;
+    const year = (() => { try { return JSON.parse(localStorage.getItem("em_app_settings")||"{}").eventYear||2026; } catch { return 2026; } })();
     return new Date(`${m.date} ${year} ${m.time}:00 GMT-0400`);
   } catch { return null; }
 }
@@ -2295,7 +2310,8 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
     try {
       const [mon, day] = m.date.split(" ");
       const [hh, mm] = (m.time||"00:00").split(":");
-      return new Date(`${mon} ${day} 2026 ${hh}:${mm}:00 GMT-0400`).getTime();
+      const _yr = (() => { try { return JSON.parse(localStorage.getItem("em_app_settings")||"{}").eventYear||2026; } catch { return 2026; } })();
+      return new Date(`${mon} ${day} ${_yr} ${hh}:${mm}:00 GMT-0400`).getTime();
     } catch { return null; }
   })();
   const showWPW = !!allPreds && !fin && (matchKickoffTs !== null && nowTs >= matchKickoffTs - 60 * 60 * 1000);
@@ -2838,7 +2854,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           {/* Center: FEED + neon sub */}
           <div className="mom-topbar-center">
             <div className="mom-logo-text">FEED</div>
-            <div className="mom-neon-sub">— WORLD CUP 2026 —</div>
+            <div className="mom-neon-sub">— {appSettings.eventName||"WORLD CUP"} {appSettings.eventYear||2026} —</div>
           </div>
           {/* Right: action icons */}
           <div className="mom-topbar-right">
@@ -2899,7 +2915,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                 const myLike = (likes[mom.id]||new Set()).has(user.id);
                 const likeCount = (likes[mom.id]||new Set()).size;
                 const momComments = comments[mom.id] || [];
-                const showingComments = openComments === mom.id;
+                const showingComments = openComments === mom.id || openComments === mom.id+"_all";
+                const showAllComments = openComments === mom.id+"_all";
                 const isPending = !mom.approved;
                 const anims = likeAnims[mom.id] || [];
                 const posterUser = users[mom.posted_by] || { name: mom.poster_name, avatar_url: mom.poster_avatar };
@@ -3040,16 +3057,21 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                     {/* Comments */}
                     {showingComments && (
                       <div className="mom-comments">
-                        {momComments.map(c=>(
+                        {(momComments.length <= 2 || showAllComments ? momComments : momComments.slice(0, 2)).map(c=>(
                           <div key={c.id} className="mom-comment">
                             <Av u={{name:c.user_name,avatar_url:c.avatar_url}} size={28} fontSize={12}/>
                             <div className="mom-comment-body">
                               <span className="mom-comment-name">{c.user_name}</span>
                               <span className="mom-comment-text"> {c.body}</span>
                             </div>
-                            {(isAdmin||c.user_id===user.id)&&<button className="mom-del-comment" onClick={()=>deleteComment(c.id,mom.id)}>×</button>}
+                            {(isAdmin||c.user_id===user.id||mom.user_id===user.id)&&<button className="mom-del-comment" onClick={()=>deleteComment(c.id,mom.id)}>×</button>}
                           </div>
                         ))}
+                        {momComments.length > 2 && (
+                          <button className="mom-see-more-btn" onClick={()=>setOpenComments(mom.id+"_all")}>
+                            View all {momComments.length} comments
+                          </button>
+                        )}
                         <div className="mom-comment-input-row">
                           <Av u={user} size={28} fontSize={12}/>
                           <input className="mom-comment-inp" placeholder="Add a comment…"
@@ -3131,7 +3153,7 @@ const IcoDash  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="non
 
 /* ─── Player Badge ───────────────────────────────────────────────────────── */
 /* ═══ TOURNAMENT WINNER SCREEN ══════════════════════════════════════════════ */
-function TournamentWinnerScreen({ board, isAdmin, onClose }) {
+function TournamentWinnerScreen({ board, isAdmin, onClose, appSettings = {} }) {
   const winner = board[0];
   const second = board[1];
   const third  = board[2];
@@ -3160,7 +3182,7 @@ function TournamentWinnerScreen({ board, isAdmin, onClose }) {
 
       <div className="winner-trophy">🏆</div>
       <div className="winner-label">TOURNAMENT OVER</div>
-      <div className="winner-event">EL MUNDO WORLD CUP 2026</div>
+      <div className="winner-event">EL MUNDO {appSettings.eventName||"WORLD CUP"} {appSettings.eventYear||2026}</div>
 
       {winner && <>
         <div className="winner-name">{winner.name}</div>
@@ -3938,7 +3960,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
       // ── Bottom ──
       ctx.textAlign='center';
       ctx.fillStyle='#fff'; ctx.font='58px Anton';
-      ctx.fillText('WORLD CUP 2026', W/2, 910);
+      ctx.fillText(getEventLabel(), W/2, 910);
       ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='26px Anton';
       ctx.fillText('PREDICTION GAME  ·  EL MUNDO BONAIRE', W/2, 950);
       // URL with gold
@@ -4318,7 +4340,9 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
 /* ── Admin: App Settings ── */
 function AdminAppSettings({ appSettings = {}, onSave }) {
-  const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, ...appSettings };
+  const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP", ...appSettings };
+  const [yearInput, setYearInput] = useState(String(s.eventYear));
+  const [nameInput, setNameInput] = useState(s.eventName||"WORLD CUP");
   const Toggle = ({ label, desc, val, onToggle }) => (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"rgba(255,255,255,.03)",border:`1px solid ${val?"rgba(255,255,255,.12)":"rgba(255,255,255,.06)"}`,marginBottom:8}}>
       <div>
@@ -4337,6 +4361,27 @@ function AdminAppSettings({ appSettings = {}, onSave }) {
         <div className="sb-sub">Control which tabs are visible and toggle event mode</div>
       </div>
       <div style={{padding:"0 14px 24px"}}>
+        {/* Event Name & Year */}
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT BRANDING</div>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <div style={{flex:2}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:4}}>Event Name</div>
+              <input className="afield-inp" value={nameInput} onChange={e=>setNameInput(e.target.value)}
+                placeholder="WORLD CUP" style={{width:"100%",textTransform:"uppercase"}} />
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:4}}>Year</div>
+              <input className="afield-inp" type="number" value={yearInput} onChange={e=>setYearInput(e.target.value)}
+                placeholder="2026" style={{width:"100%"}} />
+            </div>
+          </div>
+          <button className="admin-save-btn" style={{width:"100%",padding:"10px"}}
+            onClick={()=>{ const yr=parseInt(yearInput); if(yr>2000&&yr<2100) onSave({eventYear:yr,eventName:nameInput.trim().toUpperCase()||"WORLD CUP"}); }}>
+            SAVE EVENT BRANDING
+          </button>
+        </div>
+
         {/* Event Mode */}
         <div style={{marginBottom:20}}>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT MODE</div>
@@ -6742,6 +6787,17 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
             ))}
           </div>
 
+          {/* ── Group order banner ── */}
+          {activeGroup && (
+            <div style={{margin:"0 12px 8px",padding:"10px 14px",background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.3)",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18}}>👥</span>
+              <div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#c9a84c"}}>GROUP ORDER ACTIVE</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.45)",marginTop:2}}>Items added go to your group cart, not individual</div>
+              </div>
+            </div>
+          )}
+
           {/* ── Sticky sub-category pill bar ── */}
           {visibleCats.length > 0 && (
             <div ref={pillsRef} className="menu-pills-bar">
@@ -6782,6 +6838,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                     const isGlass  = st === "glass"  || (!st && /glass/i.test(item.name  + (item.description||"")));
                     const isBottle = st === "bottle" || (!st && /bottle/i.test(item.name + (item.description||"")));
                     const isDraft  = st === "draft"  || (!st && /draft/i.test(item.name  + (item.description||"")));
+                    // When in a group order, route to group cart instead of individual cart
+                    const inGroup = !!activeGroup;
+                    const myGrpItem = inGroup ? groupItems.find(gi => gi.added_by_user_id === user.id && gi.item_id === item.id) : null;
+                    const displayQty = inGroup ? (myGrpItem?.qty || 0) : (cart[item.id] || 0);
+                    const handleAdd = () => inGroup ? addGroupItem(item) : addToCart(item.id);
+                    const handleRemove = () => inGroup ? (myGrpItem && removeGroupItem(myGrpItem.id)) : removeFromCart(item.id);
                     return (
                       <div key={item.id} className={`menu-item-row${item.sold_out?" menu-item-soldout":""}`} style={{position:"relative"}}>
                         {item.sold_out && <div className="menu-item-soldout-badge">SOLD OUT</div>}
@@ -6797,14 +6859,14 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                           <div className="menu-item-price">${(+item.price).toFixed(2)}</div>
                         </div>
                         <div className="menu-item-actions">
-                          {!item.sold_out && (cart[item.id] ? (
+                          {!item.sold_out && (displayQty > 0 ? (
                             <div className="menu-qty-ctrl">
-                              <button className="menu-qty-btn" onClick={()=>removeFromCart(item.id)}>−</button>
-                              <span className="menu-qty-val">{cart[item.id]}</span>
-                              <button className="menu-qty-btn" onClick={()=>addToCart(item.id)}>+</button>
+                              <button className="menu-qty-btn" onClick={handleRemove}>−</button>
+                              <span className="menu-qty-val">{displayQty}</span>
+                              <button className="menu-qty-btn" onClick={handleAdd}>+</button>
                             </div>
                           ) : (
-                            <button className="menu-add-btn" onClick={()=>addToCart(item.id)}>{t('addToCart')}</button>
+                            <button className="menu-add-btn" onClick={handleAdd}>{t('addToCart')}</button>
                           ))}
                           {item.sold_out && (
                             <button className="menu-add-btn" disabled style={{opacity:.3,cursor:"not-allowed"}}>{t('addToCart')}</button>
@@ -7016,11 +7078,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                 ))}
               </div>
               <div className="order-card-total">Total ${(+ord.total).toFixed(2)} · {ord.payment_method==="credits"?"Credits":"Card"}</div>
-              {ord.status === "pending" && (
-                <button className="order-cancel-btn" onClick={() => { if(window.confirm("Cancel this order?")) onCancelOrder(ord.id); }}>
-                  ✕ {t('cancel').toUpperCase()}
-                </button>
-              )}
             </div>
           ))}
         </div>
@@ -7254,15 +7311,77 @@ function AdminCredits({ users, onAddCredits }) {
   const [showHistory, setShowHistory] = useState(false);
   const [topUpHistory, setTopUpHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [histFilter, setHistFilter] = useState("recent"); // recent | today | week | month | custom
+  const [histFrom, setHistFrom] = useState("");
+  const [histTo, setHistTo] = useState("");
   const [expandedPlayer, setExpandedPlayer] = useState(null); // userId for per-player history
   const [playerHistory, setPlayerHistory] = useState({}); // { [userId]: [...topups] }
   const [playerHistLoading, setPlayerHistLoading] = useState(null);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
-    const { data } = await supabase.from("credit_topups").select("*").order("created_at", { ascending: false }).limit(100);
+    const { data } = await supabase.from("credit_topups").select("*").order("created_at", { ascending: false }).limit(500);
     setTopUpHistory(data || []);
     setHistoryLoading(false);
+  };
+
+  const getFilteredHistory = () => {
+    const now = new Date();
+    if (histFilter === "recent") return topUpHistory.slice(0, 5);
+    if (histFilter === "today") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return topUpHistory.filter(t => new Date(t.created_at) >= start);
+    }
+    if (histFilter === "week") {
+      const start = new Date(now); start.setDate(now.getDate() - 7);
+      return topUpHistory.filter(t => new Date(t.created_at) >= start);
+    }
+    if (histFilter === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return topUpHistory.filter(t => new Date(t.created_at) >= start);
+    }
+    if (histFilter === "custom" && histFrom) {
+      const from = new Date(histFrom);
+      const to = histTo ? new Date(histTo + "T23:59:59") : new Date();
+      return topUpHistory.filter(t => { const d = new Date(t.created_at); return d >= from && d <= to; });
+    }
+    return topUpHistory;
+  };
+
+  const printThermalReceipt = (txList) => {
+    const rows = txList.map(tx => {
+      const player = Object.values(users).find(u => u.id === tx.user_id);
+      const admin  = Object.values(users).find(u => u.id === tx.added_by);
+      const dt = new Date(tx.created_at);
+      const name = (player?.name || "Unknown") + (player?.player_number ? ` #${player.player_number}` : "");
+      return `<tr><td>${dt.toLocaleDateString([],{month:"2-digit",day:"2-digit"})} ${dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td><td>${name}</td><td>${tx.method||"cash"}</td><td style="text-align:right;font-weight:bold">+$${(+tx.amount).toFixed(2)}</td></tr>`;
+    }).join("");
+    const total = txList.reduce((s,t)=>s+(+t.amount),0);
+    const filterLabel = histFilter==="recent"?"Last 5":histFilter==="today"?"Today":histFilter==="week"?"This Week":histFilter==="month"?"This Month":`${histFrom||""}${histTo?" → "+histTo:""}`;
+    const w = window.open("","_blank","width=340,height=600");
+    w.document.write(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Courier New',monospace;font-size:11px;width:72mm;padding:4mm;background:#fff;color:#000}
+h1{font-size:13px;text-align:center;font-weight:bold;margin-bottom:2px}
+.sub{text-align:center;font-size:10px;margin-bottom:6px;border-bottom:1px dashed #000;padding-bottom:4px}
+.meta{font-size:9px;margin-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:10px}
+td{padding:2px 1px;vertical-align:top}
+td:last-child{white-space:nowrap}
+.divider{border-top:1px dashed #000;margin:4px 0}
+.total{font-weight:bold;font-size:12px;text-align:right;padding-top:4px}
+.footer{text-align:center;font-size:9px;margin-top:6px;border-top:1px dashed #000;padding-top:4px}
+@media print{@page{size:72mm auto;margin:0}body{width:72mm;padding:3mm}}
+</style></head><body>
+<h1>EL MUNDO</h1>
+<div class="sub">TOP-UP HISTORY · ${filterLabel.toUpperCase()}</div>
+<div class="meta">Printed: ${new Date().toLocaleString([], {month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"})}<br>Records: ${txList.length}</div>
+<table>${rows}</table>
+<div class="divider"></div>
+<div class="total">TOTAL: $${total.toFixed(2)}</div>
+<div class="footer">www.elmundobonaire.com</div>
+</body></html>`);
+    w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
   };
 
   const loadPlayerHistory = async (userId) => {
@@ -7349,63 +7468,71 @@ function AdminCredits({ users, onAddCredits }) {
         ✓ Verified. Search by player number or name, enter amount and press ADD.
       </div>
 
-      {/* ── Top-Up History (at top, collapsible) ── */}
+      {/* ── Top-Up History ── */}
       <div style={{padding:"0 14px 10px"}}>
-        <div style={{display:"flex",gap:8}}>
-          <button style={{flex:1,padding:"10px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}
+        <div style={{display:"flex",gap:8,marginBottom:showHistory?8:0}}>
+          <button style={{flex:1,padding:"10px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}
             onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
             {showHistory ? "▲ HIDE HISTORY" : "▼ TOP-UP HISTORY"}
           </button>
-          {showHistory && topUpHistory.length > 0 && (
+          {showHistory && (
             <button style={{padding:"10px 14px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
-              onClick={() => {
-                const rows = topUpHistory.map(tx => {
-                  const player = Object.values(users).find(u => u.id === tx.user_id);
-                  const admin  = Object.values(users).find(u => u.id === tx.added_by);
-                  const dt = new Date(tx.created_at);
-                  return `<tr><td style="padding:6px 10px;color:#4ade80;font-weight:bold">+$${(+tx.amount).toFixed(2)}</td><td style="padding:6px 10px">${player?.name||"Unknown"}${player?.player_number?` (#${player.player_number})`:""}</td><td style="padding:6px 10px;color:#999">by ${admin?.name||"Admin"} · ${tx.method||"cash"}</td><td style="padding:6px 10px;color:#999">${dt.toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})} ${dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td></tr>`;
-                }).join("");
-                const total = topUpHistory.reduce((s,t)=>s+(+t.amount),0);
-                const w = window.open("","_blank","width=700,height=600");
-                w.document.write(`<!DOCTYPE html><html><head><title>Top-Up History</title><style>body{font-family:sans-serif;padding:24px;background:#fff}h2{margin:0 0 4px}p{color:#666;margin:0 0 20px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;border-bottom:2px solid #333;font-size:12px;letter-spacing:1px}td{border-bottom:1px solid #eee}tfoot td{font-weight:bold;padding:10px;border-top:2px solid #333}@media print{body{padding:0}}</style></head><body><h2>EL MUNDO — TOP-UP HISTORY</h2><p>Printed ${new Date().toLocaleString()} · ${topUpHistory.length} transactions</p><table><thead><tr><th>AMOUNT</th><th>PLAYER</th><th>BY / METHOD</th><th>DATE</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>TOTAL</td><td colspan="3">$${total.toFixed(2)}</td></tr></tfoot></table></body></html>`);
-                w.document.close();
-                w.focus();
-                setTimeout(()=>w.print(),400);
-              }}>
-              🖨 PRINT
-            </button>
+              onClick={()=>printThermalReceipt(getFilteredHistory())}>🖨 PRINT</button>
           )}
         </div>
         {showHistory && (
-          <div style={{marginTop:8}}>
+          <div>
+            {/* Filter pills */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              {[["recent","LAST 5"],["today","TODAY"],["week","WEEK"],["month","MONTH"],["custom","CUSTOM"]].map(([f,label])=>(
+                <button key={f} style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:`1px solid ${histFilter===f?"rgba(201,168,76,.8)":"rgba(255,255,255,.12)"}`,background:histFilter===f?"rgba(201,168,76,.15)":"transparent",color:histFilter===f?"#c9a84c":"rgba(255,255,255,.4)",transition:"all .15s"}}
+                  onClick={()=>{setHistFilter(f); if(topUpHistory.length===0) loadHistory();}}>
+                  {label}
+                </button>
+              ))}
+              <button style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"rgba(255,255,255,.3)",marginLeft:"auto"}}
+                onClick={loadHistory}>↻</button>
+            </div>
+            {histFilter === "custom" && (
+              <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+                <input type="date" value={histFrom} onChange={e=>setHistFrom(e.target.value)}
+                  style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
+                <span style={{color:"rgba(255,255,255,.3)",fontSize:11}}>→</span>
+                <input type="date" value={histTo} onChange={e=>setHistTo(e.target.value)}
+                  style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
+              </div>
+            )}
             {historyLoading ? (
-              <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading...</div>
-            ) : topUpHistory.length === 0 ? (
-              <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups recorded yet</div>
+              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
+            ) : getFilteredHistory().length === 0 ? (
+              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups in this period</div>
             ) : (
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {topUpHistory.map((tx,i) => {
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                {getFilteredHistory().map((tx,i) => {
                   const player = Object.values(users).find(u => u.id === tx.user_id);
                   const admin  = Object.values(users).find(u => u.id === tx.added_by);
                   const dt = new Date(tx.created_at);
                   return (
-                    <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#4ade80",minWidth:65,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
+                    <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",minWidth:60,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {player?.name || "Unknown player"}{player?.player_number ? ` (#${player.player_number})` : ""}
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {player?.name||"Unknown"}{player?.player_number?` #${player.player_number}`:""}
                         </div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>
-                          by {admin?.name || "Admin"} · {tx.method || "cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:1}}>
+                          {admin?.name||"Admin"} · {tx.method||"cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
                         </div>
                       </div>
                     </div>
                   );
                 })}
+                {histFilter==="recent" && topUpHistory.length>5 && (
+                  <div style={{textAlign:"center",padding:"6px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)"}}>
+                    Showing last 5 of {topUpHistory.length} — use filters to see more
+                  </div>
+                )}
               </div>
             )}
-            <button style={{marginTop:8,padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}
-              onClick={loadHistory}>↻ REFRESH</button>
           </div>
         )}
       </div>

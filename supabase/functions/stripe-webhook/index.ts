@@ -104,6 +104,21 @@ Deno.serve(async (req) => {
     return json({ error: `Webhook Error: ${err.message}` }, 400);
   }
 
+  // ── Handle expired sessions: clean up ghost card_pending orders ────────────
+  if (event.type === "checkout.session.expired") {
+    const expiredSession = event.data.object as Stripe.Checkout.Session;
+    const expMeta = expiredSession.metadata ?? {};
+    if (expMeta.userId) {
+      const db = createClient(SUPABASE_URL, SUPABASE_SKEY);
+      await db.from("orders")
+        .delete()
+        .eq("user_id", expMeta.userId)
+        .eq("payment_method", "card_pending");
+      console.log(`Expired session: cleaned ghost orders for user ${expMeta.userId}`);
+    }
+    return json({ received: true });
+  }
+
   if (event.type !== "checkout.session.completed") {
     return json({ received: true });
   }
