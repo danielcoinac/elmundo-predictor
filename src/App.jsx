@@ -4205,7 +4205,7 @@ function AdminDashboard({ allOrders, users, board }) {
       </div>
       <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
         <DCard icon="👥" label="TOTAL PLAYERS" value={totalUsers} sub="Registered accounts" />
-        <DCard icon="🏆" label="TOP PLAYER" value={topPlayer ? topPlayer.name.split(" ")[0] : "—"} sub={topPlayer ? `${topPlayer.pts} pts · Rank #1` : "No predictions yet"} accent="rgba(201,168,76,.25)" />
+        <DCard icon="🏆" label="TOP PLAYER" value={topPlayer ? topPlayer.name.split(" ")[0] : "—"} sub={topPlayer ? `${topPlayer.pts} pts · Rank #1` : "No predictions yet"} accent="rgba(255,255,255,.1)" />
       </div>
 
       {/* ── Today breakdown ── */}
@@ -4320,9 +4320,9 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
           <button onClick={onAnnounceWinner} style={{
             marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
             padding:"8px 14px",margin:"6px 12px 6px auto",
-            background:"rgba(201,168,76,.12)",border:"1px solid rgba(201,168,76,.35)",
+            background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",
             fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-            color:"#c9a84c",cursor:"pointer",whiteSpace:"nowrap",
+            color:"rgba(255,255,255,.85)",cursor:"pointer",whiteSpace:"nowrap",
           }}>
             🏆 WINNER
           </button>
@@ -4414,18 +4414,18 @@ function AdminAppSettings({ appSettings = {}, onSave }) {
         {/* Event Mode */}
         <div style={{marginBottom:20}}>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT MODE</div>
-          <div style={{padding:"16px",background:s.noEventMode?"rgba(255,255,255,.04)":"rgba(201,168,76,.06)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.1)":"rgba(201,168,76,.3)"}`,marginBottom:8}}>
+          <div style={{padding:"16px",background:s.noEventMode?"rgba(255,255,255,.04)":"rgba(255,255,255,.04)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.08)":"rgba(255,255,255,.18)"}`,marginBottom:8}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:s.noEventMode?"rgba(255,255,255,.45)":"#c9a84c"}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:s.noEventMode?"rgba(255,255,255,.35)":"rgba(255,255,255,.9)"}}>
                   {s.noEventMode ? "EVENT DISABLED" : "⚽ WORLD CUP MODE ACTIVE"}
                 </div>
                 <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:"'Outfit',sans-serif"}}>
                   {s.noEventMode ? "Matches & leaderboard tabs are hidden. App runs in restaurant-only mode." : "Matches and leaderboard are shown. Disable when the event ends."}
                 </div>
               </div>
-              <div onClick={()=>onSave({noEventMode:!s.noEventMode})} style={{width:44,height:24,borderRadius:12,background:s.noEventMode?"rgba(255,255,255,.12)":"#c9a84c",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.2)":"#c9a84c"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0,marginLeft:16}}>
-                <div style={{position:"absolute",top:3,left:s.noEventMode?3:22,width:16,height:16,borderRadius:"50%",background:s.noEventMode?"rgba(255,255,255,.5)":"#000",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+              <div onClick={()=>onSave({noEventMode:!s.noEventMode})} style={{width:44,height:24,borderRadius:12,background:s.noEventMode?"rgba(255,255,255,.1)":"rgba(255,255,255,.9)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.15)":"rgba(255,255,255,.9)"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0,marginLeft:16}}>
+                <div style={{position:"absolute",top:3,left:s.noEventMode?3:22,width:16,height:16,borderRadius:"50%",background:s.noEventMode?"rgba(255,255,255,.4)":"#000",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
               </div>
             </div>
           </div>
@@ -6818,13 +6818,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* ── Group order banner ── */}
           {activeGroup && (
-            <div style={{margin:"0 0 4px",padding:"11px 16px",background:"rgba(255,255,255,.04)",borderBottom:"1px solid rgba(255,255,255,.12)",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 18px rgba(255,255,255,.06)"}}>
-              <span style={{fontSize:16,opacity:.85}}>👥</span>
+            <div style={{padding:"13px 18px",background:"rgba(255,255,255,.03)",borderTop:"1px solid rgba(255,255,255,.08)",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",flexShrink:0}}/>
               <div style={{flex:1}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.95)",textTransform:"uppercase"}}>Group Order Active</div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Items go to group cart</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.9)",textTransform:"uppercase"}}>Group Order Active</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.38)",marginTop:2}}>All items go to the group cart</div>
               </div>
-              <div style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",flexShrink:0}}/>
             </div>
           )}
 
@@ -7501,12 +7500,12 @@ td:last-child{white-space:nowrap}
       {/* ── Top-Up History ── */}
       <div style={{padding:"0 14px 10px"}}>
         <div style={{display:"flex",gap:8,marginBottom:showHistory?8:0}}>
-          <button style={{flex:1,padding:"10px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}
+          <button style={{flex:1,padding:"10px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}
             onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
             {showHistory ? "▲ HIDE HISTORY" : "▼ TOP-UP HISTORY"}
           </button>
           {showHistory && (
-            <button style={{padding:"10px 14px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
+            <button style={{padding:"10px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
               onClick={()=>printThermalReceipt(getFilteredHistory())}>🖨 PRINT</button>
           )}
         </div>
@@ -7515,7 +7514,7 @@ td:last-child{white-space:nowrap}
             {/* Filter pills */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
               {[["recent","LAST 5"],["today","TODAY"],["week","WEEK"],["month","MONTH"],["custom","CUSTOM"]].map(([f,label])=>(
-                <button key={f} style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:`1px solid ${histFilter===f?"rgba(201,168,76,.8)":"rgba(255,255,255,.12)"}`,background:histFilter===f?"rgba(201,168,76,.15)":"transparent",color:histFilter===f?"#c9a84c":"rgba(255,255,255,.4)",transition:"all .15s"}}
+                <button key={f} style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:`1px solid ${histFilter===f?"rgba(255,255,255,.6)":"rgba(255,255,255,.12)"}`,background:histFilter===f?"rgba(255,255,255,.08)":"transparent",color:histFilter===f?"#fff":"rgba(255,255,255,.4)",transition:"all .15s"}}
                   onClick={()=>{setHistFilter(f); if(topUpHistory.length===0) loadHistory();}}>
                   {label}
                 </button>

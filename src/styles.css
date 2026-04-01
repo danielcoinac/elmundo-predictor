@@ -1,14 +1,13 @@
   /* ══════════════════════════════════════════════════════════════════════════
-     EL MUNDO — PREMIUM DESIGN SYSTEM  (gold accent + refined typography)
-     Gold palette: #c9a84c (base) · #e8c96a (light) · #a07830 (deep)
+     EL MUNDO — PREMIUM DESIGN SYSTEM  (white accent + refined typography)
   ══════════════════════════════════════════════════════════════════════════ */
   :root {
-    --gold:        #c9a84c;
-    --gold-light:  #e8c96a;
-    --gold-deep:   #a07830;
-    --gold-glow:   rgba(201,168,76,.18);
-    --gold-border: rgba(201,168,76,.35);
-    --gold-bg:     rgba(201,168,76,.07);
+    --gold:        #fff;
+    --gold-light:  #fff;
+    --gold-deep:   rgba(255,255,255,.8);
+    --gold-glow:   rgba(255,255,255,.12);
+    --gold-border: rgba(255,255,255,.2);
+    --gold-bg:     rgba(255,255,255,.05);
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -192,9 +191,9 @@
 
   /* ── Badges — same family, simple, premium ── */
   .plr-badge{display:inline-flex;align-self:flex-start;width:fit-content;align-items:center;font-family:'Outfit',sans-serif;font-size:9px;font-weight:700;letter-spacing:3px;padding:4px 10px;border-radius:2px;white-space:nowrap;line-height:1;text-transform:uppercase}
-  .badge-owner{background:transparent;border:1px solid rgba(201,168,76,.6);color:#c9a84c}
+  .badge-owner{background:transparent;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.8)}
   .badge-admin{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.55)}
-  .badge-sponsor{background:transparent;border:1px solid rgba(201,168,76,.4);color:rgba(201,168,76,.8)}
+  .badge-sponsor{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
 
   /* ── Developer badge — unique ── */
   .badge-dev{
@@ -291,14 +290,14 @@
   /* ── Tournament Winner Screen ── */
   .winner-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;overflow:hidden;text-align:center}
   .winner-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-  .winner-trophy{font-size:72px;animation:trophyBounce 1.2s ease-in-out infinite alternate;margin-bottom:12px;filter:drop-shadow(0 0 24px rgba(201,168,76,.5))}
+  .winner-trophy{font-size:72px;animation:trophyBounce 1.2s ease-in-out infinite alternate;margin-bottom:12px;filter:drop-shadow(0 0 24px rgba(255,255,255,.4))}
   @keyframes trophyBounce{from{transform:scale(1) translateY(0)}to{transform:scale(1.1) translateY(-10px)}}
   .winner-label{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:6px;color:rgba(255,255,255,.4);margin-bottom:6px}
-  .winner-event{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:4px;color:#c9a84c;margin-bottom:28px}
+  .winner-event{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:4px;color:rgba(255,255,255,.6);margin-bottom:28px}
   .winner-name{font-family:'Anton',sans-serif;font-size:clamp(36px,10vw,68px);color:#fff;line-height:1;margin-bottom:8px;animation:winnerIn .7s cubic-bezier(.34,1.56,.64,1) both}
   @keyframes winnerIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
-  .winner-pts{font-family:'Anton',sans-serif;font-size:24px;color:#c9a84c;letter-spacing:3px;margin-bottom:4px}
-  .winner-champion{font-family:'Outfit',sans-serif;font-size:12px;letter-spacing:4px;color:#c9a84c;font-weight:700;text-transform:uppercase;margin-bottom:36px}
+  .winner-pts{font-family:'Anton',sans-serif;font-size:24px;color:#fff;letter-spacing:3px;margin-bottom:4px}
+  .winner-champion{font-family:'Outfit',sans-serif;font-size:12px;letter-spacing:4px;color:rgba(255,255,255,.55);font-weight:700;text-transform:uppercase;margin-bottom:36px}
   .winner-podium{display:flex;gap:36px;margin-bottom:36px}
   .winner-pod-item{display:flex;flex-direction:column;align-items:center;gap:5px}
   .winner-pod-pos{font-size:28px}
@@ -835,37 +834,37 @@
   .mom-preview-change:hover{color:#fff;background:rgba(0,0,0,.9)}
 
   /* ── Cinematic World Cup hero banner ── */
-  .mom-hero{position:relative;overflow:hidden;margin:0 0 8px;border-bottom:1px solid rgba(201,168,76,.18)}
-  .mom-hero-bg{position:absolute;inset:0;background:linear-gradient(160deg,#0d0d0d 0%,#111008 35%,#0d0c07 65%,#0a0a0a 100%)}
+  .mom-hero{position:relative;overflow:hidden;margin:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .mom-hero-bg{position:absolute;inset:0;background:linear-gradient(160deg,#0d0d0d 0%,#101010 35%,#0f0f0f 65%,#0a0a0a 100%)}
   .mom-hero-bg::after{content:'';position:absolute;inset:0;
     background:
-      radial-gradient(ellipse 80% 60% at 50% 0%,rgba(201,168,76,.13) 0%,transparent 70%),
-      radial-gradient(ellipse 40% 40% at 10% 100%,rgba(201,168,76,.06) 0%,transparent 60%),
-      radial-gradient(ellipse 40% 40% at 90% 100%,rgba(201,168,76,.06) 0%,transparent 60%)}
+      radial-gradient(ellipse 80% 60% at 50% 0%,rgba(255,255,255,.06) 0%,transparent 70%),
+      radial-gradient(ellipse 40% 40% at 10% 100%,rgba(255,255,255,.02) 0%,transparent 60%),
+      radial-gradient(ellipse 40% 40% at 90% 100%,rgba(255,255,255,.02) 0%,transparent 60%)}
   .mom-hero-sweep{position:absolute;inset:0;pointer-events:none;
-    background:linear-gradient(105deg,transparent 30%,rgba(201,168,76,.07) 50%,transparent 70%);
+    background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.04) 50%,transparent 70%);
     animation:mom-sweep 4s ease-in-out infinite}
-  .mom-hero-grid{position:absolute;inset:0;pointer-events:none;opacity:.04;
-    background-image:linear-gradient(rgba(201,168,76,1) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,1) 1px,transparent 1px);
+  .mom-hero-grid{position:absolute;inset:0;pointer-events:none;opacity:.03;
+    background-image:linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px);
     background-size:40px 40px;
     transform:perspective(300px) rotateX(35deg) translateY(-10px) scaleY(1.4);
     transform-origin:bottom center}
   .mom-hero-body{position:relative;z-index:2;padding:28px 20px 10px;text-align:center}
-  .mom-hero-eyebrow{font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:5px;color:var(--gold);font-weight:700;opacity:.8;margin-bottom:10px}
+  .mom-hero-eyebrow{font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:5px;color:rgba(255,255,255,.55);font-weight:700;margin-bottom:10px}
   .mom-hero-title{display:flex;align-items:baseline;justify-content:center;gap:10px;line-height:1}
-  .mom-hero-title-line1{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:6px;color:#fff;text-shadow:0 2px 30px rgba(201,168,76,.25)}
-  .mom-hero-title-line2{font-family:'Anton',sans-serif;font-size:54px;letter-spacing:2px;color:var(--gold);text-shadow:0 0 40px rgba(201,168,76,.5),0 0 80px rgba(201,168,76,.2);animation:mom-pulse 3s ease-in-out infinite}
-  .mom-hero-bar{width:60px;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:12px auto 10px;animation:mom-bar-grow 1s .3s both}
+  .mom-hero-title-line1{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:6px;color:#fff;text-shadow:0 2px 30px rgba(255,255,255,.15)}
+  .mom-hero-title-line2{font-family:'Anton',sans-serif;font-size:54px;letter-spacing:2px;color:#fff;text-shadow:0 0 40px rgba(255,255,255,.4),0 0 80px rgba(255,255,255,.15);animation:mom-pulse 3s ease-in-out infinite}
+  .mom-hero-bar{width:60px;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);margin:12px auto 10px;animation:mom-bar-grow 1s .3s both}
   .mom-hero-sub{font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.3);font-weight:600;padding-bottom:16px}
-  .mom-hero-ticker-wrap{position:relative;z-index:2;overflow:hidden;border-top:1px solid rgba(201,168,76,.12);background:rgba(201,168,76,.04);padding:7px 0}
+  .mom-hero-ticker-wrap{position:relative;z-index:2;overflow:hidden;border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);padding:7px 0}
   .mom-hero-ticker-wrap::before,.mom-hero-ticker-wrap::after{content:'';position:absolute;top:0;bottom:0;width:40px;z-index:3}
   .mom-hero-ticker-wrap::before{left:0;background:linear-gradient(90deg,#0d0d0d,transparent)}
   .mom-hero-ticker-wrap::after{right:0;background:linear-gradient(-90deg,#0d0d0d,transparent)}
   .mom-hero-ticker{display:flex;animation:mom-ticker 28s linear infinite;white-space:nowrap;width:max-content}
-  .mom-hero-tick{font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.4);padding:0 18px;border-right:1px solid rgba(201,168,76,.15)}
+  .mom-hero-tick{font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.4);padding:0 18px;border-right:1px solid rgba(255,255,255,.08)}
   .mom-hero-tick:last-child{border-right:none}
   @keyframes mom-sweep{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
-  @keyframes mom-pulse{0%,100%{text-shadow:0 0 40px rgba(201,168,76,.5),0 0 80px rgba(201,168,76,.2)}50%{text-shadow:0 0 60px rgba(201,168,76,.8),0 0 100px rgba(201,168,76,.35)}}
+  @keyframes mom-pulse{0%,100%{text-shadow:0 0 40px rgba(255,255,255,.4),0 0 80px rgba(255,255,255,.15)}50%{text-shadow:0 0 60px rgba(255,255,255,.65),0 0 100px rgba(255,255,255,.25)}}
   @keyframes mom-bar-grow{from{width:0;opacity:0}to{width:60px;opacity:1}}
   @keyframes mom-ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
@@ -1007,7 +1006,7 @@
   .menu-cat-header-count{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.3);font-weight:700;letter-spacing:0}
   /* Item badges */
   .menu-badge{font-size:9px;font-family:'Anton',sans-serif;letter-spacing:1px;padding:2px 6px;flex-shrink:0}
-  .menu-badge-gold{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+  .menu-badge-gold{background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.2)}
   .menu-badge-blue{background:rgba(147,197,253,.1);color:#93c5fd;border:1px solid rgba(147,197,253,.25)}
   .menu-badge-amber{background:rgba(251,191,36,.12);color:#c76300;border:1px solid rgba(255,68,0,.3)}
   .menu-item-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.055);gap:12px;transition:background .15s}
@@ -1239,81 +1238,81 @@
      PREMIUM GOLD OVERRIDES — El Mundo brand upgrade
   ══════════════════════════════════════════════════════════════════════════ */
 
-  /* ── Auth: gold shimmer on panel top edge ── */
+  /* ── Auth: white shimmer on panel top edge ── */
   .auth-panel{
-    border-top: 1px solid var(--gold-border);
+    border-top: 1px solid rgba(255,255,255,.15);
     box-shadow: 0 24px 80px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.04) inset,
-                0 1px 0 var(--gold-border) inset, 0 -1px 60px rgba(201,168,76,.04);
+                0 1px 0 rgba(255,255,255,.12) inset, 0 -1px 60px rgba(255,255,255,.02);
   }
-  /* Gold CTA button */
+  /* White CTA button */
   .auth-cta{
-    background: linear-gradient(135deg, var(--gold-deep) 0%, var(--gold) 45%, var(--gold-light) 100%);
+    background: #fff;
     color: #000;
     font-weight: 900;
     letter-spacing: 6px;
     position: relative;
     overflow: hidden;
     border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(201,168,76,.25);
+    box-shadow: 0 4px 24px rgba(255,255,255,.15);
     transition: opacity .2s, transform .15s, box-shadow .2s;
   }
   .auth-cta::after{
     content:'';position:absolute;top:0;left:-120%;width:55%;height:100%;
-    background:linear-gradient(105deg,transparent,rgba(255,255,255,.28),transparent);
+    background:linear-gradient(105deg,transparent,rgba(255,255,255,.35),transparent);
     transform:skewX(-20deg);
     animation:goldScanAuth 3.5s ease-in-out infinite;
   }
-  .auth-cta:hover{opacity:1;transform:translateY(-2px);box-shadow:0 8px 32px rgba(201,168,76,.35)}
+  .auth-cta:hover{opacity:1;transform:translateY(-2px);box-shadow:0 8px 32px rgba(255,255,255,.22)}
 
-  /* ── Bottom nav: gold active indicator ── */
-  .bnav-on{ color: var(--gold) !important; }
-  .bnav-indicator{ background: var(--gold) !important; }
+  /* ── Bottom nav: white active indicator ── */
+  .bnav-on{ color: #fff !important; }
+  .bnav-indicator{ background: #fff !important; }
 
-  /* ── Section banners: gold left accent ── */
+  /* ── Section banners: white left accent ── */
   .section-banner{
-    border-left: 3px solid var(--gold);
+    border-left: 3px solid rgba(255,255,255,.6);
     padding-left: 18px;
   }
   .section-banner-title{ letter-spacing: 3px; }
 
-  /* ── Match tabs: gold active indicator ── */
-  .match-tab-btn-on{ color: var(--gold) !important; }
-  .match-tab-btn-on::after{ background: var(--gold) !important; box-shadow: 0 0 8px rgba(201,168,76,.5); }
-  .match-tab-btn-on .match-tab-count{ background: rgba(201,168,76,.2); }
+  /* ── Match tabs: white active indicator ── */
+  .match-tab-btn-on{ color: #fff !important; }
+  .match-tab-btn-on::after{ background: #fff !important; box-shadow: 0 0 10px rgba(255,255,255,.4); }
+  .match-tab-btn-on .match-tab-count{ background: rgba(255,255,255,.18); }
 
-  /* ── Date filter: gold active chip ── */
+  /* ── Date filter: white active chip ── */
   .date-chip-on{
-    background: var(--gold) !important;
+    background: #fff !important;
     color: #000 !important;
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 12px rgba(201,168,76,.3);
+    border-color: #fff !important;
+    box-shadow: 0 0 14px rgba(255,255,255,.25);
   }
 
-  /* ── Match card: gold hover glow ── */
+  /* ── Match card: subtle white hover ── */
   .mcard:hover{
-    background: rgba(201,168,76,.025) !important;
-    box-shadow: inset 0 0 0 1px rgba(201,168,76,.08);
+    background: rgba(255,255,255,.018) !important;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
   }
-  /* Score inputs: gold focus ring */
+  /* Score inputs: white focus ring */
   .sinput:focus{
-    border-color: var(--gold) !important;
-    background: rgba(201,168,76,.06) !important;
-    box-shadow: 0 0 0 3px rgba(201,168,76,.12) !important;
+    border-color: rgba(255,255,255,.5) !important;
+    background: rgba(255,255,255,.04) !important;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.08) !important;
   }
-  /* Predict CTA: gold hover */
+  /* Predict CTA: white hover */
   .pred-cta:hover:not(:disabled){
-    border-color: var(--gold) !important;
-    color: var(--gold) !important;
-    background: var(--gold-bg) !important;
+    border-color: rgba(255,255,255,.5) !important;
+    color: #fff !important;
+    background: rgba(255,255,255,.05) !important;
   }
 
-  /* ── Leaderboard: podium gold/silver/bronze ── */
+  /* ── Leaderboard: podium white/silver/bronze ── */
   .lb-pod:nth-child(1) .lb-pod-plinth{
-    background: linear-gradient(to bottom, rgba(201,168,76,.22), rgba(201,168,76,.04));
-    border-top-color: rgba(201,168,76,.6);
+    background: linear-gradient(to bottom, rgba(255,255,255,.14), rgba(255,255,255,.02));
+    border-top-color: rgba(255,255,255,.5);
   }
-  .lb-pod:nth-child(1) .lb-pod-pts{ color: var(--gold); }
-  .lb-pod:nth-child(1) .lb-pod-crown{ filter: drop-shadow(0 0 8px rgba(201,168,76,.8)); }
+  .lb-pod:nth-child(1) .lb-pod-pts{ color: #fff; }
+  .lb-pod:nth-child(1) .lb-pod-crown{ filter: drop-shadow(0 0 10px rgba(255,255,255,.6)); }
   .lb-pod:nth-child(2) .lb-pod-plinth{
     background: linear-gradient(to bottom, rgba(192,192,192,.12), rgba(192,192,192,.02));
     border-top-color: rgba(192,192,192,.4);
@@ -1322,134 +1321,134 @@
     background: linear-gradient(to bottom, rgba(205,127,50,.12), rgba(205,127,50,.02));
     border-top-color: rgba(205,127,50,.4);
   }
-  /* Leaderboard title: gold underline accent */
+  /* Leaderboard title: white underline accent */
   .lb-title{
     position: relative;
     display: inline-block;
   }
   .lb-title::after{
-    content:'';display:block;height:3px;
-    background:linear-gradient(90deg, transparent, var(--gold), transparent);
+    content:'';display:block;height:2px;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent);
     margin-top:10px;border-radius:2px;
     animation: goldLineFade 2s ease-in-out infinite;
   }
-  /* My row: gold left border */
-  .lb-row-me{ border-left-color: var(--gold) !important; }
+  /* My row: white left border */
+  .lb-row-me{ border-left-color: rgba(255,255,255,.6) !important; }
 
-  /* ── Notifications: gold for success ── */
+  /* ── Notifications: white for success ── */
   .notif-ok{
-    border-color: var(--gold) !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,.8), 0 0 0 1px rgba(201,168,76,.08) !important;
+    border-color: rgba(255,255,255,.2) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06) !important;
   }
-  .notif-ok .notif-dot{ color: var(--gold) !important; }
+  .notif-ok .notif-dot{ color: #fff !important; }
 
-  /* ── Wallet card: gold balance ── */
+  /* ── Wallet card: white balance ── */
   .wallet-card{
-    border: 1px solid var(--gold-border);
-    background: rgba(201,168,76,.04);
-    box-shadow: 0 0 40px rgba(201,168,76,.05);
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.02);
+    box-shadow: 0 0 40px rgba(255,255,255,.03);
   }
-  .wallet-card-amount{ color: var(--gold); }
-  .wallet-card-label{ color: rgba(201,168,76,.6); letter-spacing: 5px; }
+  .wallet-card-amount{ color: #fff; }
+  .wallet-card-label{ color: rgba(255,255,255,.45); letter-spacing: 5px; }
 
-  /* Wallet top-up amounts: gold on select */
+  /* Wallet top-up amounts: white on select */
   .wallet-amt-on{
-    background: var(--gold-bg) !important;
-    border-color: var(--gold) !important;
-    color: var(--gold) !important;
+    background: rgba(255,255,255,.07) !important;
+    border-color: rgba(255,255,255,.5) !important;
+    color: #fff !important;
   }
   .wallet-amt-btn:hover{
-    border-color: var(--gold-border) !important;
-    color: var(--gold-light) !important;
+    border-color: rgba(255,255,255,.3) !important;
+    color: #fff !important;
   }
 
-  /* ── Primary action buttons: gold gradient ── */
+  /* ── Primary action buttons: white ── */
   .stripe-topup-btn, .order-place-btn, .go-btn-primary {
-    background: linear-gradient(135deg, var(--gold-deep), var(--gold), var(--gold-light)) !important;
+    background: #fff !important;
     color: #000 !important;
     font-weight: 900;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(201,168,76,.2);
+    box-shadow: 0 4px 20px rgba(255,255,255,.12);
     transition: opacity .2s, transform .15s, box-shadow .2s !important;
   }
   .stripe-topup-btn:hover:not(:disabled),
   .order-place-btn:hover,
   .go-btn-primary:hover {
-    opacity: 1 !important;
+    opacity: .92 !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 8px 28px rgba(201,168,76,.32) !important;
+    box-shadow: 0 8px 28px rgba(255,255,255,.2) !important;
   }
-  /* Cart payment selected option: gold */
+  /* Cart payment selected option: white */
   .cart-pay-opt-on{
-    border-color: var(--gold) !important;
-    background: var(--gold-bg) !important;
-    box-shadow: 0 0 0 1px rgba(201,168,76,.2);
+    border-color: rgba(255,255,255,.5) !important;
+    background: rgba(255,255,255,.05) !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.15);
   }
 
-  /* ── Table picker: gold on select ── */
+  /* ── Table picker: white on select ── */
   .table-picker-on{
-    background: var(--gold) !important;
+    background: #fff !important;
     color: #000 !important;
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 12px rgba(201,168,76,.25);
+    border-color: #fff !important;
+    box-shadow: 0 0 14px rgba(255,255,255,.2);
   }
   .table-picker-btn:hover{
-    border-color: var(--gold-border) !important;
-    color: var(--gold-light) !important;
+    border-color: rgba(255,255,255,.3) !important;
+    color: #fff !important;
   }
 
-  /* ── Auth tabs active: gold indicator ── */
-  .atab-on::after{ background: var(--gold) !important; }
-  .atab-on{ color: var(--gold-light) !important; }
+  /* ── Auth tabs active: white indicator ── */
+  .atab-on::after{ background: #fff !important; }
+  .atab-on{ color: #fff !important; }
 
-  /* ── Search input focus: gold ── */
+  /* ── Search input focus: white ── */
   .ffield-inp:focus{
-    border-color: var(--gold-border) !important;
-    background: rgba(201,168,76,.04) !important;
-    box-shadow: 0 0 0 3px rgba(201,168,76,.08) !important;
+    border-color: rgba(255,255,255,.25) !important;
+    background: rgba(255,255,255,.03) !important;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.06) !important;
   }
 
-  /* ── Header: subtle gold glow behind logo on hover ── */
+  /* ── Header: subtle white glow behind logo on hover ── */
   .hdr-logo-btn:hover{
-    filter: drop-shadow(0 0 10px rgba(201,168,76,.25));
+    filter: drop-shadow(0 0 10px rgba(255,255,255,.2));
   }
 
-  /* ── Score display: gold when locked (predicted correctly) ── */
-  .mcard-ok .score-digit{ color: var(--gold) !important; }
+  /* ── Score display: white when correct ── */
+  .mcard-ok .score-digit{ color: #fff !important; }
 
-  /* ── Player number: gold treatment ── */
-  .player-num-value{ color: var(--gold); }
-  .player-num-label{ color: rgba(201,168,76,.5); letter-spacing: 5px; }
+  /* ── Player number: white treatment ── */
+  .player-num-value{ color: #fff; }
+  .player-num-label{ color: rgba(255,255,255,.4); letter-spacing: 5px; }
 
-  /* ── Points badge in header: gold ── */
-  .hdr-badge-pts{ color: var(--gold); }
+  /* ── Points badge in header: white ── */
+  .hdr-badge-pts{ color: #fff; }
 
-  /* ── Group order code: gold ── */
-  .go-code{ color: var(--gold); letter-spacing: 10px; }
+  /* ── Group order code: white ── */
+  .go-code{ color: #fff; letter-spacing: 10px; }
 
-  /* ── Live orders badge: gold ── */
+  /* ── Live orders badge: white ── */
   .orders-live-badge{
-    background: var(--gold) !important;
+    background: #fff !important;
     color: #000 !important;
   }
 
-  /* ── Active order tab: gold indicator ── */
+  /* ── Active order tab: white indicator ── */
   .orders-page-tab-on{
-    border-bottom-color: var(--gold) !important;
-    background: rgba(201,168,76,.04) !important;
+    border-bottom-color: rgba(255,255,255,.6) !important;
+    background: rgba(255,255,255,.03) !important;
   }
-  .orders-page-tab-on .orders-page-tab-label{ color: var(--gold) !important; }
+  .orders-page-tab-on .orders-page-tab-label{ color: #fff !important; }
 
-  /* ── Moment gold neon sub stays consistent ── */
-  .mom-neon-sub{ color: var(--gold); }
+  /* ── Moment neon sub ── */
+  .mom-neon-sub{ color: rgba(255,255,255,.7); }
 
-  /* ── Share card button: already gold, ensure consistency ── */
-  .sc-share-btn{ background: var(--gold) !important; }
+  /* ── Share card button: white ── */
+  .sc-share-btn{ background: #fff !important; color: #000 !important; }
 
-  /* ── Sponsor badge: richer gold ── */
-  .badge-sponsor{ border-color: var(--gold-border); color: var(--gold); }
-  .badge-owner{   border-color: var(--gold-border); color: var(--gold); }
+  /* ── Sponsor / owner badges: white ── */
+  .badge-sponsor{ border-color: rgba(255,255,255,.2); color: rgba(255,255,255,.7); }
+  .badge-owner{   border-color: rgba(255,255,255,.2); color: rgba(255,255,255,.7); }
 
   /* ── Premium entry animations ── */
   @keyframes goldScanAuth {
@@ -1459,25 +1458,25 @@
     100% { left: 180%; opacity: 0 }
   }
   @keyframes goldLineFade {
-    0%,100% { opacity: .5 }
-    50%     { opacity: 1 }
+    0%,100% { opacity: .4 }
+    50%     { opacity: .9 }
   }
   @keyframes goldPulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(201,168,76,.4) }
-    50%     { box-shadow: 0 0 0 6px rgba(201,168,76,0) }
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.3) }
+    50%     { box-shadow: 0 0 0 6px rgba(255,255,255,0) }
   }
   @keyframes goldShimmerSlide {
     0%   { background-position: -200% center }
     100% { background-position: 200% center }
   }
 
-  /* ── Skeleton shimmer: warm gold tint ── */
+  /* ── Skeleton shimmer: white tint ── */
   .mcard-skeleton{
     background: linear-gradient(
       90deg,
-      rgba(201,168,76,.03) 25%,
-      rgba(201,168,76,.08) 50%,
-      rgba(201,168,76,.03) 75%
+      rgba(255,255,255,.02) 25%,
+      rgba(255,255,255,.05) 50%,
+      rgba(255,255,255,.02) 75%
     ) !important;
     background-size: 200% 100% !important;
   }
