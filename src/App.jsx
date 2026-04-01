@@ -1970,7 +1970,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches" && <ErrorBoundary name="matches"><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></ErrorBoundary>}
-          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} /></ErrorBoundary>}
+          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} /></ErrorBoundary>}
           {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} /></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             onCancelOrder={cancelOrder}
@@ -2510,7 +2510,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
 }
 
 /* ═══ MOMENTS ═══════════════════════════════════════════════════════════════ */
-function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0 }) {
+function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0, appSettings = {} }) {
   const [feedTab,  setFeedTab]  = useState("feed"); // "feed" | "notifs"
   const [showSearch, setShowSearch] = useState(false);
   const [searchFromFeed, setSearchFromFeed] = useState(false); // opened via card author click
