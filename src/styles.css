@@ -822,28 +822,40 @@
   .mom-preview-change{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.75);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;backdrop-filter:blur(4px);transition:all .15s}
   .mom-preview-change:hover{color:#fff;background:rgba(0,0,0,.9)}
 
-  /* ── Mundogram animated banner ── */
-  .mom-banner{position:relative;overflow:hidden;margin:0 12px 6px;border-radius:16px;border:1px solid rgba(255,255,255,.08)}
-  .mom-banner-bg{position:absolute;inset:0;background:linear-gradient(135deg,#0a0a0a 0%,#1a0a20 40%,#0a1520 70%,#0a0a0a 100%);animation:mom-banner-shift 8s ease-in-out infinite alternate}
-  .mom-banner-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(240,192,64,.08) 0%,transparent 60%),radial-gradient(circle at 70% 50%,rgba(230,57,70,.06) 0%,transparent 60%)}
-  .mom-banner-content{position:relative;z-index:1;padding:18px 16px 14px;text-align:center}
-  .mom-banner-flag-row{display:flex;justify-content:center;gap:6px;font-size:15px;margin-bottom:10px;overflow:hidden}
-  .mom-banner-flag-row span{animation:mom-flag-float 3s ease-in-out infinite;display:inline-block}
-  .mom-banner-flag-row span:nth-child(2){animation-delay:.15s}
-  .mom-banner-flag-row span:nth-child(3){animation-delay:.3s}
-  .mom-banner-flag-row span:nth-child(4){animation-delay:.45s}
-  .mom-banner-flag-row span:nth-child(5){animation-delay:.6s}
-  .mom-banner-flag-row span:nth-child(6){animation-delay:.75s}
-  .mom-banner-flag-row span:nth-child(7){animation-delay:.9s}
-  .mom-banner-flag-row span:nth-child(8){animation-delay:1.05s}
-  .mom-banner-flag-row span:nth-child(9){animation-delay:1.2s}
-  .mom-banner-flag-row span:nth-child(10){animation-delay:1.35s}
-  .mom-banner-flag-row span:nth-child(11){animation-delay:1.5s}
-  .mom-banner-flag-row span:nth-child(12){animation-delay:1.65s}
-  .mom-banner-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:6px;color:#fff;text-shadow:0 0 30px rgba(240,192,64,.15)}
-  .mom-banner-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;letter-spacing:1px;font-weight:500}
-  @keyframes mom-banner-shift{0%{background-position:0% 50%}100%{background-position:100% 50%}}
-  @keyframes mom-flag-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+  /* ── Cinematic World Cup hero banner ── */
+  .mom-hero{position:relative;overflow:hidden;margin:0 0 8px;border-bottom:1px solid rgba(201,168,76,.18)}
+  .mom-hero-bg{position:absolute;inset:0;background:linear-gradient(160deg,#0d0d0d 0%,#111008 35%,#0d0c07 65%,#0a0a0a 100%)}
+  .mom-hero-bg::after{content:'';position:absolute;inset:0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%,rgba(201,168,76,.13) 0%,transparent 70%),
+      radial-gradient(ellipse 40% 40% at 10% 100%,rgba(201,168,76,.06) 0%,transparent 60%),
+      radial-gradient(ellipse 40% 40% at 90% 100%,rgba(201,168,76,.06) 0%,transparent 60%)}
+  .mom-hero-sweep{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(105deg,transparent 30%,rgba(201,168,76,.07) 50%,transparent 70%);
+    animation:mom-sweep 4s ease-in-out infinite}
+  .mom-hero-grid{position:absolute;inset:0;pointer-events:none;opacity:.04;
+    background-image:linear-gradient(rgba(201,168,76,1) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,1) 1px,transparent 1px);
+    background-size:40px 40px;
+    transform:perspective(300px) rotateX(35deg) translateY(-10px) scaleY(1.4);
+    transform-origin:bottom center}
+  .mom-hero-body{position:relative;z-index:2;padding:28px 20px 10px;text-align:center}
+  .mom-hero-eyebrow{font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:5px;color:var(--gold);font-weight:700;opacity:.8;margin-bottom:10px}
+  .mom-hero-title{display:flex;align-items:baseline;justify-content:center;gap:10px;line-height:1}
+  .mom-hero-title-line1{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:6px;color:#fff;text-shadow:0 2px 30px rgba(201,168,76,.25)}
+  .mom-hero-title-line2{font-family:'Anton',sans-serif;font-size:54px;letter-spacing:2px;color:var(--gold);text-shadow:0 0 40px rgba(201,168,76,.5),0 0 80px rgba(201,168,76,.2);animation:mom-pulse 3s ease-in-out infinite}
+  .mom-hero-bar{width:60px;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:12px auto 10px;animation:mom-bar-grow 1s .3s both}
+  .mom-hero-sub{font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.3);font-weight:600;padding-bottom:16px}
+  .mom-hero-ticker-wrap{position:relative;z-index:2;overflow:hidden;border-top:1px solid rgba(201,168,76,.12);background:rgba(201,168,76,.04);padding:7px 0}
+  .mom-hero-ticker-wrap::before,.mom-hero-ticker-wrap::after{content:'';position:absolute;top:0;bottom:0;width:40px;z-index:3}
+  .mom-hero-ticker-wrap::before{left:0;background:linear-gradient(90deg,#0d0d0d,transparent)}
+  .mom-hero-ticker-wrap::after{right:0;background:linear-gradient(-90deg,#0d0d0d,transparent)}
+  .mom-hero-ticker{display:flex;animation:mom-ticker 28s linear infinite;white-space:nowrap;width:max-content}
+  .mom-hero-tick{font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.4);padding:0 18px;border-right:1px solid rgba(201,168,76,.15)}
+  .mom-hero-tick:last-child{border-right:none}
+  @keyframes mom-sweep{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+  @keyframes mom-pulse{0%,100%{text-shadow:0 0 40px rgba(201,168,76,.5),0 0 80px rgba(201,168,76,.2)}50%{text-shadow:0 0 60px rgba(201,168,76,.8),0 0 100px rgba(201,168,76,.35)}}
+  @keyframes mom-bar-grow{from{width:0;opacity:0}to{width:60px;opacity:1}}
+  @keyframes mom-ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
   /* ── Feed card upgrade ── */
   .mom-card{background:#000;border-bottom:1px solid rgba(255,255,255,.055);overflow:hidden;animation:fadeUp .4s ease both}

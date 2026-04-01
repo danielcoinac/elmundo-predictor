@@ -2845,15 +2845,29 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
         <>
-          {/* Animated World Cup banner */}
-          <div className="mom-banner">
-            <div className="mom-banner-bg"/>
-            <div className="mom-banner-content">
-              <div className="mom-banner-flag-row">
-                <span>🇲🇽</span><span>🇺🇸</span><span>🇨🇦</span><span>🇧🇷</span><span>🇦🇷</span><span>🇫🇷</span><span>🇩🇪</span><span>🇪🇸</span><span>🏴󠁧󠁢󠁥󠁮󠁧󠁿</span><span>🇳🇱</span><span>🇵🇹</span><span>🇯🇵</span>
+          {/* Cinematic World Cup hero banner */}
+          <div className="mom-hero">
+            <div className="mom-hero-bg"/>
+            <div className="mom-hero-sweep"/>
+            <div className="mom-hero-grid"/>
+            <div className="mom-hero-body">
+              <div className="mom-hero-eyebrow">EL MUNDO · BONAIRE</div>
+              <div className="mom-hero-title">
+                <span className="mom-hero-title-line1">WORLD CUP</span>
+                <span className="mom-hero-title-line2">2026</span>
               </div>
-              <div className="mom-banner-title">WORLD CUP 2026</div>
-              <div className="mom-banner-sub">Share your best moments from El Mundo</div>
+              <div className="mom-hero-bar"/>
+              <div className="mom-hero-sub">CAPTURE &amp; SHARE YOUR MOMENTS</div>
+            </div>
+            <div className="mom-hero-ticker-wrap">
+              <div className="mom-hero-ticker">
+                {["🇲🇽 MEXICO","🇺🇸 USA","🇨🇦 CANADA","🇧🇷 BRAZIL","🇦🇷 ARGENTINA","🇫🇷 FRANCE","🇩🇪 GERMANY","🇪🇸 SPAIN","🏴󠁧󠁢󠁥󠁮󠁧󠁿 ENGLAND","🇳🇱 NETHERLANDS","🇵🇹 PORTUGAL","🇯🇵 JAPAN","🇲🇦 MOROCCO","🇸🇳 SENEGAL","🇨🇴 COLOMBIA","🇺🇾 URUGUAY"].map(t=>(
+                  <span key={t} className="mom-hero-tick">{t}</span>
+                ))}
+                {["🇲🇽 MEXICO","🇺🇸 USA","🇨🇦 CANADA","🇧🇷 BRAZIL","🇦🇷 ARGENTINA","🇫🇷 FRANCE","🇩🇪 GERMANY","🇪🇸 SPAIN","🏴󠁧󠁢󠁥󠁮󠁧󠁿 ENGLAND","🇳🇱 NETHERLANDS","🇵🇹 PORTUGAL","🇯🇵 JAPAN","🇲🇦 MOROCCO","🇸🇳 SENEGAL","🇨🇴 COLOMBIA","🇺🇾 URUGUAY"].map(t=>(
+                  <span key={t+"2"} className="mom-hero-tick">{t}</span>
+                ))}
+              </div>
             </div>
           </div>
 
