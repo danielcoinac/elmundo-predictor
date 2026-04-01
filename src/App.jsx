@@ -29,6 +29,7 @@ export default function App() {
   const [sponsors, setSponsors] = useState(DEFAULT_SPONSORS);
   const [toast,    setToast]    = useState(null);
   const toastTimerRef = useRef(null);
+  const globalChannelRef = useRef(null);
   const [lang,     setLang]     = useState(() => localStorage.getItem("lang") || "en");
   const t = k => TRANSLATIONS[lang]?.[k] ?? TRANSLATIONS.en[k] ?? k;
   const toggleLang = () => { const nl = lang === "en" ? "nl" : "en"; setLang(nl); localStorage.setItem("lang", nl); };
@@ -309,7 +310,16 @@ export default function App() {
         }).subscribe();
     }
 
-    // ── 9. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
+    // ── 9. GLOBAL EVENTS (winner announcement broadcast to all clients) ──────
+    const globalSub = supabase.channel("rt-global-events")
+      .on("broadcast", { event: "winner_announced" }, ({ payload }) => {
+        setWinnerData(payload.winner || null);
+        setShowWinner(true);
+      })
+      .subscribe();
+    globalChannelRef.current = globalSub;
+
+    // ── 10. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
     // Only fetches the user's own lightweight data — failsafe if Realtime misses anything
     // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
     const fallback = setInterval(async () => {
@@ -331,6 +341,7 @@ export default function App() {
       supabase.removeChannel(orderSub);
       supabase.removeChannel(creditNotifSub);
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
+      supabase.removeChannel(globalSub);
       clearInterval(fallback);
     };
   }, [page, user?.id]);
@@ -814,19 +825,16 @@ export default function App() {
   };
 
   const cancelOrder = async (orderId) => {
-    const ord = allOrders.find(o => o.id === orderId);
+    const ord = myOrders.find(o => o.id === orderId) || allOrders.find(o => o.id === orderId);
     if (!ord || ord.status !== "pending") { toast$("Only pending orders can be cancelled", false); return; }
     const { error } = await supabase.from("orders").update({ status: "cancelled" }).eq("id", orderId);
     if (error) { toast$("Error cancelling order", false); return; }
-    // Refund credits if paid with credits
+    // Refund credits atomically if paid with credits
     if (ord.payment_method === "credits" && ord.total > 0) {
-      const { data: cred } = await supabase.from("user_credits").select("balance").eq("user_id", user.id).maybeSingle();
-      if (cred) {
-        const newBal = +(cred.balance) + +(ord.total);
-        await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal, updated_at: new Date().toISOString() });
-        setMyCredits(newBal);
-      }
+      const { data: newBal } = await supabase.rpc("add_credits", { p_user_id: user.id, p_amount: +ord.total });
+      if (newBal != null) setMyCredits(newBal);
     }
+    setMyOrders(o => o.map(x => x.id === orderId ? { ...x, status: "cancelled" } : x));
     setAllOrders(o => o.map(x => x.id === orderId ? { ...x, status: "cancelled" } : x));
     toast$("Order cancelled ✓");
   };
@@ -1990,7 +1998,14 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSetFloorplanAccess={adminSetFloorplanAccess}
               appSettings={appSettings}
               onSaveAppSettings={onSaveAppSettings}
-              onAnnounceWinner={() => { setWinnerData(board[0]||null); setShowWinner(true); }}
+              onAnnounceWinner={async () => {
+                const winner = board[0] || null;
+                setWinnerData(winner);
+                setShowWinner(true);
+                if (globalChannelRef.current) {
+                  await globalChannelRef.current.send({ type:"broadcast", event:"winner_announced", payload:{ winner } });
+                }
+              }}
               board={board}
             /></ErrorBoundary>
           )}
@@ -7333,6 +7348,68 @@ function AdminCredits({ users, onAddCredits }) {
       <div className="admin-hint" style={{margin:"0 14px",padding:"12px 0 4px",borderTop:"none"}}>
         ✓ Verified. Search by player number or name, enter amount and press ADD.
       </div>
+
+      {/* ── Top-Up History (at top, collapsible) ── */}
+      <div style={{padding:"0 14px 10px"}}>
+        <div style={{display:"flex",gap:8}}>
+          <button style={{flex:1,padding:"10px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}
+            onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
+            {showHistory ? "▲ HIDE HISTORY" : "▼ TOP-UP HISTORY"}
+          </button>
+          {showHistory && topUpHistory.length > 0 && (
+            <button style={{padding:"10px 14px",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.25)",color:"rgba(201,168,76,.8)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
+              onClick={() => {
+                const rows = topUpHistory.map(tx => {
+                  const player = Object.values(users).find(u => u.id === tx.user_id);
+                  const admin  = Object.values(users).find(u => u.id === tx.added_by);
+                  const dt = new Date(tx.created_at);
+                  return `<tr><td style="padding:6px 10px;color:#4ade80;font-weight:bold">+$${(+tx.amount).toFixed(2)}</td><td style="padding:6px 10px">${player?.name||"Unknown"}${player?.player_number?` (#${player.player_number})`:""}</td><td style="padding:6px 10px;color:#999">by ${admin?.name||"Admin"} · ${tx.method||"cash"}</td><td style="padding:6px 10px;color:#999">${dt.toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})} ${dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td></tr>`;
+                }).join("");
+                const total = topUpHistory.reduce((s,t)=>s+(+t.amount),0);
+                const w = window.open("","_blank","width=700,height=600");
+                w.document.write(`<!DOCTYPE html><html><head><title>Top-Up History</title><style>body{font-family:sans-serif;padding:24px;background:#fff}h2{margin:0 0 4px}p{color:#666;margin:0 0 20px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;border-bottom:2px solid #333;font-size:12px;letter-spacing:1px}td{border-bottom:1px solid #eee}tfoot td{font-weight:bold;padding:10px;border-top:2px solid #333}@media print{body{padding:0}}</style></head><body><h2>EL MUNDO — TOP-UP HISTORY</h2><p>Printed ${new Date().toLocaleString()} · ${topUpHistory.length} transactions</p><table><thead><tr><th>AMOUNT</th><th>PLAYER</th><th>BY / METHOD</th><th>DATE</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>TOTAL</td><td colspan="3">$${total.toFixed(2)}</td></tr></tfoot></table></body></html>`);
+                w.document.close();
+                w.focus();
+                setTimeout(()=>w.print(),400);
+              }}>
+              🖨 PRINT
+            </button>
+          )}
+        </div>
+        {showHistory && (
+          <div style={{marginTop:8}}>
+            {historyLoading ? (
+              <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading...</div>
+            ) : topUpHistory.length === 0 ? (
+              <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups recorded yet</div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {topUpHistory.map((tx,i) => {
+                  const player = Object.values(users).find(u => u.id === tx.user_id);
+                  const admin  = Object.values(users).find(u => u.id === tx.added_by);
+                  const dt = new Date(tx.created_at);
+                  return (
+                    <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#4ade80",minWidth:65,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {player?.name || "Unknown player"}{player?.player_number ? ` (#${player.player_number})` : ""}
+                        </div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>
+                          by {admin?.name || "Admin"} · {tx.method || "cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button style={{marginTop:8,padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}
+              onClick={loadHistory}>↻ REFRESH</button>
+          </div>
+        )}
+      </div>
+
       <div style={{padding:"0 14px 12px"}}>
         <input className="afield-inp" placeholder="Search by # or name..." value={search}
           onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box"}} />
@@ -7399,46 +7476,6 @@ function AdminCredits({ users, onAddCredits }) {
       ))}
       {userList.length === 0 && <div className="empty">No players found</div>}
 
-      {/* Top-Up History */}
-      <div style={{padding:"16px 14px 0",borderTop:"1px solid rgba(255,255,255,.07)",marginTop:16}}>
-        <button style={{width:"100%",padding:"12px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",transition:"all .15s"}}
-          onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
-          {showHistory ? "▲ HIDE TOP-UP HISTORY" : "▼ TOP-UP HISTORY"}
-        </button>
-      </div>
-      {showHistory && (
-        <div style={{padding:"8px 14px 16px"}}>
-          {historyLoading ? (
-            <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading...</div>
-          ) : topUpHistory.length === 0 ? (
-            <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups recorded yet</div>
-          ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {topUpHistory.map((tx,i) => {
-                const player = Object.values(users).find(u => u.id === tx.user_id);
-                const admin = Object.values(users).find(u => u.id === tx.added_by);
-                const dt = new Date(tx.created_at);
-                return (
-                  <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#4ade80",minWidth:65,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {player?.name || "Unknown player"}
-                        {player?.player_number ? ` (#${player.player_number})` : ""}
-                      </div>
-                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>
-                        by {admin?.name || "Admin"} · {tx.method || "cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <button style={{marginTop:8,padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}
-            onClick={loadHistory}>↻ REFRESH</button>
-        </div>
-      )}
 
       <div style={{padding:"12px 14px 8px"}}>
         <button style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",padding:0}}
