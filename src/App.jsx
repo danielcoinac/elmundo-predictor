@@ -4419,13 +4419,15 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         {myRank===1 && <div className="prof-leader-badge">👑 LEADING THE TOURNAMENT</div>}
         {/* Passport icon — top corner of hero */}
         <button className="pp-icon-btn" onClick={onOpenPassport} title="El Mundo Passport">
-          <svg viewBox="0 0 40 40" fill="none" width="32" height="32">
-            <rect x="6" y="4" width="28" height="32" rx="3" fill="#1a3c2a" stroke="rgba(255,255,255,.2)" strokeWidth="1"/>
-            <circle cx="20" cy="18" r="8" stroke="rgba(255,255,255,.35)" strokeWidth=".8"/>
-            <ellipse cx="20" cy="18" rx="4" ry="8" stroke="rgba(255,255,255,.25)" strokeWidth=".6"/>
-            <line x1="12" y1="15" x2="28" y2="15" stroke="rgba(255,255,255,.18)" strokeWidth=".5"/>
-            <line x1="12" y1="21" x2="28" y2="21" stroke="rgba(255,255,255,.18)" strokeWidth=".5"/>
-            <text x="20" y="33" textAnchor="middle" fontFamily="Anton" fontSize="4.5" letterSpacing="1.5" fill="rgba(255,255,255,.4)">PASSPORT</text>
+          <svg viewBox="0 0 40 40" fill="none" width="56" height="56">
+            <rect x="4" y="2" width="32" height="36" rx="3.5" fill="#1a3c2a" stroke="rgba(255,255,255,.25)" strokeWidth=".8"/>
+            <rect x="4" y="2" width="4" height="36" rx="1" fill="#14291e"/>
+            <circle cx="20" cy="17" r="9" stroke="rgba(255,255,255,.4)" strokeWidth=".7"/>
+            <ellipse cx="20" cy="17" rx="4.5" ry="9" stroke="rgba(255,255,255,.3)" strokeWidth=".5"/>
+            <line x1="11" y1="14" x2="29" y2="14" stroke="rgba(255,255,255,.2)" strokeWidth=".4"/>
+            <line x1="11" y1="20" x2="29" y2="20" stroke="rgba(255,255,255,.2)" strokeWidth=".4"/>
+            <line x1="20" y1="8" x2="20" y2="26" stroke="rgba(255,255,255,.15)" strokeWidth=".4"/>
+            <text x="22" y="34" textAnchor="middle" fontFamily="Anton" fontSize="4" letterSpacing="1.8" fill="rgba(255,255,255,.5)">PASSPORT</text>
           </svg>
           {passportStamps.length > 0 && <span className="pp-icon-badge">{passportStamps.length}</span>}
         </button>
