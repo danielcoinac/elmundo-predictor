@@ -3927,41 +3927,30 @@ function PassportView({ user, stamps, matches = [], onClose }) {
   const evLabel = getEventLabel();
   const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
 
-  // Build match lookup
-  const matchMap = {};
-  matches.forEach(m => { matchMap[m.id] = m; });
-
-  // Passport has 2 stamp slots per page, allocate pages for all matches in order
+  // One match per page after identity + visa
   const sortedMatches = [...matches].sort((a, b) => {
     const ka = matchKickoff(a), kb = matchKickoff(b);
     return (ka?.getTime() || 0) - (kb?.getTime() || 0);
   });
-  const SLOTS_PER_PAGE = 2;
-  const stampPages = [];
-  for (let i = 0; i < sortedMatches.length; i += SLOTS_PER_PAGE) {
-    stampPages.push(sortedMatches.slice(i, i + SLOTS_PER_PAGE));
-  }
-  // Ensure at least 4 pages even with few matches
-  while (stampPages.length < 4) stampPages.push([]);
 
-  // page 0 = identity, page 1 = visa, page 2+ = match stamps
-  const totalPages = 2 + stampPages.length;
+  // page 0 = identity, page 1 = visa, page 2+ = one match each
+  const totalPages = 2 + sortedMatches.length;
   const stampSet = new Set(stamps.map(s => s.match_id));
   const stampLookup = {};
   stamps.forEach(s => { stampLookup[s.match_id] = s; });
 
-  // Pseudo-random rotation per match for authentic ink stamp feel
+  // Pseudo-random rotation per match
   const rot = (id) => {
     let h = 0;
     for (let i = 0; i < (id || "").length; i++) h = ((h << 5) - h + (id || "").charCodeAt(i)) | 0;
-    return (h % 17) - 8; // -8 to +8 degrees
+    return (h % 13) - 6;
   };
 
   const visaNo = `EM-2026-${(user.id || "").slice(0, 8).toUpperCase()}`;
 
   /* ── Reusable paper watermark SVG ── */
   const PaperWatermark = () => (
-    <svg className="pp-paper-wm" viewBox="0 0 200 200" fill="none">
+    <svg className="pp-wm" viewBox="0 0 200 200" fill="none">
       <circle cx="100" cy="100" r="80" stroke="currentColor" strokeWidth="0.5"/>
       <ellipse cx="100" cy="100" rx="40" ry="80" stroke="currentColor" strokeWidth="0.4"/>
       <ellipse cx="100" cy="100" rx="65" ry="80" stroke="currentColor" strokeWidth="0.3"/>
@@ -3971,32 +3960,29 @@ function PassportView({ user, stamps, matches = [], onClose }) {
     </svg>
   );
 
+  // Get match for current stamp page
+  const currentMatch = ppPage >= 2 ? sortedMatches[ppPage - 2] : null;
+  const currentInk = currentMatch ? STAMP_INKS[(ppPage - 2) % STAMP_INKS.length] : null;
+  const currentEarned = currentMatch ? stampSet.has(currentMatch.id) : false;
+  const currentStampDate = currentMatch ? stampLookup[currentMatch.id]?.earned_at : null;
+
   return (
     <div className="pp-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pp-passport">
+      <div className="pp-book">
+        {/* Close button */}
         <button className="pp-close" onClick={onClose}>✕</button>
 
-        {/* Passport cover header */}
-        <div className="pp-header">
-          <svg className="pp-header-globe" viewBox="0 0 64 64" fill="none">
-            <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,.25)" strokeWidth="1.5"/>
-            <ellipse cx="32" cy="32" rx="14" ry="28" stroke="rgba(255,255,255,.2)" strokeWidth="1"/>
-            <line x1="4" y1="22" x2="60" y2="22" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
-            <line x1="4" y1="42" x2="60" y2="42" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
-            <line x1="32" y1="4" x2="32" y2="60" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
-          </svg>
-          <div className="pp-header-title">EL MUNDO</div>
-          <div className="pp-header-sub">{evLabel} · PASSPORT</div>
-        </div>
+        {/* Book spine shadow */}
+        <div className="pp-spine"/>
 
-        {/* Page content */}
-        <div className="pp-pages">
-          <div className="pp-page-inner" key={ppPage}>
+        {/* The page */}
+        <div className="pp-page" key={ppPage}>
+          <div className="pp-paper">
+            <PaperWatermark/>
 
             {/* ════════ PAGE 0: IDENTITY ════════ */}
             {ppPage === 0 && (
-              <div className="pp-id-page">
-                <PaperWatermark/>
+              <div className="pp-id">
                 <div className="pp-id-header">
                   <div className="pp-id-header-label">REPUBLICA DE EL MUNDO</div>
                   <div className="pp-id-header-country">PASSPORT / PASAPORTE</div>
@@ -4029,187 +4015,177 @@ function PassportView({ user, stamps, matches = [], onClose }) {
 
             {/* ════════ PAGE 1: ENTRY VISA ════════ */}
             {ppPage === 1 && (
-              <div className="pp-paper pp-visa-page">
-                <PaperWatermark/>
-                <div className="pp-visa-stamp" style={{ transform: `rotate(${rot(user.id)}deg)` }}>
-                  <svg viewBox="0 0 300 360" className="pp-visa-svg">
-                    {/* Ornamental double border */}
-                    <rect x="5" y="5" width="290" height="350" rx="10" fill="none" stroke="#8b1a1a" strokeWidth="2.5" opacity=".5"/>
-                    <rect x="12" y="12" width="276" height="336" rx="7" fill="none" stroke="#8b1a1a" strokeWidth=".7" strokeDasharray="5 2.5" opacity=".3"/>
+              <div className="pp-visa">
+                <svg viewBox="0 0 300 400" className="pp-visa-svg">
+                  {/* Ornamental double border */}
+                  <rect x="8" y="8" width="284" height="384" rx="8" fill="none" stroke="#8b1a1a" strokeWidth="2" opacity=".45"/>
+                  <rect x="14" y="14" width="272" height="372" rx="5" fill="none" stroke="#8b1a1a" strokeWidth=".6" strokeDasharray="4 2" opacity=".25"/>
 
-                    {/* Top: REPUBLICA DE EL MUNDO */}
-                    <text x="150" y="40" textAnchor="middle" fontFamily="Anton" fontSize="10" letterSpacing="4" fill="#8b1a1a" opacity=".7">REPUBLICA DE EL MUNDO</text>
-                    <line x1="40" y1="48" x2="260" y2="48" stroke="#8b1a1a" strokeWidth=".5" opacity=".2"/>
+                  {/* Header */}
+                  <text x="150" y="42" textAnchor="middle" fontFamily="Anton" fontSize="9" letterSpacing="4" fill="#8b1a1a" opacity=".65">REPUBLICA DE EL MUNDO</text>
+                  <line x1="45" y1="50" x2="255" y2="50" stroke="#8b1a1a" strokeWidth=".4" opacity=".18"/>
 
-                    {/* ── El Mundo Logo Seal ── */}
-                    {/* Outer circle with ticks */}
-                    <circle cx="150" cy="110" r="45" fill="none" stroke="#8b1a1a" strokeWidth="1.5" opacity=".55"/>
-                    <circle cx="150" cy="110" r="40" fill="none" stroke="#8b1a1a" strokeWidth=".6" strokeDasharray="3 2" opacity=".3"/>
-                    {Array.from({ length: 32 }, (_, i) => {
-                      const a = (i * 11.25) * Math.PI / 180;
-                      return <line key={i} x1={150 + 43 * Math.cos(a)} y1={110 + 43 * Math.sin(a)} x2={150 + 47 * Math.cos(a)} y2={110 + 47 * Math.sin(a)} stroke="#8b1a1a" strokeWidth=".8" opacity=".35"/>;
-                    })}
-                    {/* Globe inside seal */}
-                    <circle cx="150" cy="110" r="22" fill="none" stroke="#8b1a1a" strokeWidth=".8" opacity=".45"/>
-                    <ellipse cx="150" cy="110" rx="11" ry="22" fill="none" stroke="#8b1a1a" strokeWidth=".5" opacity=".35"/>
-                    <ellipse cx="150" cy="110" rx="18" ry="22" fill="none" stroke="#8b1a1a" strokeWidth=".3" opacity=".2"/>
-                    <line x1="128" y1="102" x2="172" y2="102" stroke="#8b1a1a" strokeWidth=".4" opacity=".25"/>
-                    <line x1="128" y1="110" x2="172" y2="110" stroke="#8b1a1a" strokeWidth=".4" opacity=".25"/>
-                    <line x1="128" y1="118" x2="172" y2="118" stroke="#8b1a1a" strokeWidth=".4" opacity=".25"/>
-                    {/* Crossed fork & knife behind */}
-                    <line x1="130" y1="82" x2="170" y2="138" stroke="#8b1a1a" strokeWidth="1.2" opacity=".12"/>
-                    <line x1="170" y1="82" x2="130" y2="138" stroke="#8b1a1a" strokeWidth="1.2" opacity=".12"/>
-                    {/* Arc text around seal */}
-                    <defs>
-                      <path id="visaArcT" d="M 150,110 m -50,0 a 50,50 0 1,1 100,0"/>
-                      <path id="visaArcB" d="M 150,110 m 50,0 a 50,50 0 1,1 -100,0"/>
-                    </defs>
-                    <text fill="#8b1a1a" fontFamily="Anton" fontSize="7" letterSpacing="3" opacity=".6">
-                      <textPath href="#visaArcT" startOffset="8%">EL MUNDO BAR-REST</textPath>
-                    </text>
-                    <text fill="#8b1a1a" fontFamily="Anton" fontSize="7" letterSpacing="3" opacity=".5">
-                      <textPath href="#visaArcB" startOffset="16%">★ BONAIRE ★</textPath>
-                    </text>
+                  {/* ── El Mundo Logo Seal ── */}
+                  <circle cx="150" cy="115" r="48" fill="none" stroke="#8b1a1a" strokeWidth="1.8" opacity=".5"/>
+                  <circle cx="150" cy="115" r="43" fill="none" stroke="#8b1a1a" strokeWidth=".5" strokeDasharray="3 2" opacity=".25"/>
+                  {Array.from({ length: 36 }, (_, i) => {
+                    const a = (i * 10) * Math.PI / 180;
+                    return <line key={i} x1={150 + 46 * Math.cos(a)} y1={115 + 46 * Math.sin(a)} x2={150 + 50 * Math.cos(a)} y2={115 + 50 * Math.sin(a)} stroke="#8b1a1a" strokeWidth=".7" opacity=".3"/>;
+                  })}
+                  {/* Globe inside seal */}
+                  <circle cx="150" cy="115" r="24" fill="none" stroke="#8b1a1a" strokeWidth=".8" opacity=".4"/>
+                  <ellipse cx="150" cy="115" rx="12" ry="24" fill="none" stroke="#8b1a1a" strokeWidth=".5" opacity=".3"/>
+                  <ellipse cx="150" cy="115" rx="19" ry="24" fill="none" stroke="#8b1a1a" strokeWidth=".3" opacity=".2"/>
+                  <line x1="126" y1="106" x2="174" y2="106" stroke="#8b1a1a" strokeWidth=".35" opacity=".2"/>
+                  <line x1="126" y1="115" x2="174" y2="115" stroke="#8b1a1a" strokeWidth=".35" opacity=".2"/>
+                  <line x1="126" y1="124" x2="174" y2="124" stroke="#8b1a1a" strokeWidth=".35" opacity=".2"/>
+                  {/* Crossed fork & knife */}
+                  <line x1="128" y1="85" x2="172" y2="145" stroke="#8b1a1a" strokeWidth="1" opacity=".1"/>
+                  <line x1="172" y1="85" x2="128" y2="145" stroke="#8b1a1a" strokeWidth="1" opacity=".1"/>
+                  {/* Arc text */}
+                  <defs>
+                    <path id="visaArcT" d="M 150,115 m -53,0 a 53,53 0 1,1 106,0"/>
+                    <path id="visaArcB" d="M 150,115 m 53,0 a 53,53 0 1,1 -106,0"/>
+                  </defs>
+                  <text fill="#8b1a1a" fontFamily="Anton" fontSize="7" letterSpacing="3" opacity=".55">
+                    <textPath href="#visaArcT" startOffset="6%">EL MUNDO BAR-REST</textPath>
+                  </text>
+                  <text fill="#8b1a1a" fontFamily="Anton" fontSize="6.5" letterSpacing="3" opacity=".45">
+                    <textPath href="#visaArcB" startOffset="14%">★ BONAIRE ★</textPath>
+                  </text>
 
-                    {/* ── Visa fields ── */}
-                    <text x="30" y="176" fontFamily="Outfit" fontSize="6.5" fill="#8b1a1a" opacity=".4" fontWeight="700" letterSpacing="1.5">TYPE / TIPO</text>
-                    <text x="30" y="190" fontFamily="Anton" fontSize="12" fill="#8b1a1a" opacity=".65" letterSpacing="1">SINGLE ENTRY — SPORTS</text>
+                  {/* ── Visa fields ── */}
+                  <text x="30" y="188" fontFamily="Outfit" fontSize="6" fill="#8b1a1a" opacity=".38" fontWeight="700" letterSpacing="1.5">TYPE / TIPO</text>
+                  <text x="30" y="202" fontFamily="Anton" fontSize="12" fill="#8b1a1a" opacity=".6" letterSpacing="1">SINGLE ENTRY — SPORTS</text>
 
-                    <text x="30" y="210" fontFamily="Outfit" fontSize="6.5" fill="#8b1a1a" opacity=".4" fontWeight="700" letterSpacing="1.5">VISA NO.</text>
-                    <text x="30" y="224" fontFamily="'Courier New',monospace" fontSize="11" fill="#8b1a1a" opacity=".6">{visaNo}</text>
+                  <text x="30" y="224" fontFamily="Outfit" fontSize="6" fill="#8b1a1a" opacity=".38" fontWeight="700" letterSpacing="1.5">VISA NO.</text>
+                  <text x="30" y="238" fontFamily="'Courier New',monospace" fontSize="11" fill="#8b1a1a" opacity=".55">{visaNo}</text>
 
-                    <text x="30" y="244" fontFamily="Outfit" fontSize="6.5" fill="#8b1a1a" opacity=".4" fontWeight="700" letterSpacing="1.5">DATE OF ENTRY / FECHA</text>
-                    <text x="30" y="258" fontFamily="Anton" fontSize="11" fill="#8b1a1a" opacity=".6">{joinDate.toUpperCase()}</text>
+                  <text x="30" y="260" fontFamily="Outfit" fontSize="6" fill="#8b1a1a" opacity=".38" fontWeight="700" letterSpacing="1.5">DATE OF ENTRY / FECHA</text>
+                  <text x="30" y="274" fontFamily="Anton" fontSize="11" fill="#8b1a1a" opacity=".55">{joinDate.toUpperCase()}</text>
 
-                    <text x="180" y="244" fontFamily="Outfit" fontSize="6.5" fill="#8b1a1a" opacity=".4" fontWeight="700" letterSpacing="1.5">VALID FOR</text>
-                    <text x="180" y="258" fontFamily="Anton" fontSize="11" fill="#8b1a1a" opacity=".6">{evLabel}</text>
+                  <text x="180" y="260" fontFamily="Outfit" fontSize="6" fill="#8b1a1a" opacity=".38" fontWeight="700" letterSpacing="1.5">VALID FOR</text>
+                  <text x="180" y="274" fontFamily="Anton" fontSize="11" fill="#8b1a1a" opacity=".55">{evLabel}</text>
 
-                    <line x1="30" y1="268" x2="270" y2="268" stroke="#8b1a1a" strokeWidth=".5" opacity=".15"/>
+                  <line x1="30" y1="284" x2="270" y2="284" stroke="#8b1a1a" strokeWidth=".4" opacity=".12"/>
 
-                    <text x="30" y="284" fontFamily="Outfit" fontSize="6.5" fill="#8b1a1a" opacity=".4" fontWeight="700" letterSpacing="1.5">AUTHORIZED BY</text>
-                    <text x="30" y="298" fontFamily="Anton" fontSize="10" fill="#8b1a1a" opacity=".5" letterSpacing="1">EL MUNDO IMMIGRATION OFFICE</text>
+                  <text x="30" y="300" fontFamily="Outfit" fontSize="6" fill="#8b1a1a" opacity=".38" fontWeight="700" letterSpacing="1.5">AUTHORIZED BY</text>
+                  <text x="30" y="314" fontFamily="Anton" fontSize="9.5" fill="#8b1a1a" opacity=".45" letterSpacing="1">EL MUNDO IMMIGRATION OFFICE</text>
 
-                    {/* APPROVED stamp */}
-                    <g transform="rotate(-8, 150, 330)">
-                      <rect x="70" y="310" width="160" height="32" rx="4" fill="none" stroke="#1a6b3c" strokeWidth="2.8" opacity=".5"/>
-                      <text x="150" y="333" textAnchor="middle" fontFamily="Anton" fontSize="20" fill="#1a6b3c" letterSpacing="8" opacity=".55">APPROVED</text>
-                    </g>
-                  </svg>
-                </div>
-                <div className="pp-visa-footer">This visa grants the bearer access to all {evLabel} match screenings at El Mundo Bar-Restaurant, Bonaire.</div>
+                  {/* APPROVED stamp */}
+                  <g transform="rotate(-8, 150, 356)">
+                    <rect x="65" y="336" width="170" height="34" rx="4" fill="none" stroke="#1a6b3c" strokeWidth="2.5" opacity=".45"/>
+                    <text x="150" y="360" textAnchor="middle" fontFamily="Anton" fontSize="20" fill="#1a6b3c" letterSpacing="8" opacity=".5">APPROVED</text>
+                  </g>
+                </svg>
+                <div className="pp-visa-foot">This visa grants the bearer access to all {evLabel} match screenings at El Mundo Bar-Restaurant, Bonaire.</div>
               </div>
             )}
 
-            {/* ════════ PAGE 2+: MATCH STAMPS ════════ */}
-            {ppPage >= 2 && (
-              <div className="pp-paper">
-                <PaperWatermark/>
-                <div className="pp-paper-num">— {ppPage - 1} —</div>
+            {/* ════════ PAGE 2+: ONE MATCH PER PAGE ════════ */}
+            {ppPage >= 2 && currentMatch && (
+              <div className="pp-stamp-page">
+                <div className="pp-stamp-num">— {ppPage - 1} —</div>
 
-                <div className="pp-paper-slots">
-                  {(stampPages[ppPage - 2] || []).map((m, si) => {
-                    const earned = stampSet.has(m.id);
-                    const ink = STAMP_INKS[(si + (ppPage * 2)) % STAMP_INKS.length];
-                    const angle = rot(m.id);
-                    const stampDate = stampLookup[m.id]?.earned_at;
-                    return (
-                      <div key={m.id} className="pp-slot">
-                        <div className="pp-slot-match">
-                          <span className="pp-slot-date">{m.date || "TBD"}</span>
-                          <span className="pp-slot-group">{m.group || ""}</span>
-                        </div>
-                        <div className="pp-slot-teams">
-                          {m.home || "TBD"} <span className="pp-slot-vs">vs</span> {m.away || "TBD"}
-                        </div>
+                {/* Match info header */}
+                <div className="pp-stamp-header">
+                  <span className="pp-stamp-date">{currentMatch.date || "TBD"}</span>
+                  <span className="pp-stamp-group">{currentMatch.group || ""}</span>
+                </div>
+                <div className="pp-stamp-teams">
+                  {flag(currentMatch.home)} {currentMatch.home || "TBD"} <span className="pp-stamp-vs">VS</span> {currentMatch.away || "TBD"} {flag(currentMatch.away)}
+                </div>
 
-                        <div className="pp-slot-area">
-                          {earned ? (
-                            <div className="pp-ink" style={{ transform: `rotate(${angle}deg)` }}>
-                              <svg viewBox="0 0 150 150" className="pp-ink-svg">
-                                {/* Outer ring with ticks */}
-                                <circle cx="75" cy="75" r="70" fill="none" stroke={ink.ring} strokeWidth="1.5" opacity=".45"/>
-                                <circle cx="75" cy="75" r="66" fill="none" stroke={ink.ring} strokeWidth=".6" opacity=".3"/>
-                                {Array.from({ length: 36 }, (_, k) => {
-                                  const a = (k * 10) * Math.PI / 180;
-                                  return <line key={k} x1={75 + 66 * Math.cos(a)} y1={75 + 66 * Math.sin(a)} x2={75 + 71 * Math.cos(a)} y2={75 + 71 * Math.sin(a)} stroke={ink.ring} strokeWidth=".8" opacity=".35"/>;
-                                })}
-                                {/* Inner dashed ring */}
-                                <circle cx="75" cy="75" r="57" fill="none" stroke={ink.ring} strokeWidth=".6" strokeDasharray="2 2" opacity=".25"/>
+                {/* Big centered stamp area */}
+                <div className="pp-stamp-area">
+                  {currentEarned ? (
+                    <div className="pp-ink" style={{ transform: `rotate(${rot(currentMatch.id)}deg)` }}>
+                      <svg viewBox="0 0 280 280" className="pp-stamp-svg">
+                        {/* Outer ring with ticks */}
+                        <circle cx="140" cy="140" r="130" fill="none" stroke={currentInk.ring} strokeWidth="2.5" opacity=".5"/>
+                        <circle cx="140" cy="140" r="124" fill="none" stroke={currentInk.ring} strokeWidth=".8" opacity=".3"/>
+                        {Array.from({ length: 48 }, (_, k) => {
+                          const a = (k * 7.5) * Math.PI / 180;
+                          return <line key={k} x1={140 + 124 * Math.cos(a)} y1={140 + 124 * Math.sin(a)} x2={140 + 131 * Math.cos(a)} y2={140 + 131 * Math.sin(a)} stroke={currentInk.ring} strokeWidth="1" opacity=".35"/>;
+                        })}
+                        {/* Inner dashed ring */}
+                        <circle cx="140" cy="140" r="108" fill="none" stroke={currentInk.ring} strokeWidth=".8" strokeDasharray="3 2.5" opacity=".2"/>
 
-                                {/* Arc text */}
-                                <defs>
-                                  <path id={`at${ppPage}${si}`} d="M 75,75 m -50,0 a 50,50 0 1,1 100,0"/>
-                                  <path id={`ab${ppPage}${si}`} d="M 75,75 m 50,0 a 50,50 0 1,1 -100,0"/>
-                                </defs>
-                                <text fill={ink.ring} fontFamily="Anton" fontSize="7.5" letterSpacing="3" opacity=".75">
-                                  <textPath href={`#at${ppPage}${si}`} startOffset="8%">★ EL MUNDO · BONAIRE ★</textPath>
-                                </text>
-                                <text fill={ink.ring} fontFamily="Anton" fontSize="6.5" letterSpacing="2.5" opacity=".55">
-                                  <textPath href={`#ab${ppPage}${si}`} startOffset="8%">WORLD CUP 2026 · MATCH DAY</textPath>
-                                </text>
+                        {/* Arc text */}
+                        <defs>
+                          <path id={`stT${ppPage}`} d="M 140,140 m -96,0 a 96,96 0 1,1 192,0"/>
+                          <path id={`stB${ppPage}`} d="M 140,140 m 96,0 a 96,96 0 1,1 -192,0"/>
+                        </defs>
+                        <text fill={currentInk.ring} fontFamily="Anton" fontSize="12" letterSpacing="4" opacity=".7">
+                          <textPath href={`#stT${ppPage}`} startOffset="5%">★ EL MUNDO BAR-REST · BONAIRE ★</textPath>
+                        </text>
+                        <text fill={currentInk.ring} fontFamily="Anton" fontSize="10" letterSpacing="3" opacity=".5">
+                          <textPath href={`#stB${ppPage}`} startOffset="6%">WORLD CUP 2026 · MATCH DAY</textPath>
+                        </text>
 
-                                {/* Trophy icon */}
-                                <g transform="translate(75, 48)" fill={ink.ring} opacity=".5">
-                                  <path d="M-5,-5 L5,-5 L4,2 Q3,5 0,7 Q-3,5 -4,2 Z"/>
-                                  <path d="M-5,-3 Q-8,-3 -8,0 Q-8,2.5 -5.5,1.5" fill="none" stroke={ink.ring} strokeWidth=".7"/>
-                                  <path d="M5,-3 Q8,-3 8,0 Q8,2.5 5.5,1.5" fill="none" stroke={ink.ring} strokeWidth=".7"/>
-                                  <rect x="-1.5" y="7" width="3" height="2" rx=".5"/>
-                                  <rect x="-3" y="9" width="6" height="1.5" rx=".5"/>
-                                </g>
+                        {/* Trophy icon */}
+                        <g transform="translate(140, 86)" fill={currentInk.ring} opacity=".5">
+                          <path d="M-8,-8 L8,-8 L6,3 Q5,8 0,11 Q-5,8 -6,3 Z"/>
+                          <path d="M-8,-5 Q-13,-5 -13,0 Q-13,4 -9,2.5" fill="none" stroke={currentInk.ring} strokeWidth="1"/>
+                          <path d="M8,-5 Q13,-5 13,0 Q13,4 9,2.5" fill="none" stroke={currentInk.ring} strokeWidth="1"/>
+                          <rect x="-2.5" y="11" width="5" height="3" rx="1"/>
+                          <rect x="-5" y="14" width="10" height="2.5" rx="1"/>
+                        </g>
 
-                                {/* Teams */}
-                                <text x="75" y="67" textAnchor="middle" fill={ink.ring} fontFamily="Anton" fontSize="10.5" letterSpacing="1.5" opacity=".85">
-                                  {(m.home || "").toUpperCase()}
-                                </text>
-                                {/* Soccer ball divider */}
-                                <circle cx="75" cy="76" r="4" fill="none" stroke={ink.ring} strokeWidth=".6" opacity=".35"/>
-                                <circle cx="75" cy="76" r="1.5" fill={ink.ring} opacity=".2"/>
-                                <text x="75" y="90" textAnchor="middle" fill={ink.ring} fontFamily="Anton" fontSize="10.5" letterSpacing="1.5" opacity=".85">
-                                  {(m.away || "").toUpperCase()}
-                                </text>
+                        {/* Home team */}
+                        <text x="140" y="122" textAnchor="middle" fill={currentInk.ring} fontFamily="Anton" fontSize="18" letterSpacing="2" opacity=".85">
+                          {(currentMatch.home || "").toUpperCase()}
+                        </text>
 
-                                {/* Separator */}
-                                <line x1="42" y1="96" x2="108" y2="96" stroke={ink.ring} strokeWidth=".4" opacity=".2"/>
-                                {/* Date */}
-                                <text x="75" y="107" textAnchor="middle" fill={ink.ring} fontFamily="Outfit" fontSize="7" fontWeight="700" opacity=".5" letterSpacing="1">
-                                  {stampDate ? new Date(stampDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : m.date}
-                                </text>
-                                {/* Verified badge */}
-                                <text x="75" y="118" textAnchor="middle" fill={ink.ring} fontFamily="Anton" fontSize="5" letterSpacing="2.5" opacity=".3">✦ VERIFIED ✦</text>
-                              </svg>
-                            </div>
-                          ) : (
-                            <div className="pp-slot-empty">
-                              <div className="pp-slot-empty-circle"/>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {(stampPages[ppPage - 2] || []).length === 0 && (
-                    <div className="pp-paper-empty">No matches on this page</div>
+                        {/* Soccer ball divider */}
+                        <circle cx="140" cy="140" r="7" fill="none" stroke={currentInk.ring} strokeWidth=".8" opacity=".3"/>
+                        <circle cx="140" cy="140" r="2.5" fill={currentInk.ring} opacity=".2"/>
+                        <line x1="110" y1="140" x2="127" y2="140" stroke={currentInk.ring} strokeWidth=".5" opacity=".15"/>
+                        <line x1="153" y1="140" x2="170" y2="140" stroke={currentInk.ring} strokeWidth=".5" opacity=".15"/>
+
+                        {/* Away team */}
+                        <text x="140" y="166" textAnchor="middle" fill={currentInk.ring} fontFamily="Anton" fontSize="18" letterSpacing="2" opacity=".85">
+                          {(currentMatch.away || "").toUpperCase()}
+                        </text>
+
+                        {/* Separator */}
+                        <line x1="70" y1="178" x2="210" y2="178" stroke={currentInk.ring} strokeWidth=".5" opacity=".15"/>
+
+                        {/* Date */}
+                        <text x="140" y="198" textAnchor="middle" fill={currentInk.ring} fontFamily="Outfit" fontSize="10" fontWeight="700" opacity=".5" letterSpacing="1.5">
+                          {currentStampDate ? new Date(currentStampDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase() : (currentMatch.date || "").toUpperCase()}
+                        </text>
+
+                        {/* Verified badge */}
+                        <text x="140" y="216" textAnchor="middle" fill={currentInk.ring} fontFamily="Anton" fontSize="7.5" letterSpacing="3.5" opacity=".3">✦ VERIFIED ✦</text>
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="pp-stamp-empty">
+                      <div className="pp-stamp-empty-circle"/>
+                      <div className="pp-stamp-empty-text">ORDER DURING THIS MATCH TO EARN YOUR STAMP</div>
+                    </div>
                   )}
                 </div>
               </div>
             )}
 
+            {/* Page number at bottom */}
+            <div className="pp-page-num">{ppPage === 0 ? "ID" : ppPage === 1 ? "VISA" : ppPage - 1} / {totalPages - 1}</div>
           </div>
         </div>
 
-        {/* Page navigation */}
-        <div className="pp-nav">
-          <button className="pp-nav-btn" disabled={ppPage === 0} onClick={() => setPpPage(p => p - 1)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+        {/* Navigation arrows on the book edges */}
+        {ppPage > 0 && (
+          <button className="pp-arr pp-arr-l" onClick={() => setPpPage(p => p - 1)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <div className="pp-nav-info">
-            <span className="pp-nav-page">{ppPage === 0 ? "ID" : ppPage === 1 ? "VISA" : ppPage - 1}</span>
-            <span className="pp-nav-of">/ {totalPages - 1}</span>
-          </div>
-          <button className="pp-nav-btn" disabled={ppPage >= totalPages - 1} onClick={() => setPpPage(p => p + 1)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+        )}
+        {ppPage < totalPages - 1 && (
+          <button className="pp-arr pp-arr-r" onClick={() => setPpPage(p => p + 1)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-        </div>
+        )}
       </div>
     </div>
   );

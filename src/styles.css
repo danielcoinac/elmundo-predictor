@@ -906,101 +906,98 @@
   .pp-btn-arrow{flex-shrink:0;color:rgba(255,255,255,.25);transition:transform .2s}
   .pp-btn:hover .pp-btn-arrow{transform:translateX(3px);color:rgba(255,255,255,.5)}
 
-  /* ── Passport Overlay ── */
-  .pp-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;animation:ppFadeIn .3s ease}
+  /* ═══════ PASSPORT — BOOK STYLE ═══════ */
+  .pp-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;animation:ppFadeIn .3s ease}
   @keyframes ppFadeIn{from{opacity:0}to{opacity:1}}
 
-  .pp-passport{position:relative;width:100%;max-width:400px;max-height:90vh;display:flex;flex-direction:column;
-    background:linear-gradient(170deg,#111310 0%,#0a0d09 100%);
-    border:1px solid rgba(255,255,255,.1);
-    border-radius:6px;
-    box-shadow:0 30px 80px rgba(0,0,0,.8),0 0 1px rgba(255,255,255,.2) inset;
+  .pp-book{position:relative;width:100%;max-width:380px;max-height:85vh;
+    border-radius:4px 10px 10px 4px;
+    box-shadow:0 40px 100px rgba(0,0,0,.7),
+      -4px 0 12px rgba(0,0,0,.5),
+      0 0 0 1px rgba(0,0,0,.3);
     overflow:hidden;animation:ppSlideUp .4s cubic-bezier(.22,1,.36,1)}
   @keyframes ppSlideUp{from{opacity:0;transform:translateY(30px) scale(.97)}to{opacity:1;transform:none}}
 
-  .pp-close{position:absolute;top:12px;right:14px;z-index:10;background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;transition:color .15s;line-height:1}
-  .pp-close:hover{color:#fff}
+  .pp-close{position:absolute;top:10px;right:12px;z-index:20;background:rgba(0,0,0,.15);border:none;color:rgba(0,0,0,.35);
+    font-size:16px;cursor:pointer;transition:all .15s;line-height:1;width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center}
+  .pp-close:hover{background:rgba(0,0,0,.25);color:rgba(0,0,0,.6)}
 
-  /* ── Passport Header (cover feel) ── */
-  .pp-header{padding:28px 24px 18px;text-align:center;position:relative;border-bottom:1px solid rgba(255,255,255,.06);
-    background:linear-gradient(180deg,rgba(26,60,42,.3) 0%,transparent 100%)}
-  .pp-header-globe{width:42px;height:42px;margin:0 auto 8px;display:block;opacity:.6}
-  .pp-header-title{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:6px;color:rgba(255,255,255,.85)}
-  .pp-header-sub{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.3);font-weight:700;margin-top:4px}
+  /* Spine — the book binding edge */
+  .pp-spine{position:absolute;left:0;top:0;bottom:0;width:14px;z-index:10;
+    background:linear-gradient(90deg,#8b7355 0%,#a08968 30%,#7a6548 50%,#8b7355 100%);
+    box-shadow:3px 0 8px rgba(0,0,0,.15),1px 0 0 rgba(255,255,255,.08) inset}
 
-  /* ── Pages ── */
-  .pp-pages{flex:1;overflow-y:auto;min-height:0}
-  .pp-page-inner{animation:ppPageIn .35s ease}
-  @keyframes ppPageIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+  /* Page flip animation */
+  .pp-page{animation:ppFlip .35s ease}
+  @keyframes ppFlip{from{opacity:0;transform:perspective(800px) rotateY(-8deg)}to{opacity:1;transform:none}}
 
-  /* ── Identity Page (cream paper like real passport) ── */
-  .pp-id-page{padding:24px 24px 20px;
-    background:linear-gradient(175deg,#f5f0e6 0%,#ece6d5 40%,#e8e0cc 100%);position:relative;min-height:340px}
-  .pp-id-header{text-align:center;margin-bottom:6px}
-  .pp-id-header-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(0,0,0,.3);font-weight:700}
-  .pp-id-header-country{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;color:rgba(0,0,0,.45);margin-top:2px}
+  /* Paper texture — shared by all pages */
+  .pp-paper{position:relative;min-height:480px;padding:24px 24px 24px 30px;overflow:hidden;
+    background:linear-gradient(175deg,#f7f2e8 0%,#f0ead8 30%,#ece5d0 60%,#e8e0cc 100%);
+    border-left:1px solid rgba(139,115,85,.15)}
+  .pp-wm{position:absolute;width:180px;height:180px;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,.035);pointer-events:none}
+
+  /* Page number at bottom */
+  .pp-page-num{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(0,0,0,.15);font-weight:600}
+
+  /* Navigation arrows — on the book edges */
+  .pp-arr{position:absolute;top:50%;transform:translateY(-50%);z-index:20;
+    background:rgba(0,0,0,.08);border:none;color:rgba(0,0,0,.3);
+    width:30px;height:50px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+  .pp-arr:hover{background:rgba(0,0,0,.15);color:rgba(0,0,0,.5)}
+  .pp-arr-l{left:14px;border-radius:0 4px 4px 0}
+  .pp-arr-r{right:0;border-radius:4px 0 0 4px}
+
+  /* ── Identity Page ── */
+  .pp-id{position:relative;z-index:1}
+  .pp-id-header{text-align:center;margin-bottom:8px}
+  .pp-id-header-label{font-family:'Outfit',sans-serif;font-size:7.5px;letter-spacing:3px;color:rgba(0,0,0,.3);font-weight:700}
+  .pp-id-header-country{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;color:rgba(0,0,0,.5);margin-top:2px}
   .pp-id-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.12),transparent);margin:10px 0}
-  .pp-id-body{display:flex;gap:18px;align-items:flex-start}
-  .pp-id-photo{width:90px;height:110px;flex-shrink:0;border-radius:4px;overflow:hidden;border:1.5px solid rgba(0,0,0,.15);background:#ddd}
+  .pp-id-body{display:flex;gap:16px;align-items:flex-start}
+  .pp-id-photo{width:90px;height:110px;flex-shrink:0;border-radius:3px;overflow:hidden;border:1.5px solid rgba(0,0,0,.15);background:#ddd}
   .pp-id-img{width:100%;height:100%;object-fit:cover}
-  .pp-id-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:36px;color:rgba(0,0,0,.2);background:rgba(0,0,0,.06)}
+  .pp-id-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:36px;color:rgba(0,0,0,.18);background:rgba(0,0,0,.05)}
   .pp-id-fields{display:flex;flex-direction:column;gap:0;flex:1;min-width:0}
-  .pp-id-row{display:flex;flex-direction:column;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06)}
-  .pp-id-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(0,0,0,.35);font-weight:700;margin-bottom:1px}
-  .pp-id-value{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:1px;color:rgba(0,0,0,.75)}
-
-  .pp-id-footer{margin-top:16px;padding-top:12px;border-top:1.5px solid rgba(0,0,0,.08)}
-  .pp-id-barcode{display:flex;gap:2px;height:28px;align-items:stretch;justify-content:center;margin-bottom:6px}
-  .pp-id-bar{background:rgba(0,0,0,.25);border-radius:1px}
-  .pp-id-mrz{font-family:'Courier New',monospace;font-size:7.5px;color:rgba(0,0,0,.2);letter-spacing:1px;text-align:center;word-break:break-all}
+  .pp-id-row{display:flex;flex-direction:column;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.06)}
+  .pp-id-label{font-family:'Outfit',sans-serif;font-size:7.5px;letter-spacing:2px;color:rgba(0,0,0,.35);font-weight:700;margin-bottom:1px}
+  .pp-id-value{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:1px;color:rgba(0,0,0,.72)}
+  .pp-id-footer{margin-top:18px;padding-top:12px;border-top:1.5px solid rgba(0,0,0,.07)}
+  .pp-id-barcode{display:flex;gap:1.5px;height:28px;align-items:stretch;justify-content:center;margin-bottom:6px}
+  .pp-id-bar{background:rgba(0,0,0,.22);border-radius:1px}
+  .pp-id-mrz{font-family:'Courier New',monospace;font-size:7px;color:rgba(0,0,0,.18);letter-spacing:1px;text-align:center;word-break:break-all}
 
   /* ── Visa Page ── */
-  .pp-visa-page{display:flex;flex-direction:column;align-items:center}
-  .pp-visa-stamp{width:100%;max-width:340px}
-  .pp-visa-svg{width:100%;height:auto;display:block}
-  .pp-visa-footer{font-family:'Outfit',sans-serif;font-size:8px;color:rgba(0,0,0,.22);text-align:center;line-height:1.5;margin-top:10px;padding:0 10px;font-style:italic}
+  .pp-visa{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
+  .pp-visa-svg{width:100%;height:auto;display:block;max-width:340px}
+  .pp-visa-foot{font-family:'Outfit',sans-serif;font-size:7.5px;color:rgba(0,0,0,.2);text-align:center;line-height:1.5;margin-top:8px;padding:0 8px;font-style:italic}
 
-  /* ── Passport Paper Page ── */
-  .pp-paper{position:relative;padding:16px 20px 20px;min-height:340px;
-    background:linear-gradient(175deg,#f5f0e6 0%,#ece6d5 40%,#e8e0cc 100%);overflow:hidden}
-  .pp-paper-wm{position:absolute;width:160px;height:160px;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,.04);pointer-events:none}
-  .pp-paper-num{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(0,0,0,.15);text-align:center;margin-bottom:10px;font-weight:700}
+  /* ── Match Stamp Page ── */
+  .pp-stamp-page{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;height:100%}
+  .pp-stamp-num{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(0,0,0,.12);text-align:center;margin-bottom:10px;font-weight:700}
+  .pp-stamp-header{display:flex;justify-content:space-between;width:100%;margin-bottom:2px}
+  .pp-stamp-date{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(0,0,0,.28);font-weight:700;letter-spacing:1px}
+  .pp-stamp-group{font-family:'Anton',sans-serif;font-size:8px;color:rgba(0,0,0,.18);letter-spacing:2px}
+  .pp-stamp-teams{font-family:'Anton',sans-serif;font-size:15px;color:rgba(0,0,0,.28);letter-spacing:1.5px;text-align:center;margin-bottom:8px}
+  .pp-stamp-vs{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(0,0,0,.12);font-weight:700;margin:0 6px}
 
-  .pp-paper-slots{display:flex;flex-direction:column;gap:18px}
-  .pp-paper-empty{text-align:center;padding:60px 0;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(0,0,0,.15);font-weight:600}
+  .pp-stamp-area{flex:1;display:flex;align-items:center;justify-content:center;min-height:300px}
+  .pp-stamp-svg{width:260px;height:260px;display:block}
 
-  /* ── Slot (one match) ── */
-  .pp-slot{position:relative;padding:8px 0}
-  .pp-slot-match{display:flex;justify-content:space-between;margin-bottom:2px}
-  .pp-slot-date{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(0,0,0,.25);font-weight:700;letter-spacing:1px}
-  .pp-slot-group{font-family:'Anton',sans-serif;font-size:8px;color:rgba(0,0,0,.18);letter-spacing:2px}
-  .pp-slot-teams{font-family:'Anton',sans-serif;font-size:13px;color:rgba(0,0,0,.2);letter-spacing:1px;margin-bottom:6px}
-  .pp-slot-vs{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(0,0,0,.12);font-weight:600;margin:0 4px}
-
-  /* ── Stamp area ── */
-  .pp-slot-area{display:flex;justify-content:center;min-height:120px;align-items:center}
-
-  /* Empty slot — faint dashed circle */
-  .pp-slot-empty{display:flex;align-items:center;justify-content:center}
-  .pp-slot-empty-circle{width:100px;height:100px;border-radius:50%;border:1.5px dashed rgba(0,0,0,.06)}
+  /* Empty stamp slot */
+  .pp-stamp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+  .pp-stamp-empty-circle{width:160px;height:160px;border-radius:50%;border:2px dashed rgba(0,0,0,.06)}
+  .pp-stamp-empty-text{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(0,0,0,.12);font-weight:700;text-align:center;max-width:200px}
 
   /* ── Ink Stamp (earned) ── */
   .pp-ink{animation:ppInkStamp .5s cubic-bezier(.17,.67,.4,1.2) both}
   @keyframes ppInkStamp{
-    from{transform:rotate(var(--r,0deg)) scale(1.6);opacity:0;filter:blur(2px)}
-    60%{transform:rotate(var(--r,0deg)) scale(.95);opacity:.85;filter:blur(0)}
-    to{opacity:.75;filter:blur(0)}
+    from{transform:scale(1.6);opacity:0;filter:blur(2px)}
+    60%{transform:scale(.96);opacity:.85;filter:blur(0)}
+    to{opacity:.8;filter:blur(0)}
   }
-  .pp-ink-svg{width:140px;height:140px;display:block}
-
-  /* ── Page Navigation ── */
-  .pp-nav{display:flex;align-items:center;justify-content:center;gap:20px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06)}
-  .pp-nav-btn{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.4);width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;transition:all .15s}
-  .pp-nav-btn:hover:not(:disabled){border-color:rgba(255,255,255,.3);color:#fff}
-  .pp-nav-btn:disabled{opacity:.2;cursor:default}
-  .pp-nav-info{display:flex;align-items:baseline;gap:3px}
-  .pp-nav-page{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.7);letter-spacing:1px}
-  .pp-nav-of{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.25);font-weight:600}
 
   /* ── Match card share ── */
   .mcard-share-row{padding:4px 14px 12px}
