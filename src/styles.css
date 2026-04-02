@@ -880,14 +880,87 @@
   /* ═══ EL MUNDO PASSPORT ════════════════════════════════════════════════ */
 
   /* ── Passport Button (Profile) ── */
-  /* Passport icon button — positioned in prof-hero corner */
-  .pp-icon-btn{position:absolute;top:14px;right:14px;background:none;border:none;cursor:pointer;padding:4px;
-    transition:transform .2s,opacity .2s;opacity:.7}
-  .pp-icon-btn:hover{transform:scale(1.1);opacity:1}
-  .pp-icon-btn:active{transform:scale(.95)}
-  .pp-icon-badge{position:absolute;top:-2px;right:-4px;min-width:16px;height:16px;border-radius:8px;
-    background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:9px;
-    display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1}
+  /* ═══ Passport Icon — Profile corner ═══ */
+  .pp-icon-btn{position:absolute;top:12px;right:12px;background:none;border:none;cursor:pointer;padding:0;
+    transition:transform .25s;z-index:5}
+  .pp-icon-btn:hover{transform:scale(1.08)}
+  .pp-icon-btn:active{transform:scale(.94)}
+  .pp-icon-book{position:relative;width:52px;height:66px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+  .pp-icon-spine{position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:3px 0 0 3px;
+    background:linear-gradient(180deg,#6b5630,#8b7355,#6b5630);z-index:2}
+  .pp-icon-cover{position:absolute;left:5px;top:0;right:0;bottom:0;border-radius:0 4px 4px 0;
+    background:linear-gradient(145deg,#1e4d34 0%,#143824 100%);
+    border:1px solid rgba(255,255,255,.15);border-left:none;z-index:2;
+    display:flex;align-items:center;justify-content:center}
+  .pp-icon-globe{width:26px;height:26px;color:rgba(255,255,255,.45)}
+  .pp-icon-pages{position:absolute;left:8px;top:3px;right:-2px;bottom:3px;
+    border-radius:0 3px 3px 0;background:#1a1816;border:1px solid rgba(255,255,255,.03);z-index:1}
+  .pp-icon-badge{position:absolute;top:-4px;right:-6px;min-width:18px;height:18px;border-radius:9px;z-index:10;
+    background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:10px;
+    display:flex;align-items:center;justify-content:center;padding:0 5px;line-height:1;
+    box-shadow:0 2px 8px rgba(0,0,0,.4)}
+
+  /* ═══ MATCH PULSE ═══ */
+  .pulse-wrap{padding:6px 14px 2px}
+  .pulse-card{position:relative;background:linear-gradient(160deg,rgba(255,255,255,.06) 0%,rgba(255,255,255,.02) 100%);
+    border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px 18px 14px;margin-bottom:10px;
+    overflow:hidden;animation:pulseCardIn .5s cubic-bezier(.22,1,.36,1)}
+  @keyframes pulseCardIn{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+
+  /* Animated ring behind card */
+  .pulse-ring{position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.04);animation:pulseRing 3s ease-in-out infinite}
+  .pulse-ring-2{animation-delay:1.5s;width:120px;height:120px;top:-20px;right:-20px}
+  @keyframes pulseRing{0%{transform:scale(.8);opacity:0}50%{transform:scale(1.2);opacity:1}100%{transform:scale(.8);opacity:0}}
+
+  /* LIVE badge */
+  .pulse-live{display:flex;align-items:center;gap:7px;margin-bottom:14px}
+  .pulse-live-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;
+    box-shadow:0 0 8px rgba(239,68,68,.6);animation:pulseDot 1.5s ease infinite}
+  @keyframes pulseDot{0%,100%{opacity:1;box-shadow:0 0 8px rgba(239,68,68,.6)}50%{opacity:.5;box-shadow:0 0 16px rgba(239,68,68,.8)}}
+  .pulse-live-text{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:#ef4444}
+  .pulse-live-min{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1px;color:rgba(255,255,255,.4);
+    margin-left:auto;background:rgba(255,255,255,.05);padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.08)}
+
+  /* Teams */
+  .pulse-teams{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:16px}
+  .pulse-team{display:flex;align-items:center;gap:8px;flex:1}
+  .pulse-team:last-child{flex-direction:row-reverse}
+  .pulse-flag{font-size:28px;line-height:1}
+  .pulse-tname{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:1.5px;color:#fff}
+  .pulse-vs{font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,.15);
+    padding:0 14px;flex-shrink:0}
+
+  /* Prediction distribution */
+  .pulse-dist{margin-bottom:14px}
+  .pulse-dist-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .pulse-dist-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3)}
+  .pulse-dist-total{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.2);font-weight:600}
+
+  .pulse-bar{display:flex;height:28px;border-radius:6px;overflow:hidden;gap:2px}
+  .pulse-bar-home{background:linear-gradient(135deg,#22c55e,#4ade80);border-radius:6px 0 0 6px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Anton',sans-serif;font-size:11px;color:#000;letter-spacing:1px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .pulse-bar-draw{background:linear-gradient(135deg,#64748b,#94a3b8);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Anton',sans-serif;font-size:11px;color:#000;letter-spacing:1px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .pulse-bar-away{background:linear-gradient(135deg,#ef4444,#f87171);border-radius:0 6px 6px 0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Anton',sans-serif;font-size:11px;color:#000;letter-spacing:1px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+
+  .pulse-bar-legend{display:flex;justify-content:space-between;margin-top:6px}
+  .pulse-leg{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(255,255,255,.35);font-weight:600;
+    display:flex;align-items:center;gap:4px}
+  .pulse-leg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+  /* Stats row */
+  .pulse-stats{display:flex;gap:6px}
+  .pulse-stat{flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;
+    padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
+  .pulse-stat-icon{font-size:16px;line-height:1}
+  .pulse-stat-label{font-family:'Outfit',sans-serif;font-size:7px;letter-spacing:1.5px;color:rgba(255,255,255,.25);font-weight:700}
+  .pulse-stat-value{font-family:'Anton',sans-serif;font-size:18px;color:#fff;letter-spacing:1px;line-height:1}
+  .pulse-stat-sub{font-family:'Outfit',sans-serif;font-size:8px;color:rgba(255,255,255,.2);font-weight:600}
 
   /* ═══════ PASSPORT — BOOK STYLE ═══════ */
   .pp-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;animation:ppFadeIn .3s ease}

@@ -2204,6 +2204,140 @@ function PredictionCountdown({ lockMs, firstMatch }) {
   );
 }
 
+/* ═══ MATCH PULSE — Live prediction stats when a match is on ══════════════ */
+function MatchPulse({ matches, allPreds }) {
+  const [now, setNow] = useState(Date.now());
+  const [elapsedPulse, setElapsedPulse] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const id = setInterval(() => setElapsedPulse(p => p + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Find currently live matches (kickoff → kickoff + 120 min)
+  const liveMatches = matches.filter(m => {
+    const ko = matchKickoff(m);
+    if (!ko) return false;
+    const koMs = ko.getTime();
+    return now >= koMs && now <= koMs + 120 * 60 * 1000 && m.status === "upcoming";
+  });
+
+  if (liveMatches.length === 0) return null;
+
+  return (
+    <div className="pulse-wrap">
+      {liveMatches.map(m => {
+        const ko = matchKickoff(m);
+        const elapsed = ko ? Math.floor((now - ko.getTime()) / 60000) : 0;
+        const half = elapsed <= 45 ? 1 : 2;
+        const minute = elapsed <= 45 ? elapsed : elapsed - 15; // 15min halftime
+
+        // Gather all predictions for this match
+        const predsForMatch = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`));
+        const total = predsForMatch.length;
+        let homeW = 0, draw = 0, awayW = 0;
+        predsForMatch.forEach(([, p]) => {
+          if (p.h > p.a) homeW++;
+          else if (p.h === p.a) draw++;
+          else awayW++;
+        });
+        const homePct = total > 0 ? Math.round(homeW / total * 100) : 0;
+        const drawPct = total > 0 ? Math.round(draw / total * 100) : 0;
+        const awayPct = total > 0 ? 100 - homePct - drawPct : 0;
+
+        // Most popular exact score
+        const scoreCounts = {};
+        predsForMatch.forEach(([, p]) => {
+          const key = `${p.h}-${p.a}`;
+          scoreCounts[key] = (scoreCounts[key] || 0) + 1;
+        });
+        const topScore = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1])[0];
+
+        return (
+          <div key={m.id} className="pulse-card">
+            {/* Animated pulse ring */}
+            <div className="pulse-ring"/>
+            <div className="pulse-ring pulse-ring-2"/>
+
+            {/* LIVE badge */}
+            <div className="pulse-live">
+              <span className="pulse-live-dot"/>
+              <span className="pulse-live-text">LIVE</span>
+              <span className="pulse-live-min">{minute > 0 ? `${minute}'` : "KICK OFF"}</span>
+            </div>
+
+            {/* Teams row */}
+            <div className="pulse-teams">
+              <div className="pulse-team">
+                <span className="pulse-flag">{flag(m.home)}</span>
+                <span className="pulse-tname">{m.home}</span>
+              </div>
+              <div className="pulse-vs">VS</div>
+              <div className="pulse-team">
+                <span className="pulse-flag">{flag(m.away)}</span>
+                <span className="pulse-tname">{m.away}</span>
+              </div>
+            </div>
+
+            {/* Prediction distribution bar */}
+            {total > 0 && (
+              <div className="pulse-dist">
+                <div className="pulse-dist-header">
+                  <span className="pulse-dist-label">COMMUNITY PREDICTIONS</span>
+                  <span className="pulse-dist-total">{total} prediction{total !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="pulse-bar">
+                  <div className="pulse-bar-home" style={{ width: `${homePct}%` }}>
+                    {homePct > 12 && <span>{homePct}%</span>}
+                  </div>
+                  <div className="pulse-bar-draw" style={{ width: `${drawPct}%` }}>
+                    {drawPct > 12 && <span>{drawPct}%</span>}
+                  </div>
+                  <div className="pulse-bar-away" style={{ width: `${awayPct}%` }}>
+                    {awayPct > 12 && <span>{awayPct}%</span>}
+                  </div>
+                </div>
+                <div className="pulse-bar-legend">
+                  <span className="pulse-leg pulse-leg-h"><span className="pulse-leg-dot" style={{background:"#4ade80"}}/>{m.home} WIN {homePct}%</span>
+                  <span className="pulse-leg pulse-leg-d"><span className="pulse-leg-dot" style={{background:"#94a3b8"}}/> DRAW {drawPct}%</span>
+                  <span className="pulse-leg pulse-leg-a"><span className="pulse-leg-dot" style={{background:"#f87171"}}/>{m.away} WIN {awayPct}%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Extra stats row */}
+            <div className="pulse-stats">
+              {topScore && (
+                <div className="pulse-stat">
+                  <span className="pulse-stat-icon">🎯</span>
+                  <span className="pulse-stat-label">MOST PREDICTED</span>
+                  <span className="pulse-stat-value">{topScore[0]}</span>
+                  <span className="pulse-stat-sub">by {topScore[1]} player{topScore[1]!==1?"s":""}</span>
+                </div>
+              )}
+              <div className="pulse-stat">
+                <span className="pulse-stat-icon">⏱</span>
+                <span className="pulse-stat-label">{half === 1 ? "1ST HALF" : "2ND HALF"}</span>
+                <span className="pulse-stat-value">{minute > 0 ? `${minute}'` : "0'"}</span>
+                <span className="pulse-stat-sub">{m.group || ""}</span>
+              </div>
+              <div className="pulse-stat">
+                <span className="pulse-stat-icon">👥</span>
+                <span className="pulse-stat-label">PLAYERS</span>
+                <span className="pulse-stat-value">{total}</span>
+                <span className="pulse-stat-sub">predicted</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user }) {
   const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
@@ -2247,6 +2381,9 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
     <div>
       {/* ── Premium global countdown ── */}
       {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
+
+      {/* ── Match Pulse — live prediction stats ── */}
+      <MatchPulse matches={matches} allPreds={allPreds} />
 
       {/* ── Upcoming / Results tabs ── */}
       <div className="match-tab-bar">
@@ -4419,16 +4556,18 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         {myRank===1 && <div className="prof-leader-badge">👑 LEADING THE TOURNAMENT</div>}
         {/* Passport icon — top corner of hero */}
         <button className="pp-icon-btn" onClick={onOpenPassport} title="El Mundo Passport">
-          <svg viewBox="0 0 40 40" fill="none" width="56" height="56">
-            <rect x="4" y="2" width="32" height="36" rx="3.5" fill="#1a3c2a" stroke="rgba(255,255,255,.25)" strokeWidth=".8"/>
-            <rect x="4" y="2" width="4" height="36" rx="1" fill="#14291e"/>
-            <circle cx="20" cy="17" r="9" stroke="rgba(255,255,255,.4)" strokeWidth=".7"/>
-            <ellipse cx="20" cy="17" rx="4.5" ry="9" stroke="rgba(255,255,255,.3)" strokeWidth=".5"/>
-            <line x1="11" y1="14" x2="29" y2="14" stroke="rgba(255,255,255,.2)" strokeWidth=".4"/>
-            <line x1="11" y1="20" x2="29" y2="20" stroke="rgba(255,255,255,.2)" strokeWidth=".4"/>
-            <line x1="20" y1="8" x2="20" y2="26" stroke="rgba(255,255,255,.15)" strokeWidth=".4"/>
-            <text x="22" y="34" textAnchor="middle" fontFamily="Anton" fontSize="4" letterSpacing="1.8" fill="rgba(255,255,255,.5)">PASSPORT</text>
-          </svg>
+          <div className="pp-icon-book">
+            <div className="pp-icon-spine"/>
+            <div className="pp-icon-cover">
+              <svg viewBox="0 0 30 30" fill="none" className="pp-icon-globe">
+                <circle cx="15" cy="15" r="11" stroke="currentColor" strokeWidth=".7"/>
+                <ellipse cx="15" cy="15" rx="5.5" ry="11" stroke="currentColor" strokeWidth=".5"/>
+                <line x1="4" y1="12" x2="26" y2="12" stroke="currentColor" strokeWidth=".4"/>
+                <line x1="4" y1="18" x2="26" y2="18" stroke="currentColor" strokeWidth=".4"/>
+              </svg>
+            </div>
+            <div className="pp-icon-pages"/>
+          </div>
           {passportStamps.length > 0 && <span className="pp-icon-badge">{passportStamps.length}</span>}
         </button>
       </div>
