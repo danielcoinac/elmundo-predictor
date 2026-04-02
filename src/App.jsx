@@ -4558,6 +4558,31 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         <div className="sc-cta-sub">Generate a card to invite friends to the game</div>
       </div>
 
+      {/* ── MY GIFTS ── */}
+      <div className="gifts-card">
+        <div className="gifts-header">
+          <span className="gifts-icon">🎁</span>
+          <div>
+            <div className="gifts-title">MY GIFTS</div>
+            <div className="gifts-sub">Complete your passport to unlock rewards</div>
+          </div>
+        </div>
+        <div className="gifts-progress">
+          <div className="gifts-bar-track">
+            <div className="gifts-bar-fill" style={{ width: `${matches.length > 0 ? Math.round(passportStamps.length / matches.length * 100) : 0}%` }}/>
+          </div>
+          <div className="gifts-bar-label">{passportStamps.length} / {matches.length} stamps</div>
+        </div>
+        {passportStamps.length >= matches.length && matches.length > 0 ? (
+          <div className="gifts-complete">
+            <span className="gifts-complete-icon">🏆</span>
+            <span className="gifts-complete-text">PASSPORT COMPLETE! Check with staff for your reward.</span>
+          </div>
+        ) : (
+          <div className="gifts-hint">Collect all stamps by ordering during every World Cup match at El Mundo to earn a special gift!</div>
+        )}
+      </div>
+
       <div className="info-card">
         <div className="info-title">⚽ HOW POINTS WORK</div>
         <p className="info-body">Predict the exact final score for each match. Exact score correct earns <strong>5 points</strong>. Correct winner with wrong score earns <strong>1 point</strong>. Draw matches: only exact score earns points. Most points at tournament end wins.</p>
@@ -4709,6 +4734,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
         { id:"matches",   label:"Matches"   },
         { id:"rules",     label:"Rules"     },
         { id:"vip",       label:"VIP Perks" },
+        { id:"passGifts", label:"Passport Gifts" },
         { id:"integrity", label:"Integrity" },
       ]
     },
@@ -4788,6 +4814,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "tables"     && <AdminTables />}
       {section === "tableqr"    && <AdminTableQR />}
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
+      {section === "passGifts" && <AdminPassportGifts users={users} matches={matches} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
       {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
       {section === "appSettings" && <AdminAppSettings appSettings={appSettings} onSave={onSaveAppSettings} />}
@@ -4913,6 +4940,202 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Admin: Passport Gifts ── */
+function AdminPassportGifts({ users, matches }) {
+  const [allStamps, setAllStamps] = useState([]);
+  const [gifts, setGifts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [giftType, setGiftType] = useState("giftcard"); // giftcard | menu_item
+  const [giftDesc, setGiftDesc] = useState("");
+  const [awarding, setAwarding] = useState(null);
+
+  const totalMatches = matches.length;
+
+  // Load all stamps and gifts
+  useEffect(() => {
+    (async () => {
+      const [stampRes, giftRes] = await Promise.all([
+        supabase.from("passport_stamps").select("user_id, match_id"),
+        supabase.from("passport_gifts").select("*").order("awarded_at", { ascending: false }),
+      ]);
+      setAllStamps(stampRes.data || []);
+      setGifts(giftRes.data || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  // Group stamps by user
+  const stampsByUser = {};
+  allStamps.forEach(s => {
+    if (!stampsByUser[s.user_id]) stampsByUser[s.user_id] = new Set();
+    stampsByUser[s.user_id].add(s.match_id);
+  });
+
+  // Find players who completed the passport
+  const completedPlayers = Object.entries(stampsByUser)
+    .filter(([, stamps]) => stamps.size >= totalMatches && totalMatches > 0)
+    .map(([uid, stamps]) => ({ uid, count: stamps.size, user: users[uid] }))
+    .filter(p => p.user);
+
+  // Find players close to completing
+  const nearComplete = Object.entries(stampsByUser)
+    .filter(([, stamps]) => stamps.size >= Math.floor(totalMatches * 0.75) && stamps.size < totalMatches && totalMatches > 0)
+    .map(([uid, stamps]) => ({ uid, count: stamps.size, user: users[uid] }))
+    .filter(p => p.user)
+    .sort((a, b) => b.count - a.count);
+
+  const giftedSet = new Set(gifts.map(g => g.user_id));
+
+  const awardGift = async (userId) => {
+    if (!giftDesc.trim()) return;
+    setAwarding(userId);
+    try {
+      const { data, error } = await supabase.from("passport_gifts").insert({
+        user_id: userId, gift_type: giftType, description: giftDesc.trim(),
+      }).select().maybeSingle();
+      if (error) throw error;
+      if (data) setGifts(prev => [data, ...prev]);
+      setGiftDesc("");
+    } catch (e) { console.error(e); }
+    setAwarding(null);
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:"center",color:"rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2}}>LOADING STAMPS...</div>;
+
+  return (
+    <div style={{padding:"16px 14px 40px"}}>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:16}}>PASSPORT GIFTS</div>
+
+      {/* Summary */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
+        <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff"}}>{totalMatches}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:4}}>TOTAL MATCHES</div>
+        </div>
+        <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#4ade80"}}>{completedPlayers.length}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(34,197,94,.5)",marginTop:4}}>COMPLETED</div>
+        </div>
+        <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"rgba(255,255,255,.5)"}}>{gifts.length}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(255,255,255,.25)",marginTop:4}}>GIFTS AWARDED</div>
+        </div>
+      </div>
+
+      {/* Gift type selector */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:8}}>GIFT TYPE</div>
+        <div style={{display:"flex",gap:6}}>
+          {[{id:"giftcard",label:"🎁 Gift Card"},{id:"menu_item",label:"🍽 Free Menu Items"}].map(t => (
+            <button key={t.id} onClick={() => setGiftType(t.id)}
+              style={{padding:"8px 16px",background:giftType===t.id?"#fff":"rgba(255,255,255,.05)",
+                color:giftType===t.id?"#000":"rgba(255,255,255,.5)",border:giftType===t.id?"none":"1px solid rgba(255,255,255,.1)",
+                fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,cursor:"pointer",borderRadius:6,
+                fontWeight:giftType===t.id?900:400}}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Gift description input */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:6}}>GIFT DESCRIPTION</div>
+        <input value={giftDesc} onChange={e => setGiftDesc(e.target.value)}
+          placeholder={giftType === "giftcard" ? "e.g. $25 Gift Card" : "e.g. 2x Free Cocktails + 1 Main Course"}
+          style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",
+            color:"#fff",padding:"12px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,borderRadius:8,
+            outline:"none",boxSizing:"border-box"}} />
+      </div>
+
+      {/* ── COMPLETED PLAYERS ── */}
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"#4ade80",marginBottom:10}}>
+        🏆 COMPLETED PASSPORT ({completedPlayers.length})
+      </div>
+      {completedPlayers.length === 0 && (
+        <div style={{padding:"30px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)"}}>
+          No players have completed their passport yet
+        </div>
+      )}
+      {completedPlayers.map(p => (
+        <div key={p.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+          background:giftedSet.has(p.uid)?"rgba(34,197,94,.04)":"rgba(255,255,255,.03)",
+          border:`1px solid ${giftedSet.has(p.uid)?"rgba(34,197,94,.15)":"rgba(255,255,255,.08)"}`,
+          borderRadius:10,marginBottom:6}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",
+            display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",
+            fontSize:14,color:"rgba(255,255,255,.5)",overflow:"hidden",flexShrink:0}}>
+            {p.user.avatar_url ? <img src={p.user.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/> : (p.user.name||"?")[0].toUpperCase()}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:1}}>{p.user.name}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)"}}>{p.count}/{totalMatches} stamps</div>
+          </div>
+          {giftedSet.has(p.uid) ? (
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#4ade80",
+              background:"rgba(34,197,94,.08)",padding:"5px 12px",borderRadius:20,border:"1px solid rgba(34,197,94,.2)"}}>✓ GIFTED</div>
+          ) : (
+            <button onClick={() => awardGift(p.uid)} disabled={!giftDesc.trim() || awarding === p.uid}
+              style={{background:"#fff",color:"#000",border:"none",padding:"8px 16px",
+                fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,cursor:"pointer",
+                borderRadius:6,fontWeight:900,opacity:(!giftDesc.trim()||awarding===p.uid)?.4:1}}>
+              {awarding === p.uid ? "..." : "AWARD GIFT"}
+            </button>
+          )}
+        </div>
+      ))}
+
+      {/* ── NEAR COMPLETION ── */}
+      {nearComplete.length > 0 && (
+        <>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.4)",marginTop:20,marginBottom:10}}>
+            📊 NEAR COMPLETION ({nearComplete.length})
+          </div>
+          {nearComplete.map(p => (
+            <div key={p.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",
+              background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:10,marginBottom:4}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,.06)",
+                display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",
+                fontSize:12,color:"rgba(255,255,255,.4)",overflow:"hidden",flexShrink:0}}>
+                {p.user.avatar_url ? <img src={p.user.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/> : (p.user.name||"?")[0].toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",letterSpacing:1}}>{p.user.name}</div>
+              </div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600}}>
+                {p.count}/{totalMatches}
+              </div>
+              <div style={{width:60,height:4,background:"rgba(255,255,255,.06)",borderRadius:2,overflow:"hidden"}}>
+                <div style={{width:`${Math.round(p.count/totalMatches*100)}%`,height:"100%",background:"rgba(255,255,255,.25)",borderRadius:2}}/>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── GIFT HISTORY ── */}
+      {gifts.length > 0 && (
+        <>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:24,marginBottom:10}}>
+            📜 GIFT HISTORY
+          </div>
+          {gifts.map(g => (
+            <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+              background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",borderRadius:8,marginBottom:4}}>
+              <span style={{fontSize:16}}>{g.gift_type === "giftcard" ? "🎁" : "🍽"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(255,255,255,.6)",letterSpacing:1}}>{users[g.user_id]?.name || "Unknown"}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)"}}>{g.description}</div>
+              </div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(255,255,255,.15)"}}>
+                {new Date(g.awarded_at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

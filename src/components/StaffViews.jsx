@@ -873,16 +873,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                           style={{flex:1,padding:"14px",border:"none",background:"#fff",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.1)"}}>
                           {isBusy ? "…" : "✓ CONFIRM"}
                         </button>
-                        <button disabled={isBusy} onClick={async()=>{
-                          if(!window.confirm("Cancel this order? This cannot be undone.")) return;
-                          setBusy(p => ({...p, [ord.id]: true}));
-                          await supabase.from("orders").update({status:"cancelled"}).eq("id",ord.id);
-                          await onLoad();
-                          setBusy(p => ({...p, [ord.id]: false}));
-                        }}
-                          style={{padding:"14px 16px",border:"1px solid rgba(239,68,68,.3)",background:"transparent",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"rgba(239,68,68,.6)",cursor:isBusy?"not-allowed":"pointer"}}>
-                          ✕ CANCEL
-                        </button>
+                        {/* Cancel button removed per owner request */}
                       </div>
                     )}
 
