@@ -933,20 +933,32 @@
   .pp-page-inner{animation:ppPageIn .35s ease}
   @keyframes ppPageIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
 
-  /* ── Identity Page ── */
-  .pp-id-page{padding:20px 22px}
-  .pp-id-photo{width:90px;height:90px;margin:0 auto 18px;border-radius:4px;overflow:hidden;border:2px solid rgba(255,255,255,.12);background:#111}
+  /* ── Identity Page (cream paper like real passport) ── */
+  .pp-id-page{padding:24px 24px 20px;
+    background:linear-gradient(175deg,#f5f0e6 0%,#ece6d5 40%,#e8e0cc 100%);position:relative;min-height:340px}
+  .pp-id-header{text-align:center;margin-bottom:6px}
+  .pp-id-header-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(0,0,0,.3);font-weight:700}
+  .pp-id-header-country{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:4px;color:rgba(0,0,0,.45);margin-top:2px}
+  .pp-id-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.12),transparent);margin:10px 0}
+  .pp-id-body{display:flex;gap:18px;align-items:flex-start}
+  .pp-id-photo{width:90px;height:110px;flex-shrink:0;border-radius:4px;overflow:hidden;border:1.5px solid rgba(0,0,0,.15);background:#ddd}
   .pp-id-img{width:100%;height:100%;object-fit:cover}
-  .pp-id-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:36px;color:rgba(255,255,255,.3);background:#161614}
-  .pp-id-fields{display:flex;flex-direction:column;gap:0}
-  .pp-id-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-  .pp-id-label{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);font-weight:700}
-  .pp-id-value{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:1px;color:rgba(255,255,255,.85)}
+  .pp-id-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:36px;color:rgba(0,0,0,.2);background:rgba(0,0,0,.06)}
+  .pp-id-fields{display:flex;flex-direction:column;gap:0;flex:1;min-width:0}
+  .pp-id-row{display:flex;flex-direction:column;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06)}
+  .pp-id-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(0,0,0,.35);font-weight:700;margin-bottom:1px}
+  .pp-id-value{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:1px;color:rgba(0,0,0,.75)}
 
-  .pp-id-footer{margin-top:20px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.08)}
-  .pp-id-barcode{display:flex;gap:2px;height:28px;align-items:stretch;justify-content:center;margin-bottom:8px}
-  .pp-id-bar{background:rgba(255,255,255,.2);border-radius:1px}
-  .pp-id-mrz{font-family:'Courier New',monospace;font-size:8px;color:rgba(255,255,255,.15);letter-spacing:1px;text-align:center;word-break:break-all}
+  .pp-id-footer{margin-top:16px;padding-top:12px;border-top:1.5px solid rgba(0,0,0,.08)}
+  .pp-id-barcode{display:flex;gap:2px;height:28px;align-items:stretch;justify-content:center;margin-bottom:6px}
+  .pp-id-bar{background:rgba(0,0,0,.25);border-radius:1px}
+  .pp-id-mrz{font-family:'Courier New',monospace;font-size:7.5px;color:rgba(0,0,0,.2);letter-spacing:1px;text-align:center;word-break:break-all}
+
+  /* ── Visa Page ── */
+  .pp-visa-page{display:flex;flex-direction:column;align-items:center}
+  .pp-visa-stamp{width:100%;max-width:340px}
+  .pp-visa-svg{width:100%;height:auto;display:block}
+  .pp-visa-footer{font-family:'Outfit',sans-serif;font-size:8px;color:rgba(0,0,0,.22);text-align:center;line-height:1.5;margin-top:10px;padding:0 10px;font-style:italic}
 
   /* ── Passport Paper Page ── */
   .pp-paper{position:relative;padding:16px 20px 20px;min-height:340px;
