@@ -584,9 +584,9 @@ export default function App() {
     if (error) { toast$("Error saving match: " + error.message, false); return; }
     setMatches(m => m.map(x => x.id === updated.id ? updated : x));
     // Audit log — records who changed what and when
-    await supabase.from("match_audit_log").insert({
+    try { await supabase.from("match_audit_log").insert({
       admin_id: user.id, match_id: updated.id, action: "update", new_data: updated
-    }).catch(() => {});
+    }); } catch {}
     toast$("Match updated ✓");
   };
   const adminAddMatch = async (newMatch) => {
@@ -599,9 +599,9 @@ export default function App() {
     });
     if (error) { toast$("Error adding match: " + error.message, false); return; }
     setMatches(m => [...m, { ...newMatch, id }]);
-    await supabase.from("match_audit_log").insert({
+    try { await supabase.from("match_audit_log").insert({
       admin_id: user.id, match_id: id, action: "insert", new_data: { ...newMatch, id }
-    }).catch(() => {});
+    }); } catch {}
     toast$("Match added ✓");
   };
   const adminDeleteMatch = async (id) => {
@@ -609,9 +609,9 @@ export default function App() {
     const { error } = await supabase.from("matches").delete().eq("id", id);
     if (error) { toast$("Error removing match: " + error.message, false); return; }
     setMatches(m => m.filter(x => x.id !== id));
-    await supabase.from("match_audit_log").insert({
+    try { await supabase.from("match_audit_log").insert({
       admin_id: user.id, match_id: id, action: "delete", new_data: deleted ?? null
-    }).catch(() => {});
+    }); } catch {}
     toast$("Match removed ✓");
   };
 
@@ -807,7 +807,7 @@ export default function App() {
     if (upsertErr) { toast$("Error adding credits: " + upsertErr.message, false); return; }
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
     // Audit log for accountability
-    await supabase.from("credit_transactions").insert({ admin_id: user.id, target_user_id: userId, amount, new_balance: newBal }).catch(() => {});
+    try { await supabase.from("credit_transactions").insert({ admin_id: user.id, target_user_id: userId, amount, new_balance: newBal }); } catch {}
     // Update users state so Credits tab reflects new balance immediately
     setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);
