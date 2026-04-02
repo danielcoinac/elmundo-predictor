@@ -1247,7 +1247,7 @@ export default function App() {
           showWinner={showWinner} setShowWinner={setShowWinner}
           winnerData={winnerData} setWinnerData={setWinnerData}
           showPassport={showPassport} setShowPassport={setShowPassport}
-          passportStamps={passportStamps} user={user}
+          passportStamps={passportStamps}
         />
       )}
     </div>
