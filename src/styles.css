@@ -929,7 +929,7 @@
     padding:0 16px;flex-shrink:0;letter-spacing:3px}
 
   /* Prediction distribution */
-  .pulse-dist{padding:0 18px 16px}
+  .pulse-dist{padding:0 18px 14px}
   .pulse-dist-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
   .pulse-dist-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2.5px;color:rgba(255,255,255,.4)}
   .pulse-dist-total{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.3);font-weight:600}
@@ -943,13 +943,13 @@
   .pulse-bar-draw{background:linear-gradient(135deg,#475569,#94a3b8)}
   .pulse-bar-away{background:linear-gradient(135deg,#dc2626,#f87171);border-radius:0 8px 8px 0}
 
-  .pulse-bar-legend{display:flex;justify-content:space-between;margin-top:8px}
-  .pulse-leg{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.5);font-weight:600;
-    display:flex;align-items:center;gap:5px}
-  .pulse-leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .pulse-bar-legend{display:flex;justify-content:space-between;margin-top:8px;gap:4px;flex-wrap:wrap}
+  .pulse-leg{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(255,255,255,.5);font-weight:600;
+    display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .pulse-leg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 
   /* Most predicted inline */
-  .pulse-top-score{display:flex;align-items:center;gap:8px;padding:12px 18px 14px;
+  .pulse-top-score{display:flex;align-items:center;gap:8px;padding:10px 18px 14px;
     border-top:1px solid rgba(255,255,255,.04)}
   .pulse-top-icon{font-size:14px;line-height:1}
   .pulse-top-text{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.4);font-weight:500}
