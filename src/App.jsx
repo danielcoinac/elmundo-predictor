@@ -2258,14 +2258,16 @@ function MatchPulse({ matches, allPreds }) {
 
         return (
           <div key={m.id} className="pulse-card">
-            {/* Animated pulse ring */}
+            {/* Animated background rings */}
             <div className="pulse-ring"/>
             <div className="pulse-ring pulse-ring-2"/>
 
-            {/* LIVE badge */}
-            <div className="pulse-live">
-              <span className="pulse-live-dot"/>
-              <span className="pulse-live-text">LIVE</span>
+            {/* Header: LIVE + minute */}
+            <div className="pulse-header">
+              <div className="pulse-live">
+                <span className="pulse-live-dot"/>
+                <span className="pulse-live-text">LIVE</span>
+              </div>
               <span className="pulse-live-min">{minute > 0 ? `${minute}'` : "KICK OFF"}</span>
             </div>
 
@@ -2290,20 +2292,20 @@ function MatchPulse({ matches, allPreds }) {
                   <span className="pulse-dist-total">{total} prediction{total !== 1 ? "s" : ""}</span>
                 </div>
                 <div className="pulse-bar">
-                  <div className="pulse-bar-home" style={{ width: `${homePct}%` }}>
-                    {homePct > 12 && <span>{homePct}%</span>}
+                  <div className="pulse-bar-home" style={{ width: `${Math.max(homePct, 5)}%` }}>
+                    {homePct > 15 && <span>{homePct}%</span>}
                   </div>
-                  <div className="pulse-bar-draw" style={{ width: `${drawPct}%` }}>
-                    {drawPct > 12 && <span>{drawPct}%</span>}
+                  <div className="pulse-bar-draw" style={{ width: `${Math.max(drawPct, 5)}%` }}>
+                    {drawPct > 15 && <span>{drawPct}%</span>}
                   </div>
-                  <div className="pulse-bar-away" style={{ width: `${awayPct}%` }}>
-                    {awayPct > 12 && <span>{awayPct}%</span>}
+                  <div className="pulse-bar-away" style={{ width: `${Math.max(awayPct, 5)}%` }}>
+                    {awayPct > 15 && <span>{awayPct}%</span>}
                   </div>
                 </div>
                 <div className="pulse-bar-legend">
-                  <span className="pulse-leg pulse-leg-h"><span className="pulse-leg-dot" style={{background:"#4ade80"}}/>{m.home} WIN {homePct}%</span>
-                  <span className="pulse-leg pulse-leg-d"><span className="pulse-leg-dot" style={{background:"#94a3b8"}}/> DRAW {drawPct}%</span>
-                  <span className="pulse-leg pulse-leg-a"><span className="pulse-leg-dot" style={{background:"#f87171"}}/>{m.away} WIN {awayPct}%</span>
+                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#4ade80"}}/>{m.home} {homePct}%</span>
+                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#94a3b8"}}/>DRAW {drawPct}%</span>
+                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#f87171"}}/>{m.away} {awayPct}%</span>
                 </div>
               </div>
             )}
@@ -2514,17 +2516,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
   }, [fin]);
   const isActuallyLocked = isBanned || (globalLockTime ? nowTs >= globalLockTime : false);
 
-  // Show Community Pulse only within 1 hour of kickoff (or after)
-  const matchKickoffTs = (() => {
-    if (!m.date || !m.time) return null;
-    try {
-      const [mon, day] = m.date.split(" ");
-      const [hh, mm] = (m.time||"00:00").split(":");
-      const _yr = (() => { try { return JSON.parse(localStorage.getItem("em_app_settings")||"{}").eventYear||2026; } catch { return 2026; } })();
-      return new Date(`${mon} ${day} ${_yr} ${hh}:${mm}:00 GMT-0400`).getTime();
-    } catch { return null; }
-  })();
-  const showWPW = !!allPreds && !fin && (matchKickoffTs !== null && nowTs >= matchKickoffTs - 60 * 60 * 1000);
+  // (Community pulse removed — now handled by MatchPulse at feed top)
 
   const postPredToFeed = async () => {
     if (!user || sharePosting || sharePosted) return;
@@ -2687,34 +2679,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
         </div>
       )}
       {/* ── Who Predicted What ── show within 1h of kickoff and after */}
-      {showWPW && (() => {
-        const mp = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`)).map(([,v]) => v);
-        if (!mp.length) return null;
-        const hw = mp.filter(p => p.h > p.a).length;
-        const dr = mp.filter(p => p.h === p.a).length;
-        const aw = mp.filter(p => p.h < p.a).length;
-        const tot = mp.length;
-        const hp = Math.round(hw/tot*100), dp = Math.round(dr/tot*100), ap = 100-hp-dp;
-        return (
-          <div className="wpw-wrap">
-            <div className="wpw-title">COMMUNITY PULSE · {tot} player{tot!==1?"s":""}</div>
-            <div className="wpw-bars">
-              <div className="wpw-bar-col">
-                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-home" style={{width:`${hp}%`}}/></div>
-                <div className="wpw-bar-lbl">{flag(m.home)} {hp}%</div>
-              </div>
-              <div className="wpw-bar-col wpw-draw-col">
-                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-draw" style={{width:`${dp}%`}}/></div>
-                <div className="wpw-bar-lbl">DRAW {dp}%</div>
-              </div>
-              <div className="wpw-bar-col">
-                <div className="wpw-bar-track"><div className="wpw-bar-fill wpw-away" style={{width:`${ap}%`}}/></div>
-                <div className="wpw-bar-lbl">{flag(m.away)} {ap}%</div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Community pulse moved to MatchPulse at top of feed */}
     </div>
   );
 }
