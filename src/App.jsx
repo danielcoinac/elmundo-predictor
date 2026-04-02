@@ -2310,29 +2310,13 @@ function MatchPulse({ matches, allPreds }) {
               </div>
             )}
 
-            {/* Extra stats row */}
-            <div className="pulse-stats">
-              {topScore && (
-                <div className="pulse-stat">
-                  <span className="pulse-stat-icon">🎯</span>
-                  <span className="pulse-stat-label">MOST PREDICTED</span>
-                  <span className="pulse-stat-value">{topScore[0]}</span>
-                  <span className="pulse-stat-sub">by {topScore[1]} player{topScore[1]!==1?"s":""}</span>
-                </div>
-              )}
-              <div className="pulse-stat">
-                <span className="pulse-stat-icon">⏱</span>
-                <span className="pulse-stat-label">{half === 1 ? "1ST HALF" : "2ND HALF"}</span>
-                <span className="pulse-stat-value">{minute > 0 ? `${minute}'` : "0'"}</span>
-                <span className="pulse-stat-sub">{m.group || ""}</span>
+            {/* Most predicted score — inline */}
+            {topScore && total > 0 && (
+              <div className="pulse-top-score">
+                <span className="pulse-top-icon">🎯</span>
+                <span className="pulse-top-text">Most predicted: <strong>{topScore[0]}</strong> by {topScore[1]} player{topScore[1]!==1?"s":""}</span>
               </div>
-              <div className="pulse-stat">
-                <span className="pulse-stat-icon">👥</span>
-                <span className="pulse-stat-label">PLAYERS</span>
-                <span className="pulse-stat-value">{total}</span>
-                <span className="pulse-stat-sub">predicted</span>
-              </div>
-            </div>
+            )}
           </div>
         );
       })}
