@@ -356,7 +356,7 @@ function AdminReport({ allOrders }) {
       {/* ── Controls bar ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)"}}>SETTLEMENT REPORT</div>
-        <button onClick={handlePrint} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 18px",background:"linear-gradient(135deg,#a07830,#c9a84c,#e8c96a)",color:"#000",border:"none",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",fontWeight:900,boxShadow:"0 4px 16px rgba(201,168,76,.2)"}}>
+        <button onClick={handlePrint} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 18px",background:"#fff",color:"#000",border:"none",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.1)"}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           PRINT RECEIPT
         </button>
@@ -367,12 +367,12 @@ function AdminReport({ allOrders }) {
         {PRESETS.map(([v,l]) => (
           <button key={v} onClick={()=>applyPreset(v)} style={{
             padding:"8px 13px",
-            background: preset===v ? "linear-gradient(135deg,#a07830,#c9a84c)" : "rgba(255,255,255,.05)",
+            background: preset===v ? "#fff" : "rgba(255,255,255,.05)",
             color: preset===v ? "#000" : "rgba(255,255,255,.5)",
             border: preset===v ? "none" : "1px solid rgba(255,255,255,.1)",
             fontFamily:"'Anton',sans-serif", fontSize:9, letterSpacing:2, cursor:"pointer", whiteSpace:"nowrap",
             fontWeight: preset===v ? 900 : 400,
-            boxShadow: preset===v ? "0 2px 10px rgba(201,168,76,.25)" : "none",
+            boxShadow: preset===v ? "0 2px 10px rgba(255,255,255,.12)" : "none",
           }}>{l}</button>
         ))}
       </div>
@@ -588,7 +588,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     empty:     { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", dot:null,      blink:false },
     new:       { bg:"rgba(34,197,94,.15)",   border:"rgba(34,197,94,.8)",     color:"#4ade80",               dot:"#4ade80", blink:false },
     confirmed: { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
-    ready:     { bg:"rgba(201,168,76,.12)",  border:"rgba(201,168,76,.9)",    color:"#e8c96a",               dot:"#e8c96a", blink:false },
+    ready:     { bg:"rgba(255,255,255,.1)",   border:"rgba(255,255,255,.7)",   color:"#e0e0e0",               dot:"#e0e0e0", blink:false },
     warning:   { bg:"rgba(251,191,36,.15)",  border:"rgba(251,191,36,.85)",   color:"#fbbf24",               dot:"#fbbf24", blink:false },
     urgent:    { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               dot:"#f87171", blink:true  },
   }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", dot:null, blink:false });
@@ -719,7 +719,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
           boxShadow: editMode
             ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
-            : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)` : s==="ready" ? `0 0 18px rgba(201,168,76,.45), 0 0 40px rgba(201,168,76,.18), inset 0 0 14px rgba(201,168,76,.1)` : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)` : s==="confirmed" ? `0 0 12px rgba(96,165,250,.2), inset 0 0 8px rgba(96,165,250,.05)` : "0 1px 4px rgba(0,0,0,.3)"),
+            : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)` : s==="ready" ? `0 0 18px rgba(255,255,255,.35), 0 0 40px rgba(255,255,255,.12), inset 0 0 14px rgba(255,255,255,.08)` : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)` : s==="confirmed" ? `0 0 12px rgba(96,165,250,.2), inset 0 0 8px rgba(96,165,250,.05)` : "0 1px 4px rgba(0,0,0,.3)"),
           userSelect:"none", touchAction:"none",
           zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
         }}
@@ -758,7 +758,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
         {/* Payment type icon — sponsor gift star */}
         {!editMode && payIcon && (
-          <div style={{position:"absolute",bottom:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"rgba(251,191,36,.25)",border:"1px solid rgba(251,191,36,.6)",fontSize:9,color:"#fbbf24",display:"flex",alignItems:"center",justifyContent:"center"}}>{payIcon}</div>
+          <div style={{position:"absolute",bottom:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.4)",fontSize:9,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{payIcon}</div>
         )}
 
         {/* EDIT: shape toggle (top-left) */}
@@ -808,10 +808,10 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
     return (
       <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
-        <div style={{background:"#111",border:"1px solid rgba(201,168,76,.2)",borderTop:"2px solid #c9a84c",width:"92%",maxWidth:480,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.9),0 0 40px rgba(201,168,76,.06)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:"#111",border:"1px solid rgba(255,255,255,.12)",borderTop:"2px solid #fff",width:"92%",maxWidth:480,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.9),0 0 40px rgba(255,255,255,.03)"}} onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
-          <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,rgba(201,168,76,.06) 0%,transparent 100%)",flexShrink:0}}>
+          <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,rgba(255,255,255,.04) 0%,transparent 100%)",flexShrink:0}}>
             <div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>TABLE {selectedTable}</div>
               <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4,fontWeight:600}}>{orders.length} order{orders.length!==1?"s":""}</div>
@@ -870,7 +870,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                     {ord.status !== "completed" && (
                       <div style={{display:"flex",gap:8,paddingBottom:12,paddingTop:4}}>
                         <button disabled={isBusy} onClick={()=>doConfirm(ord.id)}
-                          style={{flex:1,padding:"14px",border:"none",background:"linear-gradient(135deg,#a07830,#c9a84c,#e8c96a)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",fontWeight:900,boxShadow:"0 4px 16px rgba(201,168,76,.25)"}}>
+                          style={{flex:1,padding:"14px",border:"none",background:"#fff",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.1)"}}>
                           {isBusy ? "…" : "✓ CONFIRM"}
                         </button>
                         <button disabled={isBusy} onClick={async()=>{
@@ -905,18 +905,18 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {/* Row 1: title + view toggle */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff",letterSpacing:3,lineHeight:1,textShadow:"0 0 20px rgba(201,168,76,.25)"}}>FLOOR PLAN</span>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff",letterSpacing:3,lineHeight:1,textShadow:"0 0 20px rgba(255,255,255,.1)"}}>FLOOR PLAN</span>
             {fpView === "live" && (editMode ? (
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"#c9a84c",background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.35)",padding:"3px 9px",borderRadius:3}}>EDIT MODE</span>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"#fff",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",padding:"3px 9px",borderRadius:3}}>EDIT MODE</span>
             ) : (
-              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} style={{background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.3)",color:"#c9a84c",padding:"5px 11px",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .15s",borderRadius:3}}>✏ EDIT</button>
+              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"5px 11px",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .15s",borderRadius:3}}>✏ EDIT</button>
             ))}
           </div>
           {/* View toggle pill */}
           <div style={{display:"flex",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:4,overflow:"hidden"}}>
             {[{id:"live",label:"⬛ LIVE"},{id:"history",label:"📋 HISTORY"},{id:"report",label:"📊 REPORT"}].map(v=>(
               <button key={v.id} onClick={()=>{setFpView(v.id);if(v.id!=="live"){setEditMode(false);}}}
-                style={{padding:"7px 13px",background:fpView===v.id?"#c9a84c":"transparent",color:fpView===v.id?"#000":"rgba(255,255,255,.35)",border:"none",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",borderRadius:fpView===v.id?3:0,fontWeight:fpView===v.id?900:400}}>
+                style={{padding:"7px 13px",background:fpView===v.id?"#fff":"transparent",color:fpView===v.id?"#000":"rgba(255,255,255,.35)",border:"none",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",borderRadius:fpView===v.id?3:0,fontWeight:fpView===v.id?900:400}}>
                 {v.label}
               </button>
             ))}
@@ -942,17 +942,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>ACTIVE</div>
             </div>
             {/* Revenue */}
-            <div style={{background:"rgba(201,168,76,.04)",border:"1px solid rgba(201,168,76,.2)",borderRadius:6,padding:"12px 8px",textAlign:"center",position:"relative",boxShadow:"0 0 20px rgba(201,168,76,.04)"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#c9a84c",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s",textShadow:showFin?"0 0 16px rgba(201,168,76,.35)":"none"}}>${todayRevenue.toFixed(0)}</div>
+            <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"12px 8px",textAlign:"center",position:"relative",boxShadow:"0 0 20px rgba(255,255,255,.02)"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s",textShadow:showFin?"0 0 16px rgba(255,255,255,.2)":"none"}}>${todayRevenue.toFixed(0)}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:6}}>
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(201,168,76,.5)"}}>TODAY REV</span>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.4)"}}>TODAY REV</span>
                 <button onClick={()=>setShowFin(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:1,opacity:.5,fontSize:10}}>{showFin?"👁":"🙈"}</button>
               </div>
             </div>
             {/* Orders */}
-            <div style={{background:"rgba(201,168,76,.03)",border:"1px solid rgba(201,168,76,.15)",borderRadius:6,padding:"12px 8px",textAlign:"center"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#c9a84c",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>{todayCount}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(201,168,76,.45)",marginTop:6}}>ORDERS</div>
+            <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.1)",borderRadius:6,padding:"12px 8px",textAlign:"center"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>{todayCount}</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>ORDERS</div>
             </div>
           </div>
 
@@ -972,12 +972,11 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {fpView === "live" && (<>
         {/* Edit toolbar */}
         {editMode && (
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(251,191,36,.05)",borderBottom:"1px solid rgba(251,191,36,.18)",flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(255,255,255,.03)",borderBottom:"1px solid rgba(255,255,255,.1)",flexWrap:"wrap"}}>
             <button onClick={addTable} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>+ ADD TABLE</button>
             <button onClick={resetLayout} style={{background:"transparent",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.45)",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>↺ RESET</button>
             <div style={{flex:1,fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600}}>Drag · □/○ shape · × delete · ⊿ resize</div>
-            <button onClick={cancelEdit} style={{background:"transparent",border:"1px solid rgba(255,255,255,.18)",color:"rgba(255,255,255,.55)",padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>CANCEL</button>
-            <button onClick={saveLayout} style={{background:"linear-gradient(135deg,#a07830,#c9a84c,#e8c96a)",border:"none",color:"#000",padding:"8px 20px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",fontWeight:900,boxShadow:"0 4px 16px rgba(201,168,76,.3)"}}>✓ SAVE</button>
+            <button onClick={saveLayout} style={{background:"#fff",border:"none",color:"#000",padding:"8px 20px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.15)"}}>✓ SAVE</button>
           </div>
         )}
         {/* Canvas */}
@@ -1057,8 +1056,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {sorted.map(it => (
-                  <div key={it.name} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.18)",padding:"6px 12px",borderRadius:4}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#c9a84c",lineHeight:1,textShadow:"0 0 10px rgba(201,168,76,.4)"}}>{it.qty}</span>
+                  <div key={it.name} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.12)",padding:"6px 12px",borderRadius:4}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#fff",lineHeight:1,textShadow:"0 0 10px rgba(255,255,255,.2)"}}>{it.qty}</span>
                     <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.75)",fontWeight:600}}>{it.name}</span>
                   </div>
                 ))}

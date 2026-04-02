@@ -338,7 +338,7 @@
 
   /* ── PROFILE ── */
   .prof-wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column}
-  .prof-hero{background:linear-gradient(160deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.09);padding:44px 24px 36px;text-align:center;width:100%}
+  .prof-hero{background:linear-gradient(160deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.02) 100%);border-bottom:1px solid rgba(255,255,255,.09);padding:44px 24px 36px;text-align:center;width:100%;position:relative}
   .sponsor-vip-hero{padding:40px 24px 28px;text-align:center;background:linear-gradient(160deg,rgba(255,255,255,.05) 0%,rgba(0,0,0,0) 100%)}
   .sponsor-vip-tier-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:50px;font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2.5px;margin-bottom:14px}
   .sponsor-vip-name{font-family:'Anton',sans-serif;font-size:26px;color:#fff;letter-spacing:1px;margin-bottom:6px}
@@ -880,31 +880,14 @@
   /* ═══ EL MUNDO PASSPORT ════════════════════════════════════════════════ */
 
   /* ── Passport Button (Profile) ── */
-  .pp-btn-wrap{padding:8px 16px 4px}
-  .pp-btn{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:all .35s cubic-bezier(.22,1,.36,1);position:relative;overflow:hidden}
-  .pp-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.03) 60%,transparent 80%);opacity:0;transition:opacity .3s}
-  .pp-btn:hover{border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.04);transform:translateY(-1px)}
-  .pp-btn:hover::before{opacity:1}
-  .pp-btn:hover .pp-btn-book{transform:perspective(200px) rotateY(-12deg)}
-  .pp-btn:hover .pp-btn-pages{transform:perspective(200px) rotateY(-5deg) translateX(3px)}
-
-  .pp-btn-book{position:relative;width:42px;height:56px;flex-shrink:0;transition:transform .4s cubic-bezier(.22,1,.36,1)}
-  .pp-btn-cover{position:absolute;inset:0;background:linear-gradient(145deg,#1a3c2a 0%,#0f2518 100%);border-radius:2px 4px 4px 2px;z-index:3;border:1px solid rgba(255,255,255,.12);box-shadow:2px 2px 8px rgba(0,0,0,.5)}
-  .pp-btn-cover-inner{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:2px}
-  .pp-btn-globe{width:18px;height:18px;color:rgba(255,255,255,.35)}
-  .pp-btn-title{font-family:'Anton',sans-serif;font-size:5px;letter-spacing:2px;color:rgba(255,255,255,.5);text-transform:uppercase}
-
-  .pp-btn-pages{position:absolute;top:3px;left:4px;right:-2px;bottom:3px;transition:transform .4s cubic-bezier(.22,1,.36,1)}
-  .pp-btn-page{position:absolute;right:0;background:#1a1816;border-radius:0 3px 3px 0;border:1px solid rgba(255,255,255,.04)}
-  .pp-btn-p1{top:0;bottom:0;width:100%}
-  .pp-btn-p2{top:2px;bottom:2px;right:-1px;width:calc(100% - 2px);background:#1e1c19}
-  .pp-btn-p3{top:4px;bottom:4px;right:-2px;width:calc(100% - 4px);background:#22201c}
-
-  .pp-btn-meta{flex:1;min-width:0}
-  .pp-btn-label{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:rgba(255,255,255,.85)}
-  .pp-btn-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.35);margin-top:2px}
-  .pp-btn-arrow{flex-shrink:0;color:rgba(255,255,255,.25);transition:transform .2s}
-  .pp-btn:hover .pp-btn-arrow{transform:translateX(3px);color:rgba(255,255,255,.5)}
+  /* Passport icon button — positioned in prof-hero corner */
+  .pp-icon-btn{position:absolute;top:14px;right:14px;background:none;border:none;cursor:pointer;padding:4px;
+    transition:transform .2s,opacity .2s;opacity:.7}
+  .pp-icon-btn:hover{transform:scale(1.1);opacity:1}
+  .pp-icon-btn:active{transform:scale(.95)}
+  .pp-icon-badge{position:absolute;top:-2px;right:-4px;min-width:16px;height:16px;border-radius:8px;
+    background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:9px;
+    display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1}
 
   /* ═══════ PASSPORT — BOOK STYLE ═══════ */
   .pp-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;animation:ppFadeIn .3s ease}

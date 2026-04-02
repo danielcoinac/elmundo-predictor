@@ -691,12 +691,14 @@ export default function App() {
   const checkAndAwardStamps = async () => {
     if (!user) return;
     const now = Date.now();
-    // Find all currently live matches (kickoff → kickoff + 120 min)
+    // Find all matches happening TODAY (same calendar day as kickoff)
+    const today = new Date(now);
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
     const liveMatches = matches.filter(m => {
       const ko = matchKickoff(m);
       if (!ko) return false;
-      const koMs = ko.getTime();
-      return now >= koMs && now <= koMs + 120 * 60 * 1000;
+      const koStr = `${ko.getFullYear()}-${String(ko.getMonth()+1).padStart(2,"0")}-${String(ko.getDate()).padStart(2,"0")}`;
+      return koStr === todayStr;
     });
     for (const lm of liveMatches) {
       // Skip if already earned for this match
@@ -4415,6 +4417,18 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         <div className="prof-detail">{user.email}</div>
         <div className="prof-detail">{user.phone}</div>
         {myRank===1 && <div className="prof-leader-badge">👑 LEADING THE TOURNAMENT</div>}
+        {/* Passport icon — top corner of hero */}
+        <button className="pp-icon-btn" onClick={onOpenPassport} title="El Mundo Passport">
+          <svg viewBox="0 0 40 40" fill="none" width="32" height="32">
+            <rect x="6" y="4" width="28" height="32" rx="3" fill="#1a3c2a" stroke="rgba(255,255,255,.2)" strokeWidth="1"/>
+            <circle cx="20" cy="18" r="8" stroke="rgba(255,255,255,.35)" strokeWidth=".8"/>
+            <ellipse cx="20" cy="18" rx="4" ry="8" stroke="rgba(255,255,255,.25)" strokeWidth=".6"/>
+            <line x1="12" y1="15" x2="28" y2="15" stroke="rgba(255,255,255,.18)" strokeWidth=".5"/>
+            <line x1="12" y1="21" x2="28" y2="21" stroke="rgba(255,255,255,.18)" strokeWidth=".5"/>
+            <text x="20" y="33" textAnchor="middle" fontFamily="Anton" fontSize="4.5" letterSpacing="1.5" fill="rgba(255,255,255,.4)">PASSPORT</text>
+          </svg>
+          {passportStamps.length > 0 && <span className="pp-icon-badge">{passportStamps.length}</span>}
+        </button>
       </div>
 
       {/* Player number — prominent card */}
@@ -4425,35 +4439,6 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
           <div className="player-num-hint">🏧 Visit any Top-Up Desk and give this number to the staff — they'll add credits to your account instantly.</div>
         </div>
       )}
-      {/* ── EL MUNDO PASSPORT ── */}
-      <div className="pp-btn-wrap">
-        <button className="pp-btn" onClick={onOpenPassport}>
-          <div className="pp-btn-book">
-            <div className="pp-btn-cover">
-              <div className="pp-btn-cover-inner">
-                <svg className="pp-btn-globe" viewBox="0 0 48 48" fill="none">
-                  <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="1.2"/>
-                  <ellipse cx="24" cy="24" rx="10" ry="20" stroke="currentColor" strokeWidth="1"/>
-                  <line x1="4" y1="16" x2="44" y2="16" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="4" y1="32" x2="44" y2="32" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="24" y1="4" x2="24" y2="44" stroke="currentColor" strokeWidth="0.8"/>
-                </svg>
-                <div className="pp-btn-title">PASSPORT</div>
-              </div>
-            </div>
-            <div className="pp-btn-pages">
-              <div className="pp-btn-page pp-btn-p1"/>
-              <div className="pp-btn-page pp-btn-p2"/>
-              <div className="pp-btn-page pp-btn-p3"/>
-            </div>
-          </div>
-          <div className="pp-btn-meta">
-            <div className="pp-btn-label">EL MUNDO PASSPORT</div>
-            <div className="pp-btn-sub">{passportStamps.length} stamp{passportStamps.length !== 1 ? "s" : ""} collected</div>
-          </div>
-          <svg className="pp-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
 
       <div className="stats-grid">
         {[
