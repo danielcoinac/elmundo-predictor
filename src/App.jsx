@@ -687,46 +687,27 @@ export default function App() {
   };
 
   // ── PASSPORT STAMP AWARDING ──────────────────────────────────────────────
-  const awardStamp = async (stampType, matchId = null, extra = {}) => {
+  // One stamp per live WC match — earned when you place an order during the match
+  const checkAndAwardStamps = async () => {
     if (!user) return;
-    try {
-      const { data, error } = await supabase.from("passport_stamps").insert({
-        user_id: user.id,
-        stamp_type: stampType,
-        match_id: matchId || null,
-        ...extra,
-      }).select().maybeSingle();
-      if (data) setPassportStamps(prev => [...prev, data]);
-    } catch (e) { /* duplicate = already earned, ignore */ }
-  };
-
-  const checkAndAwardStamps = async (orderId) => {
-    if (!user) return;
-    // 1. MATCH DAY — order placed while a WC match is live (kickoff → +120min)
     const now = Date.now();
-    const liveMatch = matches.find(m => {
+    // Find all currently live matches (kickoff → kickoff + 120 min)
+    const liveMatches = matches.filter(m => {
       const ko = matchKickoff(m);
       if (!ko) return false;
       const koMs = ko.getTime();
       return now >= koMs && now <= koMs + 120 * 60 * 1000;
     });
-    if (liveMatch) awardStamp("match_day", liveMatch.id);
-
-    // 2. PIONEER — first ever order
-    if (myOrders.length <= 1) awardStamp("pioneer");
-
-    // 3. NIGHT OWL — order after 22:00 local time
-    const hour = new Date().getHours();
-    if (hour >= 22 || hour < 4) awardStamp("night_owl");
-
-    // 4. TEAM SPIRIT — group order
-    if (activeGroup) awardStamp("team_spirit");
-
-    // 5. LOYAL PATRON — 5+ orders (check total in DB)
-    const { count } = await supabase.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id);
-    if (count >= 5) awardStamp("loyal_patron");
-    if (count >= 15) awardStamp("regular");
-    if (count >= 30) awardStamp("legend");
+    for (const lm of liveMatches) {
+      // Skip if already earned for this match
+      if (passportStamps.some(s => s.match_id === lm.id)) continue;
+      try {
+        const { data } = await supabase.from("passport_stamps").insert({
+          user_id: user.id, stamp_type: "match_day", match_id: lm.id,
+        }).select().maybeSingle();
+        if (data) setPassportStamps(prev => [...prev, data]);
+      } catch (e) { /* duplicate = ignore */ }
+    }
   };
 
   const VALID_PAYMENT_METHODS = ["credits", "cash", "card_pending", "sponsor_gift"];
@@ -2101,6 +2082,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <PassportView
               user={user}
               stamps={passportStamps}
+              matches={matches}
               onClose={() => setShowPassport(false)}
             />
           )}
@@ -3929,63 +3911,54 @@ function SponsorsSection() {
 }
 
 /* ═══ EL MUNDO PASSPORT ════════════════════════════════════════════════════ */
-const STAMP_DEFS = {
-  match_day:    { name: "MATCH DAY",     sub: "Ordered during a live match",   icon: "⚽", color: "#1e3a5f", border: "#3b6ea5" },
-  pioneer:      { name: "PIONEER",       sub: "Placed your very first order",  icon: "🚀", color: "#7c2d12", border: "#c2633e" },
-  night_owl:    { name: "NIGHT OWL",     sub: "Ordered after 10 PM",           icon: "🌙", color: "#312e81", border: "#6366f1" },
-  team_spirit:  { name: "TEAM SPIRIT",   sub: "Joined a group order",          icon: "🤝", color: "#065f46", border: "#34d399" },
-  loyal_patron: { name: "LOYAL PATRON",  sub: "5+ orders — true fan",          icon: "🔥", color: "#7f1d1d", border: "#ef4444" },
-  regular:      { name: "REGULAR",       sub: "15+ orders — part of the family",icon: "⭐", color: "#713f12", border: "#eab308" },
-  legend:       { name: "LEGEND",        sub: "30+ orders — living legend",     icon: "👑", color: "#581c87", border: "#a855f7" },
-};
-const STAMP_ORDER = ["match_day", "pioneer", "night_owl", "team_spirit", "loyal_patron", "regular", "legend"];
+// Ink colors rotate per stamp for visual variety
+const STAMP_INKS = [
+  { fg: "#1e40af", ring: "#3b82f6" },   // blue
+  { fg: "#991b1b", ring: "#dc2626" },   // red
+  { fg: "#166534", ring: "#22c55e" },   // green
+  { fg: "#6b21a8", ring: "#a855f7" },   // purple
+  { fg: "#92400e", ring: "#f59e0b" },   // amber
+  { fg: "#0e7490", ring: "#06b6d4" },   // cyan
+];
 
-function PassportView({ user, stamps, onClose }) {
-  const [ppPage, setPpPage] = useState(0); // 0 = identity, 1+ = stamp pages
-  const [flipDir, setFlipDir] = useState(0); // -1 left, 1 right for animation
+function PassportView({ user, stamps, matches = [], onClose }) {
+  const [ppPage, setPpPage] = useState(0);
 
   const evLabel = getEventLabel();
   const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
 
-  // Build stamp slots: each type gets a slot, earned ones get their date
-  const stampSlots = STAMP_ORDER.map(type => {
-    // For match_day, show all earned instances
-    const earned = stamps.filter(s => s.stamp_type === type);
-    return { type, def: STAMP_DEFS[type], earned };
+  // Build match lookup
+  const matchMap = {};
+  matches.forEach(m => { matchMap[m.id] = m; });
+
+  // Passport has 2 stamp slots per page, allocate pages for all matches in order
+  const sortedMatches = [...matches].sort((a, b) => {
+    const ka = matchKickoff(a), kb = matchKickoff(b);
+    return (ka?.getTime() || 0) - (kb?.getTime() || 0);
   });
+  const SLOTS_PER_PAGE = 2;
+  const stampPages = [];
+  for (let i = 0; i < sortedMatches.length; i += SLOTS_PER_PAGE) {
+    stampPages.push(sortedMatches.slice(i, i + SLOTS_PER_PAGE));
+  }
+  // Ensure at least 4 pages even with few matches
+  while (stampPages.length < 4) stampPages.push([]);
 
-  // Count all match_day stamps separately
-  const matchDayStamps = stamps.filter(s => s.stamp_type === "match_day");
-  const totalStampsEarned = new Set(stamps.map(s => s.stamp_type)).size;
+  const totalPages = 1 + stampPages.length; // page 0 = identity
+  const stampSet = new Set(stamps.map(s => s.match_id));
+  const stampLookup = {};
+  stamps.forEach(s => { stampLookup[s.match_id] = s; });
 
-  // Pages: page 0 = identity, page 1+ = stamps (6 per page)
-  const STAMPS_PER_PAGE = 6;
-  // Build flat list of all displayable stamps
-  const allDisplayStamps = [];
-  STAMP_ORDER.forEach(type => {
-    if (type === "match_day") {
-      // Show each match day stamp individually
-      if (matchDayStamps.length > 0) {
-        matchDayStamps.forEach(s => allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: s }));
-      } else {
-        allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: null }); // empty slot
-      }
-    } else {
-      const earned = stamps.find(s => s.stamp_type === type);
-      allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: earned || null });
-    }
-  });
-  const totalPages = 1 + Math.ceil(allDisplayStamps.length / STAMPS_PER_PAGE);
-
-  const goPage = (dir) => {
-    setFlipDir(dir);
-    setPpPage(p => Math.max(0, Math.min(totalPages - 1, p + dir)));
+  // Pseudo-random rotation per match for authentic ink stamp feel
+  const rot = (id) => {
+    let h = 0;
+    for (let i = 0; i < (id || "").length; i++) h = ((h << 5) - h + (id || "").charCodeAt(i)) | 0;
+    return (h % 17) - 8; // -8 to +8 degrees
   };
 
   return (
     <div className="pp-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="pp-passport">
-        {/* Close */}
         <button className="pp-close" onClick={onClose}>✕</button>
 
         {/* Passport cover header */}
@@ -4014,22 +3987,10 @@ function PassportView({ user, stamps, onClose }) {
                   }
                 </div>
                 <div className="pp-id-fields">
-                  <div className="pp-id-row">
-                    <span className="pp-id-label">FULL NAME</span>
-                    <span className="pp-id-value">{(user.name || "").toUpperCase()}</span>
-                  </div>
-                  <div className="pp-id-row">
-                    <span className="pp-id-label">PLAYER NO.</span>
-                    <span className="pp-id-value">{user.player_number ? `#${user.player_number}` : "—"}</span>
-                  </div>
-                  <div className="pp-id-row">
-                    <span className="pp-id-label">MEMBER SINCE</span>
-                    <span className="pp-id-value">{joinDate}</span>
-                  </div>
-                  <div className="pp-id-row">
-                    <span className="pp-id-label">STAMPS</span>
-                    <span className="pp-id-value">{stamps.length}</span>
-                  </div>
+                  <div className="pp-id-row"><span className="pp-id-label">FULL NAME</span><span className="pp-id-value">{(user.name || "").toUpperCase()}</span></div>
+                  <div className="pp-id-row"><span className="pp-id-label">PLAYER NO.</span><span className="pp-id-value">{user.player_number ? `#${user.player_number}` : "—"}</span></div>
+                  <div className="pp-id-row"><span className="pp-id-label">MEMBER SINCE</span><span className="pp-id-value">{joinDate}</span></div>
+                  <div className="pp-id-row"><span className="pp-id-label">STAMPS</span><span className="pp-id-value">{stamps.length} / {matches.length}</span></div>
                 </div>
                 <div className="pp-id-footer">
                   <div className="pp-id-barcode">
@@ -4041,48 +4002,86 @@ function PassportView({ user, stamps, onClose }) {
                 </div>
               </div>
             ) : (
-              /* ── STAMP PAGES ── */
-              <div className="pp-stamp-page">
-                <div className="pp-stamp-page-num">PAGE {ppPage}</div>
-                <div className="pp-stamp-grid">
-                  {allDisplayStamps.slice((ppPage - 1) * STAMPS_PER_PAGE, ppPage * STAMPS_PER_PAGE).map((slot, i) => (
-                    <div key={`${slot.type}-${i}-${slot.stamp?.id || "empty"}`}
-                         className={`pp-stamp ${slot.stamp ? "pp-stamp-earned" : "pp-stamp-locked"}`}>
-                      <div className="pp-stamp-ring" style={{ borderColor: slot.stamp ? slot.def.border : "rgba(255,255,255,.08)" }}>
-                        <div className="pp-stamp-inner" style={{
-                          background: slot.stamp ? `${slot.def.color}` : "transparent",
-                          boxShadow: slot.stamp ? `0 0 20px ${slot.def.border}40, inset 0 0 15px rgba(0,0,0,.3)` : "none"
-                        }}>
-                          {slot.stamp ? (
-                            <>
-                              <div className="pp-stamp-icon">{slot.def.icon}</div>
-                              <svg className="pp-stamp-circle-text" viewBox="0 0 100 100">
+              /* ── STAMP PAGES — real passport paper ── */
+              <div className="pp-paper">
+                {/* Watermark globe */}
+                <svg className="pp-paper-wm" viewBox="0 0 200 200" fill="none">
+                  <circle cx="100" cy="100" r="80" stroke="currentColor" strokeWidth="0.5"/>
+                  <ellipse cx="100" cy="100" rx="40" ry="80" stroke="currentColor" strokeWidth="0.4"/>
+                  <ellipse cx="100" cy="100" rx="65" ry="80" stroke="currentColor" strokeWidth="0.3"/>
+                  <line x1="20" y1="65" x2="180" y2="65" stroke="currentColor" strokeWidth="0.3"/>
+                  <line x1="20" y1="100" x2="180" y2="100" stroke="currentColor" strokeWidth="0.3"/>
+                  <line x1="20" y1="135" x2="180" y2="135" stroke="currentColor" strokeWidth="0.3"/>
+                </svg>
+                <div className="pp-paper-num">— {ppPage} —</div>
+
+                <div className="pp-paper-slots">
+                  {(stampPages[ppPage - 1] || []).map((m, si) => {
+                    const earned = stampSet.has(m.id);
+                    const ink = STAMP_INKS[si + (ppPage * 2) % STAMP_INKS.length];
+                    const angle = rot(m.id);
+                    const stampDate = stampLookup[m.id]?.earned_at;
+                    return (
+                      <div key={m.id} className="pp-slot">
+                        {/* Match info line (always visible) */}
+                        <div className="pp-slot-match">
+                          <span className="pp-slot-date">{m.date || "TBD"}</span>
+                          <span className="pp-slot-group">{m.group || ""}</span>
+                        </div>
+                        <div className="pp-slot-teams">
+                          {m.home || "TBD"} <span className="pp-slot-vs">vs</span> {m.away || "TBD"}
+                        </div>
+
+                        {/* The stamp area */}
+                        <div className="pp-slot-area">
+                          {earned ? (
+                            <div className="pp-ink" style={{ transform: `rotate(${angle}deg)`, "--ink": ink.fg, "--ink-ring": ink.ring }}>
+                              <svg viewBox="0 0 140 140" className="pp-ink-svg">
+                                {/* Outer dashed ring */}
+                                <circle cx="70" cy="70" r="64" fill="none" stroke={ink.ring} strokeWidth="2" strokeDasharray="6 3" opacity=".7"/>
+                                {/* Inner solid ring */}
+                                <circle cx="70" cy="70" r="55" fill="none" stroke={ink.ring} strokeWidth="1.2" opacity=".5"/>
+                                {/* Arc text top */}
                                 <defs>
-                                  <path id={`stArc${i}`} d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0"/>
+                                  <path id={`ppArcT${ppPage}${si}`} d="M 70,70 m -48,0 a 48,48 0 1,1 96,0"/>
+                                  <path id={`ppArcB${ppPage}${si}`} d="M 70,70 m 48,0 a 48,48 0 1,1 -96,0"/>
                                 </defs>
-                                <text className="pp-stamp-arc-text" fill={slot.def.border}>
-                                  <textPath href={`#stArc${i}`} startOffset="10%">
-                                    {`· ${slot.def.name} · EL MUNDO ·`}
-                                  </textPath>
+                                <text fill={ink.ring} fontFamily="Anton" fontSize="8" letterSpacing="3" opacity=".8">
+                                  <textPath href={`#ppArcT${ppPage}${si}`} startOffset="12%">EL MUNDO · BONAIRE</textPath>
+                                </text>
+                                <text fill={ink.ring} fontFamily="Anton" fontSize="7" letterSpacing="2" opacity=".6">
+                                  <textPath href={`#ppArcB${ppPage}${si}`} startOffset="15%">WORLD CUP 2026</textPath>
+                                </text>
+                                {/* Center: teams */}
+                                <text x="70" y="62" textAnchor="middle" fill={ink.ring} fontFamily="Anton" fontSize="10" letterSpacing="1" opacity=".9">
+                                  {(m.home || "").toUpperCase()}
+                                </text>
+                                <text x="70" y="73" textAnchor="middle" fill={ink.ring} fontFamily="Outfit" fontSize="7" fontWeight="600" opacity=".5">
+                                  — VS —
+                                </text>
+                                <text x="70" y="85" textAnchor="middle" fill={ink.ring} fontFamily="Anton" fontSize="10" letterSpacing="1" opacity=".9">
+                                  {(m.away || "").toUpperCase()}
+                                </text>
+                                {/* Date line */}
+                                <line x1="40" y1="93" x2="100" y2="93" stroke={ink.ring} strokeWidth=".5" opacity=".3"/>
+                                <text x="70" y="103" textAnchor="middle" fill={ink.ring} fontFamily="Outfit" fontSize="7" fontWeight="700" opacity=".6">
+                                  {stampDate ? new Date(stampDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : m.date}
                                 </text>
                               </svg>
-                            </>
+                            </div>
                           ) : (
-                            <div className="pp-stamp-lock">
-                              <div style={{ fontSize: 20, opacity: 0.25 }}>🔒</div>
-                              <div className="pp-stamp-lock-name">{slot.def.name}</div>
+                            <div className="pp-slot-empty">
+                              <div className="pp-slot-empty-circle"/>
                             </div>
                           )}
                         </div>
                       </div>
-                      {slot.stamp && (
-                        <div className="pp-stamp-date">
-                          {new Date(slot.stamp.earned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </div>
-                      )}
-                      <div className="pp-stamp-label">{slot.def.name}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {/* If page has no matches, show empty paper */}
+                  {(stampPages[ppPage - 1] || []).length === 0 && (
+                    <div className="pp-paper-empty">No matches on this page</div>
+                  )}
                 </div>
               </div>
             )}
@@ -4091,16 +4090,14 @@ function PassportView({ user, stamps, onClose }) {
 
         {/* Page navigation */}
         <div className="pp-nav">
-          <button className="pp-nav-btn" disabled={ppPage === 0} onClick={() => goPage(-1)}>
+          <button className="pp-nav-btn" disabled={ppPage === 0} onClick={() => setPpPage(p => p - 1)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <div className="pp-nav-dots">
-            {Array.from({ length: totalPages }, (_, i) => (
-              <div key={i} className={`pp-nav-dot ${ppPage === i ? "pp-nav-dot-on" : ""}`}
-                   onClick={() => { setFlipDir(i > ppPage ? 1 : -1); setPpPage(i); }} />
-            ))}
+          <div className="pp-nav-info">
+            <span className="pp-nav-page">{ppPage === 0 ? "ID" : ppPage}</span>
+            <span className="pp-nav-of">/ {totalPages - 1}</span>
           </div>
-          <button className="pp-nav-btn" disabled={ppPage >= totalPages - 1} onClick={() => goPage(1)}>
+          <button className="pp-nav-btn" disabled={ppPage >= totalPages - 1} onClick={() => setPpPage(p => p + 1)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
         </div>

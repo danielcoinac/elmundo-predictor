@@ -948,38 +948,47 @@
   .pp-id-bar{background:rgba(255,255,255,.2);border-radius:1px}
   .pp-id-mrz{font-family:'Courier New',monospace;font-size:8px;color:rgba(255,255,255,.15);letter-spacing:1px;text-align:center;word-break:break-all}
 
-  /* ── Stamp Page ── */
-  .pp-stamp-page{padding:14px 18px}
-  .pp-stamp-page-num{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.15);text-align:right;margin-bottom:10px;font-weight:700}
-  .pp-stamp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  /* ── Passport Paper Page ── */
+  .pp-paper{position:relative;padding:16px 20px 20px;min-height:340px;
+    background:linear-gradient(175deg,#f5f0e6 0%,#ece6d5 40%,#e8e0cc 100%);overflow:hidden}
+  .pp-paper-wm{position:absolute;width:160px;height:160px;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,.04);pointer-events:none}
+  .pp-paper-num{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(0,0,0,.15);text-align:center;margin-bottom:10px;font-weight:700}
 
-  /* ── Individual Stamp ── */
-  .pp-stamp{display:flex;flex-direction:column;align-items:center;gap:5px}
-  .pp-stamp-ring{width:88px;height:88px;border-radius:50%;border:2px dashed rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;transition:all .3s}
-  .pp-stamp-earned .pp-stamp-ring{border-style:solid;animation:ppStampIn .5s ease both}
-  @keyframes ppStampIn{from{transform:scale(.6) rotate(-25deg);opacity:0}to{transform:none;opacity:1}}
+  .pp-paper-slots{display:flex;flex-direction:column;gap:18px}
+  .pp-paper-empty{text-align:center;padding:60px 0;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(0,0,0,.15);font-weight:600}
 
-  .pp-stamp-inner{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
-  .pp-stamp-icon{font-size:28px;position:relative;z-index:2;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
-  .pp-stamp-circle-text{position:absolute;inset:-4px;z-index:1}
-  .pp-stamp-arc-text{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px}
+  /* ── Slot (one match) ── */
+  .pp-slot{position:relative;padding:8px 0}
+  .pp-slot-match{display:flex;justify-content:space-between;margin-bottom:2px}
+  .pp-slot-date{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(0,0,0,.25);font-weight:700;letter-spacing:1px}
+  .pp-slot-group{font-family:'Anton',sans-serif;font-size:8px;color:rgba(0,0,0,.18);letter-spacing:2px}
+  .pp-slot-teams{font-family:'Anton',sans-serif;font-size:13px;color:rgba(0,0,0,.2);letter-spacing:1px;margin-bottom:6px}
+  .pp-slot-vs{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(0,0,0,.12);font-weight:600;margin:0 4px}
 
-  .pp-stamp-lock{display:flex;flex-direction:column;align-items:center;gap:2px}
-  .pp-stamp-lock-name{font-family:'Anton',sans-serif;font-size:6px;letter-spacing:1.5px;color:rgba(255,255,255,.12);text-align:center}
+  /* ── Stamp area ── */
+  .pp-slot-area{display:flex;justify-content:center;min-height:120px;align-items:center}
 
-  .pp-stamp-date{font-family:'Outfit',sans-serif;font-size:9px;color:rgba(255,255,255,.35);font-weight:600}
-  .pp-stamp-label{font-family:'Anton',sans-serif;font-size:8px;letter-spacing:1.5px;color:rgba(255,255,255,.3);text-align:center}
+  /* Empty slot — faint dashed circle */
+  .pp-slot-empty{display:flex;align-items:center;justify-content:center}
+  .pp-slot-empty-circle{width:100px;height:100px;border-radius:50%;border:1.5px dashed rgba(0,0,0,.06)}
 
-  .pp-stamp-locked .pp-stamp-inner{background:rgba(255,255,255,.015);border:1px dashed rgba(255,255,255,.06)}
+  /* ── Ink Stamp (earned) ── */
+  .pp-ink{animation:ppInkStamp .5s cubic-bezier(.17,.67,.4,1.2) both}
+  @keyframes ppInkStamp{
+    from{transform:rotate(var(--r,0deg)) scale(1.6);opacity:0;filter:blur(2px)}
+    60%{transform:rotate(var(--r,0deg)) scale(.95);opacity:.85;filter:blur(0)}
+    to{opacity:.75;filter:blur(0)}
+  }
+  .pp-ink-svg{width:140px;height:140px;display:block}
 
   /* ── Page Navigation ── */
-  .pp-nav{display:flex;align-items:center;justify-content:center;gap:16px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06)}
-  .pp-nav-btn{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.4);width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;transition:all .15s}
+  .pp-nav{display:flex;align-items:center;justify-content:center;gap:20px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06)}
+  .pp-nav-btn{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.4);width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;transition:all .15s}
   .pp-nav-btn:hover:not(:disabled){border-color:rgba(255,255,255,.3);color:#fff}
   .pp-nav-btn:disabled{opacity:.2;cursor:default}
-  .pp-nav-dots{display:flex;gap:6px}
-  .pp-nav-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.12);cursor:pointer;transition:all .2s}
-  .pp-nav-dot-on{background:rgba(255,255,255,.7);box-shadow:0 0 8px rgba(255,255,255,.3)}
+  .pp-nav-info{display:flex;align-items:baseline;gap:3px}
+  .pp-nav-page{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.7);letter-spacing:1px}
+  .pp-nav-of{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.25);font-weight:600}
 
   /* ── Match card share ── */
   .mcard-share-row{padding:4px 14px 12px}
