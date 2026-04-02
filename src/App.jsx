@@ -52,6 +52,8 @@ export default function App() {
   const [sponsorGifts, setSponsorGifts] = useState([]);
   const [showWinner,   setShowWinner]   = useState(false);
   const [winnerData,   setWinnerData]   = useState(null);
+  const [passportStamps, setPassportStamps] = useState([]);
+  const [showPassport,   setShowPassport]   = useState(false);
   const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
@@ -138,6 +140,9 @@ export default function App() {
           if (sgRows) setSponsorGifts(sgRows);
           const { data: orderRows } = await supabase.from("orders").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
           if (orderRows) setMyOrders(orderRows);
+          // Load passport stamps
+          const { data: stampRows } = await supabase.from("passport_stamps").select("*").eq("user_id", session.user.id).order("earned_at");
+          if (stampRows) setPassportStamps(stampRows);
 
           // Restore active group order if user is still a member
           const { data: memRow } = await supabase
@@ -681,6 +686,49 @@ export default function App() {
     }
   };
 
+  // ── PASSPORT STAMP AWARDING ──────────────────────────────────────────────
+  const awardStamp = async (stampType, matchId = null, extra = {}) => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase.from("passport_stamps").insert({
+        user_id: user.id,
+        stamp_type: stampType,
+        match_id: matchId || null,
+        ...extra,
+      }).select().maybeSingle();
+      if (data) setPassportStamps(prev => [...prev, data]);
+    } catch (e) { /* duplicate = already earned, ignore */ }
+  };
+
+  const checkAndAwardStamps = async (orderId) => {
+    if (!user) return;
+    // 1. MATCH DAY — order placed while a WC match is live (kickoff → +120min)
+    const now = Date.now();
+    const liveMatch = matches.find(m => {
+      const ko = matchKickoff(m);
+      if (!ko) return false;
+      const koMs = ko.getTime();
+      return now >= koMs && now <= koMs + 120 * 60 * 1000;
+    });
+    if (liveMatch) awardStamp("match_day", liveMatch.id);
+
+    // 2. PIONEER — first ever order
+    if (myOrders.length <= 1) awardStamp("pioneer");
+
+    // 3. NIGHT OWL — order after 22:00 local time
+    const hour = new Date().getHours();
+    if (hour >= 22 || hour < 4) awardStamp("night_owl");
+
+    // 4. TEAM SPIRIT — group order
+    if (activeGroup) awardStamp("team_spirit");
+
+    // 5. LOYAL PATRON — 5+ orders (check total in DB)
+    const { count } = await supabase.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id);
+    if (count >= 5) awardStamp("loyal_patron");
+    if (count >= 15) awardStamp("regular");
+    if (count >= 30) awardStamp("legend");
+  };
+
   const VALID_PAYMENT_METHODS = ["credits", "cash", "card_pending", "sponsor_gift"];
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
     if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
@@ -716,6 +764,8 @@ export default function App() {
       if (error) { toast$("Error placing order", false); return false; }
     }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
+    // Award passport stamps in background
+    checkAndAwardStamps().catch(() => {});
     return true;
   };
 
@@ -1213,6 +1263,8 @@ export default function App() {
           newOrderAlert={newOrderAlert} setNewOrderAlert={setNewOrderAlert}
           showWinner={showWinner} setShowWinner={setShowWinner}
           winnerData={winnerData} setWinnerData={setWinnerData}
+          showPassport={showPassport} setShowPassport={setShowPassport}
+          passportStamps={passportStamps} user={user}
         />
       )}
     </div>
@@ -1920,6 +1972,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 appSettings = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }, onSaveAppSettings = () => {},
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
+                showPassport = false, setShowPassport, passportStamps = [],
                 qrTable = "" }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
@@ -2000,7 +2053,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             qrTable={qrTable}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
-          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} /></ErrorBoundary>}
+          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} /></ErrorBoundary>}
           {appTab === "vip" && user?.sponsor_tier && (
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
@@ -2042,6 +2095,13 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               isAdmin={isAdmin}
               appSettings={appSettings}
               onClose={() => setShowWinner(false)}
+            />
+          )}
+          {showPassport && (
+            <PassportView
+              user={user}
+              stamps={passportStamps}
+              onClose={() => setShowPassport(false)}
             />
           )}
         </div>
@@ -3188,7 +3248,7 @@ function TournamentWinnerScreen({ board, isAdmin, onClose, appSettings = {} }) {
   const third  = board[2];
   const confetti = Array.from({ length: 24 }, (_, i) => ({
     id: i,
-    color: ["#c9a84c","#fff","#4ade80","#f87171","#60a5fa","#fbbf24"][i % 6],
+    color: ["#f472b6","#fff","#4ade80","#f87171","#60a5fa","#fbbf24"][i % 6],
     left: `${(i * 37 + 11) % 100}%`,
     dur:  `${3 + (i % 5)}s`,
     delay:`${(i * 0.3) % 3}s`,
@@ -3868,8 +3928,189 @@ function SponsorsSection() {
   );
 }
 
+/* ═══ EL MUNDO PASSPORT ════════════════════════════════════════════════════ */
+const STAMP_DEFS = {
+  match_day:    { name: "MATCH DAY",     sub: "Ordered during a live match",   icon: "⚽", color: "#1e3a5f", border: "#3b6ea5" },
+  pioneer:      { name: "PIONEER",       sub: "Placed your very first order",  icon: "🚀", color: "#7c2d12", border: "#c2633e" },
+  night_owl:    { name: "NIGHT OWL",     sub: "Ordered after 10 PM",           icon: "🌙", color: "#312e81", border: "#6366f1" },
+  team_spirit:  { name: "TEAM SPIRIT",   sub: "Joined a group order",          icon: "🤝", color: "#065f46", border: "#34d399" },
+  loyal_patron: { name: "LOYAL PATRON",  sub: "5+ orders — true fan",          icon: "🔥", color: "#7f1d1d", border: "#ef4444" },
+  regular:      { name: "REGULAR",       sub: "15+ orders — part of the family",icon: "⭐", color: "#713f12", border: "#eab308" },
+  legend:       { name: "LEGEND",        sub: "30+ orders — living legend",     icon: "👑", color: "#581c87", border: "#a855f7" },
+};
+const STAMP_ORDER = ["match_day", "pioneer", "night_owl", "team_spirit", "loyal_patron", "regular", "legend"];
+
+function PassportView({ user, stamps, onClose }) {
+  const [ppPage, setPpPage] = useState(0); // 0 = identity, 1+ = stamp pages
+  const [flipDir, setFlipDir] = useState(0); // -1 left, 1 right for animation
+
+  const evLabel = getEventLabel();
+  const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
+
+  // Build stamp slots: each type gets a slot, earned ones get their date
+  const stampSlots = STAMP_ORDER.map(type => {
+    // For match_day, show all earned instances
+    const earned = stamps.filter(s => s.stamp_type === type);
+    return { type, def: STAMP_DEFS[type], earned };
+  });
+
+  // Count all match_day stamps separately
+  const matchDayStamps = stamps.filter(s => s.stamp_type === "match_day");
+  const totalStampsEarned = new Set(stamps.map(s => s.stamp_type)).size;
+
+  // Pages: page 0 = identity, page 1+ = stamps (6 per page)
+  const STAMPS_PER_PAGE = 6;
+  // Build flat list of all displayable stamps
+  const allDisplayStamps = [];
+  STAMP_ORDER.forEach(type => {
+    if (type === "match_day") {
+      // Show each match day stamp individually
+      if (matchDayStamps.length > 0) {
+        matchDayStamps.forEach(s => allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: s }));
+      } else {
+        allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: null }); // empty slot
+      }
+    } else {
+      const earned = stamps.find(s => s.stamp_type === type);
+      allDisplayStamps.push({ type, def: STAMP_DEFS[type], stamp: earned || null });
+    }
+  });
+  const totalPages = 1 + Math.ceil(allDisplayStamps.length / STAMPS_PER_PAGE);
+
+  const goPage = (dir) => {
+    setFlipDir(dir);
+    setPpPage(p => Math.max(0, Math.min(totalPages - 1, p + dir)));
+  };
+
+  return (
+    <div className="pp-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pp-passport">
+        {/* Close */}
+        <button className="pp-close" onClick={onClose}>✕</button>
+
+        {/* Passport cover header */}
+        <div className="pp-header">
+          <svg className="pp-header-globe" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,.25)" strokeWidth="1.5"/>
+            <ellipse cx="32" cy="32" rx="14" ry="28" stroke="rgba(255,255,255,.2)" strokeWidth="1"/>
+            <line x1="4" y1="22" x2="60" y2="22" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
+            <line x1="4" y1="42" x2="60" y2="42" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
+            <line x1="32" y1="4" x2="32" y2="60" stroke="rgba(255,255,255,.15)" strokeWidth="0.8"/>
+          </svg>
+          <div className="pp-header-title">EL MUNDO</div>
+          <div className="pp-header-sub">{evLabel} · PASSPORT</div>
+        </div>
+
+        {/* Page content */}
+        <div className="pp-pages">
+          <div className="pp-page-inner" key={ppPage}>
+            {ppPage === 0 ? (
+              /* ── IDENTITY PAGE ── */
+              <div className="pp-id-page">
+                <div className="pp-id-photo">
+                  {user.avatar_url
+                    ? <img src={user.avatar_url} className="pp-id-img" alt="" />
+                    : <div className="pp-id-initial">{(user.name || "?")[0].toUpperCase()}</div>
+                  }
+                </div>
+                <div className="pp-id-fields">
+                  <div className="pp-id-row">
+                    <span className="pp-id-label">FULL NAME</span>
+                    <span className="pp-id-value">{(user.name || "").toUpperCase()}</span>
+                  </div>
+                  <div className="pp-id-row">
+                    <span className="pp-id-label">PLAYER NO.</span>
+                    <span className="pp-id-value">{user.player_number ? `#${user.player_number}` : "—"}</span>
+                  </div>
+                  <div className="pp-id-row">
+                    <span className="pp-id-label">MEMBER SINCE</span>
+                    <span className="pp-id-value">{joinDate}</span>
+                  </div>
+                  <div className="pp-id-row">
+                    <span className="pp-id-label">STAMPS</span>
+                    <span className="pp-id-value">{stamps.length}</span>
+                  </div>
+                </div>
+                <div className="pp-id-footer">
+                  <div className="pp-id-barcode">
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <div key={i} className="pp-id-bar" style={{ width: [1, 2, 3, 1, 2][i % 5], opacity: 0.2 + (i % 3) * 0.15 }} />
+                    ))}
+                  </div>
+                  <div className="pp-id-mrz">{`P<BES${(user.name || "").replace(/\s/g, "<").toUpperCase()}<<<<<<<<`.slice(0, 30)}</div>
+                </div>
+              </div>
+            ) : (
+              /* ── STAMP PAGES ── */
+              <div className="pp-stamp-page">
+                <div className="pp-stamp-page-num">PAGE {ppPage}</div>
+                <div className="pp-stamp-grid">
+                  {allDisplayStamps.slice((ppPage - 1) * STAMPS_PER_PAGE, ppPage * STAMPS_PER_PAGE).map((slot, i) => (
+                    <div key={`${slot.type}-${i}-${slot.stamp?.id || "empty"}`}
+                         className={`pp-stamp ${slot.stamp ? "pp-stamp-earned" : "pp-stamp-locked"}`}>
+                      <div className="pp-stamp-ring" style={{ borderColor: slot.stamp ? slot.def.border : "rgba(255,255,255,.08)" }}>
+                        <div className="pp-stamp-inner" style={{
+                          background: slot.stamp ? `${slot.def.color}` : "transparent",
+                          boxShadow: slot.stamp ? `0 0 20px ${slot.def.border}40, inset 0 0 15px rgba(0,0,0,.3)` : "none"
+                        }}>
+                          {slot.stamp ? (
+                            <>
+                              <div className="pp-stamp-icon">{slot.def.icon}</div>
+                              <svg className="pp-stamp-circle-text" viewBox="0 0 100 100">
+                                <defs>
+                                  <path id={`stArc${i}`} d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0"/>
+                                </defs>
+                                <text className="pp-stamp-arc-text" fill={slot.def.border}>
+                                  <textPath href={`#stArc${i}`} startOffset="10%">
+                                    {`· ${slot.def.name} · EL MUNDO ·`}
+                                  </textPath>
+                                </text>
+                              </svg>
+                            </>
+                          ) : (
+                            <div className="pp-stamp-lock">
+                              <div style={{ fontSize: 20, opacity: 0.25 }}>🔒</div>
+                              <div className="pp-stamp-lock-name">{slot.def.name}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {slot.stamp && (
+                        <div className="pp-stamp-date">
+                          {new Date(slot.stamp.earned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
+                      )}
+                      <div className="pp-stamp-label">{slot.def.name}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Page navigation */}
+        <div className="pp-nav">
+          <button className="pp-nav-btn" disabled={ppPage === 0} onClick={() => goPage(-1)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div className="pp-nav-dots">
+            {Array.from({ length: totalPages }, (_, i) => (
+              <div key={i} className={`pp-nav-dot ${ppPage === i ? "pp-nav-dot-on" : ""}`}
+                   onClick={() => { setFlipDir(i > ppPage ? 1 : -1); setPpPage(i); }} />
+            ))}
+          </div>
+          <button className="pp-nav-btn" disabled={ppPage >= totalPages - 1} onClick={() => goPage(1)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate }) {
+function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate, passportStamps = [], onOpenPassport }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
@@ -3887,29 +4128,29 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
       const canvas = document.createElement('canvas');
       canvas.width = W; canvas.height = H;
       const ctx = canvas.getContext('2d');
-      const GOLD = '#f0c040'; const GOLD2 = '#c9a84c';
+      const ACCENT = '#ffffff'; const ACCENT2 = 'rgba(255,255,255,0.7)';
       const rr = (x,y,w,h,r) => { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); };
 
       // ── Background ──
       ctx.fillStyle = '#050505'; ctx.fillRect(0,0,W,H);
       // Center radial glow
       const bgGrd = ctx.createRadialGradient(W/2,H*0.42,0,W/2,H*0.42,W*0.6);
-      bgGrd.addColorStop(0,'rgba(240,192,64,0.07)'); bgGrd.addColorStop(1,'rgba(0,0,0,0)');
+      bgGrd.addColorStop(0,'rgba(255,255,255,0.04)'); bgGrd.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle = bgGrd; ctx.fillRect(0,0,W,H);
       // Dot grid
       ctx.fillStyle = 'rgba(255,255,255,0.022)';
       for(let x=30;x<W;x+=50) for(let y=30;y<H;y+=50){ ctx.beginPath(); ctx.arc(x,y,1.8,0,Math.PI*2); ctx.fill(); }
 
-      // ── Gold accent lines helper ──
+      // ── Accent lines helper ──
       const goldLine = (y2) => {
         const g = ctx.createLinearGradient(60,0,W-60,0);
-        g.addColorStop(0,'rgba(201,168,76,0)'); g.addColorStop(0.25,GOLD2); g.addColorStop(0.75,GOLD2); g.addColorStop(1,'rgba(201,168,76,0)');
+        g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(0.25,ACCENT2); g.addColorStop(0.75,ACCENT2); g.addColorStop(1,'rgba(255,255,255,0)');
         ctx.fillStyle = g; ctx.fillRect(60, y2, W-120, 1.5);
       };
 
       // ── Header ──
       goldLine(90);
-      ctx.textAlign='center'; ctx.fillStyle=GOLD; ctx.font='36px Anton';
+      ctx.textAlign='center'; ctx.fillStyle=ACCENT; ctx.font='36px Anton';
       ctx.fillText('EL MUNDO BAR-REST', W/2, 75);
       goldLine(98);
 
@@ -3917,7 +4158,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
       const AX = W/2, AY = 350, AR = 150;
       // Outer glow ring
       const ringGrd = ctx.createLinearGradient(AX-AR,AY-AR,AX+AR,AY+AR);
-      ringGrd.addColorStop(0,GOLD); ringGrd.addColorStop(0.5,'#fff8d0'); ringGrd.addColorStop(1,GOLD2);
+      ringGrd.addColorStop(0,ACCENT); ringGrd.addColorStop(0.5,'#e8e8e8'); ringGrd.addColorStop(1,ACCENT2);
       ctx.strokeStyle = ringGrd; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.arc(AX,AY,AR+10,0,Math.PI*2); ctx.stroke();
       // Inner dark ring
@@ -3958,9 +4199,9 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         const chipW = ctx.measureText(chip).width + 40;
         const chipX = W/2 - chipW/2, chipY = 576, chipH = 40;
         rr(chipX,chipY,chipW,chipH,6);
-        ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.fillStyle = 'rgba(240,192,64,0.1)'; ctx.fill();
-        ctx.fillStyle = GOLD; ctx.fillText(chip, W/2, chipY+chipH-9);
+        ctx.strokeStyle = ACCENT; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill();
+        ctx.fillStyle = ACCENT; ctx.fillText(chip, W/2, chipY+chipH-9);
       }
 
       // ── Stats row ──
@@ -3992,8 +4233,8 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
       ctx.fillText(getEventLabel(), W/2, 910);
       ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='26px Anton';
       ctx.fillText('PREDICTION GAME  ·  EL MUNDO BONAIRE', W/2, 950);
-      // URL with gold
-      ctx.fillStyle=GOLD; ctx.font='28px Anton';
+      // URL
+      ctx.fillStyle=ACCENT; ctx.font='28px Anton';
       ctx.fillText('elmundo-world-cup.com', W/2, 1006);
 
       // Bottom border line
@@ -4102,6 +4343,36 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
           <div className="player-num-hint">🏧 Visit any Top-Up Desk and give this number to the staff — they'll add credits to your account instantly.</div>
         </div>
       )}
+      {/* ── EL MUNDO PASSPORT ── */}
+      <div className="pp-btn-wrap">
+        <button className="pp-btn" onClick={onOpenPassport}>
+          <div className="pp-btn-book">
+            <div className="pp-btn-cover">
+              <div className="pp-btn-cover-inner">
+                <svg className="pp-btn-globe" viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="1.2"/>
+                  <ellipse cx="24" cy="24" rx="10" ry="20" stroke="currentColor" strokeWidth="1"/>
+                  <line x1="4" y1="16" x2="44" y2="16" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="4" y1="32" x2="44" y2="32" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="24" y1="4" x2="24" y2="44" stroke="currentColor" strokeWidth="0.8"/>
+                </svg>
+                <div className="pp-btn-title">PASSPORT</div>
+              </div>
+            </div>
+            <div className="pp-btn-pages">
+              <div className="pp-btn-page pp-btn-p1"/>
+              <div className="pp-btn-page pp-btn-p2"/>
+              <div className="pp-btn-page pp-btn-p3"/>
+            </div>
+          </div>
+          <div className="pp-btn-meta">
+            <div className="pp-btn-label">EL MUNDO PASSPORT</div>
+            <div className="pp-btn-sub">{passportStamps.length} stamp{passportStamps.length !== 1 ? "s" : ""} collected</div>
+          </div>
+          <svg className="pp-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
       <div className="stats-grid">
         {[
           {v:myPts,                      u:"PTS", l:"Total Points"},
@@ -5329,7 +5600,7 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
                   <div key={u.id} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"12px 14px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                       <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:"#fff"}}>{u.name}</div>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,color:m?.color||"#aaa",background:`rgba(201,168,76,.1)`,border:`1px solid rgba(201,168,76,.2)`,padding:"2px 8px",borderRadius:4}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,color:m?.color||"#aaa",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
                         {m?.label||u.sponsor_tier}
                       </div>
                     </div>
