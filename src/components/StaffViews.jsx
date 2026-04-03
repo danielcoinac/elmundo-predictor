@@ -494,36 +494,36 @@ function AdminReport({ allOrders }) {
 }
 
 /* ═══ FLOOR PLAN ════════════════════════════════════════════════════════════ */
-const FP_KEY     = 'fp-layout-v2';
-const FP_BAR_KEY = 'fp-bar-v2';
-const FP_BAR_DEF = { x:592, y:8, w:100, h:60 };
+const FP_KEY     = 'fp-layout-v3';
+const FP_BAR_KEY = 'fp-bar-v3';
+const FP_BAR_DEF = { x:780, y:12, w:120, h:64 };
 const FP_DEFAULT = [
-  { id:1,  x:80,  y:20,  w:82, h:64, shape:"rect"  },
-  { id:2,  x:186, y:20,  w:82, h:64, shape:"rect"  },
-  { id:3,  x:292, y:20,  w:82, h:64, shape:"rect"  },
-  { id:4,  x:8,   y:116, w:88, h:68, shape:"rect"  },
-  { id:5,  x:220, y:116, w:82, h:72, shape:"rect"  },
-  { id:6,  x:316, y:116, w:82, h:72, shape:"rect"  },
-  { id:7,  x:490, y:116, w:82, h:68, shape:"rect"  },
-  { id:8,  x:590, y:116, w:82, h:68, shape:"rect"  },
-  { id:9,  x:8,   y:230, w:100,h:70, shape:"rect"  },
-  { id:10, x:210, y:230, w:84, h:66, shape:"rect"  },
-  { id:11, x:310, y:230, w:76, h:66, shape:"rect"  },
-  { id:12, x:466, y:230, w:100,h:70, shape:"rect"  },
-  { id:13, x:600, y:228, w:70, h:70, shape:"round" },
-  { id:14, x:8,   y:328, w:100,h:70, shape:"rect"  },
-  { id:15, x:210, y:328, w:80, h:70, shape:"rect"  },
-  { id:16, x:306, y:328, w:84, h:74, shape:"rect"  },
-  { id:17, x:466, y:328, w:80, h:66, shape:"rect"  },
-  { id:18, x:564, y:328, w:80, h:66, shape:"rect"  },
-  { id:19, x:8,   y:428, w:64, h:64, shape:"round" },
-  { id:20, x:88,  y:428, w:64, h:64, shape:"round" },
-  { id:21, x:230, y:430, w:74, h:66, shape:"rect"  },
-  { id:22, x:318, y:430, w:74, h:66, shape:"rect"  },
-  { id:23, x:406, y:430, w:74, h:66, shape:"rect"  },
-  { id:24, x:530, y:428, w:64, h:64, shape:"round" },
-  { id:25, x:614, y:428, w:64, h:64, shape:"round" },
-  { id:26, x:318, y:520, w:64, h:64, shape:"round" },
+  { id:1,  x:90,  y:24,  w:90, h:70, shape:"rect"  },
+  { id:2,  x:210, y:24,  w:90, h:70, shape:"rect"  },
+  { id:3,  x:330, y:24,  w:90, h:70, shape:"rect"  },
+  { id:4,  x:12,  y:130, w:96, h:72, shape:"rect"  },
+  { id:5,  x:250, y:130, w:90, h:76, shape:"rect"  },
+  { id:6,  x:360, y:130, w:90, h:76, shape:"rect"  },
+  { id:7,  x:580, y:130, w:90, h:72, shape:"rect"  },
+  { id:8,  x:700, y:130, w:90, h:72, shape:"rect"  },
+  { id:9,  x:12,  y:256, w:110,h:76, shape:"rect"  },
+  { id:10, x:240, y:256, w:92, h:72, shape:"rect"  },
+  { id:11, x:352, y:256, w:84, h:72, shape:"rect"  },
+  { id:12, x:560, y:256, w:110,h:76, shape:"rect"  },
+  { id:13, x:710, y:254, w:76, h:76, shape:"round" },
+  { id:14, x:12,  y:368, w:110,h:76, shape:"rect"  },
+  { id:15, x:240, y:368, w:88, h:76, shape:"rect"  },
+  { id:16, x:348, y:368, w:92, h:80, shape:"rect"  },
+  { id:17, x:560, y:368, w:88, h:72, shape:"rect"  },
+  { id:18, x:672, y:368, w:88, h:72, shape:"rect"  },
+  { id:19, x:12,  y:480, w:72, h:72, shape:"round" },
+  { id:20, x:104, y:480, w:72, h:72, shape:"round" },
+  { id:21, x:266, y:482, w:82, h:72, shape:"rect"  },
+  { id:22, x:366, y:482, w:82, h:72, shape:"rect"  },
+  { id:23, x:466, y:482, w:82, h:72, shape:"rect"  },
+  { id:24, x:636, y:480, w:72, h:72, shape:"round" },
+  { id:25, x:732, y:480, w:72, h:72, shape:"round" },
+  { id:26, x:366, y:582, w:72, h:72, shape:"round" },
 ];
 
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
