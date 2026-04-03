@@ -4048,6 +4048,45 @@ function PassportView({ user, stamps, matches = [], onClose }) {
     </svg>
   );
 
+  // Stamp slam sound effect (Web Audio API — no files needed)
+  const playStampSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Impact thud
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(80, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+      // Crisp snap
+      const noise = ctx.createBufferSource();
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+      noise.buffer = buf;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(0.15, ctx.currentTime);
+      ng.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      noise.connect(ng); ng.connect(ctx.destination);
+      noise.start(ctx.currentTime + 0.02);
+      setTimeout(() => ctx.close(), 500);
+    } catch {}
+  }, []);
+
+  // Play sound when navigating to an earned stamp page
+  const prevPage = useRef(ppPage);
+  useEffect(() => {
+    if (ppPage !== prevPage.current && ppPage >= 2) {
+      const m = sortedMatches[ppPage - 2];
+      if (m && stampSet.has(m.id)) {
+        setTimeout(playStampSound, 200);
+      }
+    }
+    prevPage.current = ppPage;
+  }, [ppPage, sortedMatches, stampSet, playStampSound]);
+
   // Get match for current stamp page
   const currentMatch = ppPage >= 2 ? sortedMatches[ppPage - 2] : null;
   const currentInk = currentMatch ? STAMP_INKS[(ppPage - 2) % STAMP_INKS.length] : null;
@@ -4187,7 +4226,19 @@ function PassportView({ user, stamps, matches = [], onClose }) {
                 {/* Big centered stamp area */}
                 <div className="pp-stamp-area">
                   {currentEarned ? (
-                    <div className="pp-ink" style={{ transform: `rotate(${rot(currentMatch.id)}deg)` }}>
+                    <div className="pp-ink" style={{ '--stamp-rot': `${rot(currentMatch.id)}deg` }}>
+                      {/* Slam impact ring */}
+                      <div className="pp-slam-ring" style={{ borderColor: currentInk.ring }}/>
+                      <div className="pp-slam-ring pp-slam-ring-2" style={{ borderColor: currentInk.ring }}/>
+                      {/* Ink splatter particles */}
+                      {Array.from({ length: 8 }, (_, i) => (
+                        <div key={i} className="pp-splat" style={{
+                          '--splat-angle': `${i * 45}deg`,
+                          '--splat-dist': `${110 + (i % 3) * 15}px`,
+                          '--splat-size': `${3 + (i % 4)}px`,
+                          background: currentInk.ring,
+                        }}/>
+                      ))}
                       <svg viewBox="0 0 280 280" className="pp-stamp-svg">
                         {/* Outer ring with ticks */}
                         <circle cx="140" cy="140" r="130" fill="none" stroke={currentInk.ring} strokeWidth="2.5" opacity=".5"/>

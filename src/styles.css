@@ -1056,12 +1056,34 @@
   .pp-stamp-empty-circle{width:160px;height:160px;border-radius:50%;border:2px dashed rgba(0,0,0,.06)}
   .pp-stamp-empty-text{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(0,0,0,.12);font-weight:700;text-align:center;max-width:200px}
 
-  /* ── Ink Stamp (earned) ── */
-  .pp-ink{animation:ppInkStamp .5s cubic-bezier(.17,.67,.4,1.2) both}
-  @keyframes ppInkStamp{
-    from{transform:scale(1.6);opacity:0;filter:blur(2px)}
-    60%{transform:scale(.96);opacity:.85;filter:blur(0)}
-    to{opacity:.8;filter:blur(0)}
+  /* ── Ink Stamp — 3D Slam Animation ── */
+  .pp-ink{position:relative;animation:ppSlam .6s cubic-bezier(.22,.68,.36,1) both;
+    transform-origin:center center}
+  @keyframes ppSlam{
+    0%{transform:rotate(var(--stamp-rot,0deg)) scale(2.5) perspective(600px) rotateX(-30deg);opacity:0;filter:blur(4px)}
+    35%{transform:rotate(var(--stamp-rot,0deg)) scale(.88) perspective(600px) rotateX(4deg);opacity:.9;filter:blur(0)}
+    50%{transform:rotate(var(--stamp-rot,0deg)) scale(1.04) perspective(600px) rotateX(-2deg);opacity:.85;filter:blur(0)}
+    70%{transform:rotate(var(--stamp-rot,0deg)) scale(.98);opacity:.82}
+    100%{transform:rotate(var(--stamp-rot,0deg)) scale(1);opacity:.8}
+  }
+
+  /* Impact shockwave rings */
+  .pp-slam-ring{position:absolute;top:50%;left:50%;width:260px;height:260px;
+    margin:-130px 0 0 -130px;border-radius:50%;border:2px solid;
+    opacity:0;animation:ppRingWave .8s ease-out .15s both;pointer-events:none}
+  .pp-slam-ring-2{animation-delay:.25s;width:200px;height:200px;margin:-100px 0 0 -100px}
+  @keyframes ppRingWave{
+    0%{transform:scale(.3);opacity:.5}
+    100%{transform:scale(1.6);opacity:0}
+  }
+
+  /* Ink splatter particles */
+  .pp-splat{position:absolute;top:50%;left:50%;width:var(--splat-size,4px);height:var(--splat-size,4px);
+    border-radius:50%;opacity:0;pointer-events:none;
+    animation:ppSplat .5s ease-out .1s both}
+  @keyframes ppSplat{
+    0%{transform:translate(-50%,-50%) rotate(var(--splat-angle,0deg)) translateY(0);opacity:.6}
+    100%{transform:translate(-50%,-50%) rotate(var(--splat-angle,0deg)) translateY(calc(-1 * var(--splat-dist,100px)));opacity:0}
   }
 
   /* ── Match card share ── */
