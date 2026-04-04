@@ -2483,15 +2483,9 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
   const [shareCaption, setShareCaption] = useState("");
   const [sharePosting, setSharePosting] = useState(false);
   const [sharePosted, setSharePosted] = useState(false);
-  const [showPulse, setShowPulse] = useState(false);
-
-  // Touch swipe tracking
-  const touchStartX = useRef(null);
-  const touchStartY = useRef(null);
-
-  const fin            = m.status === "finished";
-  const correct        = fin && pred && pred.h === m.hs && pred.a === m.as;
-  const wrong          = fin && pred && !correct;
+  const fin       = m.status === "finished";
+  const correct   = fin && pred && pred.h === m.hs && pred.a === m.as;
+  const wrong     = fin && pred && !correct;
   const partialCorrect = fin && pred && !correct && (() => {
     const pw = pred.h > pred.a ? "home" : pred.h < pred.a ? "away" : "draw";
     const mw = m.hs  > m.as   ? "home" : m.hs  < m.as   ? "away" : "draw";
@@ -2506,50 +2500,8 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
   }, [fin]);
   const isActuallyLocked = isBanned || (globalLockTime ? nowTs >= globalLockTime : false);
 
-  // ── Pulse / stats computation ──────────────────────────────────────────────
-  const predsForMatch = Object.entries(allPreds || {}).filter(([k]) => k.endsWith(`__${m.id}`));
-  const total = predsForMatch.length;
-  let homeW = 0, drawW = 0, awayW = 0;
-  predsForMatch.forEach(([, p]) => {
-    if (p.h > p.a) homeW++;
-    else if (p.h === p.a) drawW++;
-    else awayW++;
-  });
-  const homePct = total > 0 ? Math.round(homeW / total * 100) : 0;
-  const drawPct = total > 0 ? Math.round(drawW / total * 100) : 0;
-  const awayPct = total > 0 ? 100 - homePct - drawPct : 0;
-  const scoreCounts = {};
-  predsForMatch.forEach(([, p]) => {
-    const key = `${p.h}-${p.a}`;
-    scoreCounts[key] = (scoreCounts[key] || 0) + 1;
-  });
-  const topScore = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1])[0];
-  const hasPulse = total > 0;
+  // (Community pulse removed — now handled by MatchPulse at feed top)
 
-  // My pick outcome label for "X% agree"
-  const myOutcomePct = pred
-    ? (pred.h > pred.a ? homePct : pred.h === pred.a ? drawPct : awayPct)
-    : null;
-
-  // ── Swipe handlers ─────────────────────────────────────────────────────────
-  const onTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  };
-  const onTouchEnd = (e) => {
-    if (touchStartX.current === null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    const dy = e.changedTouches[0].clientY - touchStartY.current;
-    touchStartX.current = null;
-    touchStartY.current = null;
-    // Ignore mostly-vertical swipes (user is scrolling) and tiny nudges
-    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 44) return;
-    if (!hasPulse) return;
-    if (dx < 0) setShowPulse(true);  // swipe left  → stats
-    if (dx > 0) setShowPulse(false); // swipe right → match
-  };
-
-  // ── Share to feed ──────────────────────────────────────────────────────────
   const postPredToFeed = async () => {
     if (!user || sharePosting || sharePosted) return;
     setSharePosting(true);
@@ -2593,123 +2545,89 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
   const statusColor = correct ? "#22c55e" : partialCorrect ? "#f59e0b" : wrong ? "#ef4444" : isActuallyLocked && !fin ? "#f59e0b" : "transparent";
 
   return (
-    <div
-      className={`mcard mcard-swipeable ${correct?"mcard-ok":partialCorrect?"mcard-partial":wrong?"mcard-ng":""}`}
-      style={{borderLeft:`3px solid ${statusColor}`}}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-    >
-      {/* ── Sliding panels track ── */}
-      <div className="mcard-panels" style={{transform: showPulse ? "translateX(-100%)" : "translateX(0)"}}>
-
-        {/* ════ PANEL 1 — match card ════ */}
-        <div className="mcard-panel">
-          <div className="mcard-topstrip">
-            <span className="mcard-group-pill">{m.group}</span>
-            <span className="mcard-dt">{m.date} · {m.time} BON</span>
-            {!fin && isActuallyLocked && !isBanned && (
-              <span className="countdown-chip" style={{color:"rgba(255,255,255,.45)",borderColor:"rgba(255,255,255,.12)",background:"transparent",fontSize:10}}>🔒 LOCKED</span>
-            )}
-          </div>
-          <div className="mcard-scoreboard">
-            <div className="mteam-col">
-              <span className="mteam-flag-lg">{flag(m.home)}</span>
-              <span className="mteam-name-lg">{m.home}</span>
-            </div>
-            <div className="mcard-center">
-              {fin ? (
-                <div className="score-board">
-                  <div className="score-row">
-                    <span className="score-digit">{m.hs}</span>
-                    <span className="score-colon">:</span>
-                    <span className="score-digit">{m.as}</span>
-                  </div>
-                  <span className="score-label">FINAL</span>
-                </div>
-              ) : submitted ? (
-                <div className="score-board score-board-pick">
-                  <div className="score-row">
-                    <span className="score-digit score-digit-sm">{pred.h}</span>
-                    <span className="score-colon">:</span>
-                    <span className="score-digit score-digit-sm">{pred.a}</span>
-                  </div>
-                  <span className="score-label score-label-green">YOUR PICK</span>
-                </div>
-              ) : isActuallyLocked ? (
-                <div className="score-board">
-                  <span style={{fontSize:28,lineHeight:1}}>🔒</span>
-                  <span className="score-label" style={{marginTop:6}}>LOCKED</span>
-                </div>
-              ) : (
-                <div className="score-inputs-row">
-                  <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
-                  <span className="ssep">:</span>
-                  <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
-                </div>
-              )}
-            </div>
-            <div className="mteam-col mteam-col-r">
-              <span className="mteam-flag-lg">{flag(m.away)}</span>
-              <span className="mteam-name-lg">{m.away}</span>
-            </div>
-          </div>
-          {!fin && !submitted && !isActuallyLocked && (
-            <div className="mcard-foot">
-              <button className={`pred-cta ${saved?"pred-cta-done":""}`} disabled={h===""||a===""} onClick={save}>
-                {saved ? <><IcoCheck /> PREDICTION SAVED</> : "SUBMIT PREDICTION →"}
-              </button>
-            </div>
-          )}
-          {!fin && submitted && (
-            <div className="mverdict mv-locked"><IcoCheck /> Locked in · {pred.h}:{pred.a}</div>
-          )}
-          {!fin && isActuallyLocked && !submitted && (
-            <div className="mverdict mv-missed">
-              <IcoDash /> {isBanned ? "Banned from predictions" : "Missed — prediction deadline has passed"}
-            </div>
-          )}
-          {fin && (
-            <div className={`mverdict ${correct?"mv-ok":partialCorrect?"mv-partial":"mv-ng"}`}>
-              {correct        ? <><IcoCheck /> Correct +5 pts</>
-                : partialCorrect ? <><IcoCheck /> Right winner +1 pt · Your pick: {pred.h}:{pred.a}</>
-                : pred          ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
-                :                 <><IcoDash /> No prediction</>}
-            </div>
-          )}
-
-          {/* ── Card footer: share + stats in one unified bar ── */}
-          <div className="mcard-footer-bar">
-            {/* Share side */}
-            {user && pred && !sharePosted && (submitted || fin) && !shareOpen && (
-              <button className="mcard-footer-btn" onClick={() => setShareOpen(true)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                {fin ? "SHARE RESULT" : "SHARE PICK"}
-              </button>
-            )}
-            {user && pred && sharePosted && (
-              <div className="mcard-footer-posted">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                POSTED
+    <div className={`mcard ${correct?"mcard-ok":partialCorrect?"mcard-partial":wrong?"mcard-ng":""}`} style={{borderLeft:`3px solid ${statusColor}`}}>
+      <div className="mcard-topstrip">
+        <span className="mcard-group-pill">{m.group}</span>
+        <span className="mcard-dt">{m.date} · {m.time} BON</span>
+        {!fin && isActuallyLocked && !isBanned && (
+          <span className="countdown-chip" style={{color:"rgba(255,255,255,.45)",borderColor:"rgba(255,255,255,.12)",background:"transparent",fontSize:10}}>🔒 LOCKED</span>
+        )}
+      </div>
+      <div className="mcard-scoreboard">
+        <div className="mteam-col">
+          <span className="mteam-flag-lg">{flag(m.home)}</span>
+          <span className="mteam-name-lg">{m.home}</span>
+        </div>
+        <div className="mcard-center">
+          {fin ? (
+            <div className="score-board">
+              <div className="score-row">
+                <span className="score-digit">{m.hs}</span>
+                <span className="score-colon">:</span>
+                <span className="score-digit">{m.as}</span>
               </div>
-            )}
-            {/* Spacer */}
-            <div style={{flex:1}}/>
-            {/* Stats side — always shown when there are predictions */}
-            {hasPulse && (
-              <button className="mcard-footer-btn mcard-footer-btn-stats" onClick={() => setShowPulse(true)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                {total} PREDICTION{total !== 1 ? "S" : ""}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-            )}
-            {!hasPulse && (
-              <span className="mcard-footer-no-preds">NO PREDICTIONS YET</span>
-            )}
-          </div>
-
-          {/* Share panel — expands below footer when open */}
-          {shareOpen && (
-            <div className="mcard-share-panel" style={{margin:"0 14px 14px",borderTop:"none"}}>
+              <span className="score-label">FINAL</span>
+            </div>
+          ) : submitted ? (
+            <div className="score-board score-board-pick">
+              <div className="score-row">
+                <span className="score-digit score-digit-sm">{pred.h}</span>
+                <span className="score-colon">:</span>
+                <span className="score-digit score-digit-sm">{pred.a}</span>
+              </div>
+              <span className="score-label score-label-green">YOUR PICK</span>
+            </div>
+          ) : isActuallyLocked ? (
+            <div className="score-board">
+              <span style={{fontSize:28,lineHeight:1}}>🔒</span>
+              <span className="score-label" style={{marginTop:6}}>LOCKED</span>
+            </div>
+          ) : (
+            <div className="score-inputs-row">
+              <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={h} onChange={e=>setH(e.target.value)} placeholder="–" />
+              <span className="ssep">:</span>
+              <input className="sinput" type="number" inputMode="numeric" pattern="[0-9]*" min="0" max="20" value={a} onChange={e=>setA(e.target.value)} placeholder="–" />
+            </div>
+          )}
+        </div>
+        <div className="mteam-col mteam-col-r">
+          <span className="mteam-flag-lg">{flag(m.away)}</span>
+          <span className="mteam-name-lg">{m.away}</span>
+        </div>
+      </div>
+      {!fin && !submitted && !isActuallyLocked && (
+        <div className="mcard-foot">
+          <button className={`pred-cta ${saved?"pred-cta-done":""}`} disabled={h===""||a===""} onClick={save}>
+            {saved ? <><IcoCheck /> PREDICTION SAVED</> : "SUBMIT PREDICTION →"}
+          </button>
+        </div>
+      )}
+      {!fin && submitted && (
+        <div className="mverdict mv-locked"><IcoCheck /> Locked in · {pred.h}:{pred.a}</div>
+      )}
+      {!fin && isActuallyLocked && !submitted && (
+        <div className="mverdict mv-missed">
+          <IcoDash /> {isBanned ? "Banned from predictions" : "Missed — prediction deadline has passed"}
+        </div>
+      )}
+      {fin && (
+        <div className={`mverdict ${correct?"mv-ok": partialCorrect?"mv-partial":"mv-ng"}`}>
+          {correct      ? <><IcoCheck /> Correct +5 pts</>
+            : partialCorrect ? <><IcoCheck /> Right winner +1 pt · Your pick: {pred.h}:{pred.a}</>
+            : pred        ? <><IcoX /> Wrong · Your pick: {pred.h}:{pred.a}</>
+            :               <><IcoDash /> No prediction</>}
+        </div>
+      )}
+      {/* ── Share to Feed button ── */}
+      {user && pred && !sharePosted && (submitted || fin) && (
+        <div className="mcard-share-row">
+          {!shareOpen ? (
+            <button className="mcard-share-btn" onClick={()=>setShareOpen(true)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              {fin ? "SHARE RESULT TO FEED" : "SHARE YOUR PICK TO FEED"}
+            </button>
+          ) : (
+            <div className="mcard-share-panel">
               <div className="mcard-share-preview">
                 <span className="mcard-share-preview-match">{flag(m.home)} {m.home} vs {m.away} {flag(m.away)}</span>
                 <span className="mcard-share-preview-score">
@@ -2734,96 +2652,18 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
               </div>
             </div>
           )}
-        </div>{/* end panel 1 */}
-
-        {/* ════ PANEL 2 — community stats ════ */}
-        <div className="mcard-panel mcard-pulse-panel">
-          <div className="pulse-ring" style={{top:"-50px",right:"-50px",width:"160px",height:"160px",zIndex:0}}/>
-          <div className="pulse-ring pulse-ring-2" style={{width:"110px",height:"110px",top:"-20px",right:"-20px",zIndex:0}}/>
-
-          {/* Header */}
-          <div className="mcard-pulse-header">
-            <div style={{display:"flex",alignItems:"center",gap:7}}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              <span className="mcard-pulse-title">COMMUNITY PREDICTIONS</span>
-            </div>
-            <span className="mcard-pulse-count">{total} player{total !== 1 ? "s" : ""}</span>
+        </div>
+      )}
+      {user && pred && sharePosted && (
+        <div className="mcard-share-row">
+          <div className="mcard-share-posted">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Posted to Mundogram!
           </div>
-
-          {/* Teams row */}
-          <div className="mcard-pulse-teams">
-            <span>{flag(m.home)} <strong>{m.home}</strong></span>
-            <span className="mcard-pulse-vs">VS</span>
-            <span><strong>{m.away}</strong> {flag(m.away)}</span>
-          </div>
-
-          {/* 3 percentage blocks */}
-          <div className="mcard-pulse-pcts">
-            <div className="mcard-pulse-pct mcard-pulse-pct-home">
-              <span className="mcard-pulse-pct-num" style={{color:"#4ade80"}}>{homePct}<span style={{fontSize:13,marginLeft:1}}>%</span></span>
-              <span className="mcard-pulse-pct-lbl">{m.home}</span>
-            </div>
-            <div className="mcard-pulse-pct mcard-pulse-pct-draw">
-              <span className="mcard-pulse-pct-num" style={{color:"#94a3b8"}}>{drawPct}<span style={{fontSize:13,marginLeft:1}}>%</span></span>
-              <span className="mcard-pulse-pct-lbl">DRAW</span>
-            </div>
-            <div className="mcard-pulse-pct mcard-pulse-pct-away">
-              <span className="mcard-pulse-pct-num" style={{color:"#f87171"}}>{awayPct}<span style={{fontSize:13,marginLeft:1}}>%</span></span>
-              <span className="mcard-pulse-pct-lbl">{m.away}</span>
-            </div>
-          </div>
-
-          {/* Segmented bar */}
-          <div style={{padding:"0 16px 12px",position:"relative",zIndex:1}}>
-            <div className="pulse-bar" style={{height:20,borderRadius:5,gap:2}}>
-              <div className="pulse-bar-home" style={{width:`${Math.max(homePct,5)}%`,borderRadius:"5px 0 0 5px",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {homePct > 18 && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",color:"rgba(0,0,0,.7)"}}>{homePct}%</span>}
-              </div>
-              <div className="pulse-bar-draw" style={{width:`${Math.max(drawPct,5)}%`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {drawPct > 18 && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",color:"rgba(0,0,0,.5)"}}>{drawPct}%</span>}
-              </div>
-              <div className="pulse-bar-away" style={{width:`${Math.max(awayPct,5)}%`,borderRadius:"0 5px 5px 0",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {awayPct > 18 && <span style={{fontSize:9,fontFamily:"'Anton',sans-serif",color:"rgba(0,0,0,.7)"}}>{awayPct}%</span>}
-              </div>
-            </div>
-          </div>
-
-          {/* Most predicted */}
-          {topScore && (
-            <div className="mcard-pulse-topscore">
-              <span style={{fontSize:14,flexShrink:0}}>🎯</span>
-              <span>Most predicted: <strong>{topScore[0]}</strong> · {topScore[1]} player{topScore[1]!==1?"s":""}</span>
-            </div>
-          )}
-
-          {/* Your pick alignment */}
-          {pred && myOutcomePct !== null && (
-            <div className="mcard-pulse-yourpick">
-              <span style={{fontSize:12,flexShrink:0}}>👤</span>
-              <span>
-                Your pick: <strong>{pred.h}:{pred.a}</strong>
-                {" · "}
-                {pred.h > pred.a ? `${m.home} win` : pred.h === pred.a ? "Draw" : `${m.away} win`}
-                {" · "}
-                <span style={{color: myOutcomePct >= 50 ? "#4ade80" : myOutcomePct >= 30 ? "#fbbf24" : "#f87171"}}>
-                  {myOutcomePct}% agree
-                </span>
-              </span>
-            </div>
-          )}
-
-          {/* Footer bar — back button */}
-          <div className="mcard-footer-bar">
-            <button className="mcard-footer-btn" onClick={() => setShowPulse(false)}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-              BACK TO MATCH
-            </button>
-            <div style={{flex:1}}/>
-            <span className="mcard-footer-swipe-hint">SWIPE RIGHT</span>
-          </div>
-        </div>{/* end panel 2 */}
-
-      </div>{/* end .mcard-panels */}
+        </div>
+      )}
+      {/* ── Who Predicted What ── show within 1h of kickoff and after */}
+      {/* Community pulse moved to MatchPulse at top of feed */}
     </div>
   );
 }
