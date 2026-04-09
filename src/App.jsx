@@ -482,11 +482,16 @@ export default function App() {
     if (pushSubRef.current) return;
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!vapidKey) { console.warn('Push: VITE_VAPID_PUBLIC_KEY not set — push disabled (local notifications still work)'); return; }
-    if (Notification.permission !== 'granted') return; // Permission handled separately
+    if (!vapidKey) { console.warn('Push: VITE_VAPID_PUBLIC_KEY not set'); return; }
     try {
+      // Request permission if not yet decided
+      if (Notification.permission === 'default') {
+        const result = await Notification.requestPermission();
+        if (result !== 'granted') return;
+      } else if (Notification.permission !== 'granted') {
+        return;
+      }
       const reg = await navigator.serviceWorker.ready;
-      // Check if already subscribed
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
         sub = await reg.pushManager.subscribe({
@@ -495,7 +500,6 @@ export default function App() {
         });
       }
       pushSubRef.current = true;
-      // Save to Supabase (upsert so we don't duplicate)
       const subJSON = sub.toJSON();
       await supabase.from('push_subscriptions').upsert({
         user_id: uid,
@@ -503,6 +507,7 @@ export default function App() {
         keys_p256dh: subJSON.keys.p256dh,
         keys_auth: subJSON.keys.auth,
       }, { onConflict: 'user_id,endpoint' });
+      console.log('Push: subscribed successfully');
     } catch (err) {
       console.warn('Push subscription failed:', err);
     }
@@ -529,17 +534,9 @@ export default function App() {
     }
   }, []);
 
-  // Request notification permission + subscribe to push when user logs in
+  // Subscribe to push notifications when user logs in
   useEffect(() => {
-    if (page !== "app" || !user?.id) return;
-    (async () => {
-      // Always request notification permission (needed for local notifications too)
-      if ("Notification" in window && Notification.permission === "default") {
-        await Notification.requestPermission();
-      }
-      // Subscribe to Web Push (only works if VAPID key is set + permission granted)
-      subscribeToPush(user.id);
-    })();
+    if (page === "app" && user?.id) subscribeToPush(user.id);
   }, [page, user?.id, subscribeToPush]);
 
   // Schedule "1 hour before match" reminders (local)
