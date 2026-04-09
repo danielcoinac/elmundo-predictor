@@ -232,6 +232,8 @@ export default function App() {
           if (payload.eventType === "UPDATE" && payload.new?.status === "finished" && payload.old?.status !== "finished") {
             playMatchAlert();
             toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
+            sendNotif("Match Result!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
+            try { navigator.vibrate?.([100, 50, 100]); } catch {}
           }
         }
       }).subscribe();
@@ -288,6 +290,8 @@ export default function App() {
         if (newBal != null) setMyCredits(newBal);
         if (newBal != null && oldBal != null && newBal > oldBal) {
           toast$(`💰 +$${(newBal - oldBal).toFixed(2)} credits added to your account!`);
+          sendNotif("Credits Added!", `+$${(newBal - oldBal).toFixed(2)} credits added to your account`, "credits-topup");
+          try { navigator.vibrate?.([100, 50, 100]); } catch {}
         }
       }).subscribe();
 
@@ -458,6 +462,48 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => { setToast(null); toastTimerRef.current = null; }, 3200);
   };
 
+  // ── Push Notifications ──────────────────────────────────────────────────
+  const notifTimersRef = useRef([]);
+  const requestNotifPermission = useCallback(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+  const sendNotif = useCallback((title, body, tag) => {
+    if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+      try { new Notification(title, { body, icon: "/elmundo-logo.png", badge: "/icons/icon-192.png", tag: tag || undefined, silent: false }); } catch {}
+    }
+  }, []);
+
+  // Schedule "1 hour before match" reminders
+  useEffect(() => {
+    if (page !== "app" || !matches.length) return;
+    notifTimersRef.current.forEach(clearTimeout);
+    notifTimersRef.current = [];
+    const now = Date.now();
+    matches.forEach(m => {
+      if (m.status === "finished") return;
+      const ko = matchKickoff(m);
+      if (!ko) return;
+      const reminderAt = ko.getTime() - 60 * 60 * 1000; // 1 hour before
+      const delay = reminderAt - now;
+      if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
+        notifTimersRef.current.push(setTimeout(() => {
+          sendNotif("Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the community pulse!`, `match-reminder-${m.id}`);
+          toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
+        }, delay));
+      }
+    });
+    return () => notifTimersRef.current.forEach(clearTimeout);
+  }, [page, matches]);
+
+  // Request permission on first user interaction
+  useEffect(() => {
+    const handler = () => { requestNotifPermission(); window.removeEventListener("click", handler); };
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, []);
+
   const doRegister = async () => {
     setFormErr("");
     if (!form.firstName?.trim())           return setFormErr("First name is required.");
@@ -562,6 +608,7 @@ export default function App() {
       const k = `${user.id}__${id}`;
       setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
       toast$("Prediction saved ⚽");
+      try { navigator.vibrate?.([60, 30, 60]); } catch {}
     } finally {
       predSavingRef.current.delete(id);
     }
@@ -747,6 +794,7 @@ export default function App() {
       if (error) { toast$("Error placing order", false); return false; }
     }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
+    try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
     // Award passport stamps in background
     checkAndAwardStamps().catch(() => {});
     return true;
@@ -1184,9 +1232,7 @@ export default function App() {
       {/* styles loaded via import "./styles.css" */}
       {showOnboarding && <OnboardingTutorial onDone={() => { localStorage.setItem(ONBOARDING_KEY, "1"); setShowOnboarding(false); }} />}
       {isOffline && (
-        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#ef4444",padding:"6px 16px",textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#fff"}}>
-          OFFLINE — SOME FEATURES MAY NOT WORK
-        </div>
+        <div className="offline-bar">OFFLINE — SOME FEATURES MAY NOT WORK</div>
       )}
       {toast && (
         <div className={`notification ${toast.ok ? "notif-ok" : "notif-err"}`}>
@@ -1248,6 +1294,7 @@ export default function App() {
           winnerData={winnerData} setWinnerData={setWinnerData}
           showPassport={showPassport} setShowPassport={setShowPassport}
           passportStamps={passportStamps}
+          sendNotif={sendNotif}
         />
       )}
     </div>
@@ -1956,7 +2003,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 showPassport = false, setShowPassport, passportStamps = [],
-                qrTable = "" }) {
+                qrTable = "", sendNotif = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
@@ -2019,7 +2066,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches" && <ErrorBoundary name="matches"><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></ErrorBoundary>}
-          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} /></ErrorBoundary>}
+          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} /></ErrorBoundary>}
           {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} /></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             onCancelOrder={cancelOrder}
@@ -2669,7 +2716,9 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
 }
 
 /* ═══ MOMENTS ═══════════════════════════════════════════════════════════════ */
-function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0, appSettings = {} }) {
+const FEED_PAGE_SIZE = 15;
+
+function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0, appSettings = {}, sendNotif = ()=>{} }) {
   const [feedTab,  setFeedTab]  = useState("feed"); // "feed" | "notifs"
   const [showSearch, setShowSearch] = useState(false);
   const [searchFromFeed, setSearchFromFeed] = useState(false); // opened via card author click
@@ -2692,6 +2741,13 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   const [openCardMenu, setOpenCardMenu] = useState(null); // momentId with open 3-dots menu
   const [lightboxUrl, setLightboxUrl] = useState(null); // photo to show full-screen
   const [imgRatios, setImgRatios] = useState({}); // momentId -> aspect ratio string
+  // Feed pagination
+  const [feedPage, setFeedPage] = useState(1);
+  // Pull-to-refresh
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartRef = useRef(null);
+  const feedScrollRef = useRef(null);
 
   const load = async () => {
     const { data: ms } = await supabase.from("moments").select("*").order("created_at", { ascending: false });
@@ -2727,12 +2783,30 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   useEffect(() => {
     load();
     const ch = supabase.channel("rt-moments")
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"moments" }, () => load())
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"moments" }, () => { load(); setFeedPage(1); })
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"moments" }, p => {
+        const r = p.new;
+        if (r) {
+          setMoments(ms => ms.map(m => m.id === r.id ? r : m));
+          // Notify user when their post is approved
+          if (r.approved && !p.old?.approved && r.posted_by === user.id) {
+            sendNotif("Post Approved!", "Your photo has been approved and is now live on the feed!", `approved-${r.id}`);
+          }
+        }
+      })
       .on("postgres_changes", { event:"DELETE", schema:"public", table:"moments" }, () => load())
       .on("postgres_changes", { event:"INSERT", schema:"public", table:"moment_likes" }, p => {
-        const { moment_id, user_id } = p.new;
+        const { moment_id, user_id, user_name } = p.new;
         if (moment_id && user_id) {
           setLikes(l => { const n={...l}; const s=new Set(n[moment_id]||[]); s.add(user_id); n[moment_id]=s; return n; });
+          // Notify if someone liked MY post
+          setMoments(ms => {
+            const m = ms.find(x => x.id === moment_id);
+            if (m && m.posted_by === user.id && user_id !== user.id) {
+              sendNotif("New Like!", `${user_name || "Someone"} liked your post`, `like-${moment_id}-${user_id}`);
+            }
+            return ms;
+          });
         } else { load(); }
       })
       .on("postgres_changes", { event:"DELETE", schema:"public", table:"moment_likes" }, p => {
@@ -2744,6 +2818,14 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       .on("postgres_changes", { event:"INSERT", schema:"public", table:"moment_comments" }, p => {
         const c = p.new;
         setComments(prev => { const n={...prev}; n[c.moment_id]=[...(n[c.moment_id]||[]), c]; return n; });
+        // Notify if someone commented on MY post
+        setMoments(ms => {
+          const m = ms.find(x => x.id === c.moment_id);
+          if (m && m.posted_by === user.id && c.user_id !== user.id) {
+            sendNotif("New Comment!", `${c.user_name || "Someone"}: ${(c.body||"").substring(0,60)}`, `comment-${c.id}`);
+          }
+          return ms;
+        });
       })
       .on("postgres_changes", { event:"DELETE", schema:"public", table:"moment_comments" }, p => {
         const c = p.old;
@@ -2753,16 +2835,44 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
     return () => supabase.removeChannel(ch);
   }, []);
 
+  const likeBusyRef = useRef(new Set());
   const toggleLike = async (momentId) => {
+    if (likeBusyRef.current.has(momentId)) return;
+    likeBusyRef.current.add(momentId);
     const liked = (likes[momentId]||new Set()).has(user.id);
-    if (liked) {
-      await supabase.from("moment_likes").delete().eq("moment_id", momentId).eq("user_id", user.id);
-    } else {
-      await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id, user_name: user.name });
-      // Burst animation
-      const particles = Array.from({length:7},(_,i)=>({ id:Date.now()+i, dx:(Math.random()-0.5)*80, dy:-(30+Math.random()*60) }));
-      setLikeAnims(a=>({...a,[momentId]:[...(a[momentId]||[]),...particles]}));
-      setTimeout(()=>setLikeAnims(a=>({...a,[momentId]:(a[momentId]||[]).filter(p=>!particles.find(x=>x.id===p.id))})),900);
+    // Optimistic UI update
+    setLikes(prev => {
+      const n = { ...prev };
+      const s = new Set(n[momentId] || []);
+      if (liked) s.delete(user.id); else s.add(user.id);
+      n[momentId] = s;
+      return n;
+    });
+    try {
+      if (liked) {
+        const { error } = await supabase.from("moment_likes").delete().eq("moment_id", momentId).eq("user_id", user.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id, user_name: user.name });
+        if (error) throw error;
+        try { navigator.vibrate?.([40]); } catch {}
+        // Burst animation
+        const particles = Array.from({length:7},(_,i)=>({ id:Date.now()+i, dx:(Math.random()-0.5)*80, dy:-(30+Math.random()*60) }));
+        setLikeAnims(a=>({...a,[momentId]:[...(a[momentId]||[]),...particles]}));
+        setTimeout(()=>setLikeAnims(a=>({...a,[momentId]:(a[momentId]||[]).filter(p=>!particles.find(x=>x.id===p.id))})),900);
+      }
+    } catch (err) {
+      console.error("Like failed:", err);
+      // Revert optimistic update
+      setLikes(prev => {
+        const n = { ...prev };
+        const s = new Set(n[momentId] || []);
+        if (liked) s.add(user.id); else s.delete(user.id);
+        n[momentId] = s;
+        return n;
+      });
+    } finally {
+      likeBusyRef.current.delete(momentId);
     }
   };
 
@@ -2836,6 +2946,31 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
     if (s < 3600) return `${Math.floor(s/60)}m ago`;
     if (s < 86400) return `${Math.floor(s/3600)}h ago`;
     return `${Math.floor(s/86400)}d ago`;
+  };
+
+  // Pull-to-refresh handlers
+  const PULL_THRESHOLD = 80;
+  const onTouchStartFeed = (e) => {
+    const el = feedScrollRef.current;
+    if (!el || el.scrollTop > 5 || refreshing) return;
+    pullStartRef.current = e.touches[0].clientY;
+  };
+  const onTouchMoveFeed = (e) => {
+    if (pullStartRef.current === null || refreshing) return;
+    const dy = e.touches[0].clientY - pullStartRef.current;
+    if (dy > 0) setPullY(Math.min(dy * 0.5, 120));
+    else { setPullY(0); pullStartRef.current = null; }
+  };
+  const onTouchEndFeed = async () => {
+    if (pullStartRef.current === null) return;
+    pullStartRef.current = null;
+    if (pullY >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      await load();
+      setFeedPage(1);
+      setRefreshing(false);
+    }
+    setPullY(0);
   };
 
   const unseenNotifs = notifs.filter(n => !notifSeen.includes(n.id)).length;
@@ -3034,7 +3169,15 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
-        <>
+        <div ref={feedScrollRef}
+          onTouchStart={onTouchStartFeed} onTouchMove={onTouchMoveFeed} onTouchEnd={onTouchEndFeed}>
+          {/* Pull-to-refresh indicator */}
+          <div className="ptr-wrap" style={{height: pullY > 0 || refreshing ? Math.max(pullY, refreshing ? 50 : 0) : 0, opacity: pullY > 10 || refreshing ? 1 : 0}}>
+            <div className={`ptr-spinner ${refreshing ? "ptr-spinning" : ""}`} style={{transform: refreshing ? undefined : `rotate(${pullY * 3}deg)`}}>
+              {pullY >= PULL_THRESHOLD || refreshing ? "↻" : "↓"}
+            </div>
+            <span className="ptr-text">{refreshing ? "Refreshing…" : pullY >= PULL_THRESHOLD ? "Release to refresh" : "Pull down to refresh"}</span>
+          </div>
           {/* Cinematic World Cup hero banner */}
           <div className="mom-hero">
             <div className="mom-hero-bg"/>
@@ -3061,16 +3204,28 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
             </div>
           </div>
 
-          {moments.filter(m=>isAdmin||m.approved).length === 0 ? (
-            <div className="mom-empty">
-              <div style={{fontSize:64,marginBottom:16}}>📸</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:4,color:"rgba(255,255,255,.3)"}}>NO POSTS YET</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,.2)",marginTop:8,letterSpacing:1,lineHeight:1.6}}>Share a moment or your match prediction — be the first!</div>
-              <button className="mom-empty-cta" onClick={()=>setShowPost(true)}>+ POST A PHOTO</button>
+          {(() => {
+            const allVisible = moments.filter(m => isAdmin || m.approved);
+            const totalPosts = allVisible.length;
+            const visiblePosts = allVisible.slice(0, feedPage * FEED_PAGE_SIZE);
+            const hasMore = visiblePosts.length < totalPosts;
+
+            if (totalPosts === 0) return (
+              <div className="mom-empty">
+                <div style={{fontSize:64,marginBottom:16}}>📸</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:4,color:"rgba(255,255,255,.3)"}}>NO POSTS YET</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,.2)",marginTop:8,letterSpacing:1,lineHeight:1.6}}>Share a moment or your match prediction — be the first!</div>
+                <button className="mom-empty-cta" onClick={()=>setShowPost(true)}>+ POST A PHOTO</button>
+              </div>
+            );
+
+            return (<>
+            {/* Post count */}
+            <div className="feed-count-bar">
+              <span className="feed-count-txt">Showing {visiblePosts.length} of {totalPosts} post{totalPosts!==1?"s":""}</span>
             </div>
-          ) : (
             <div className="mom-feed">
-              {moments.filter(mom=>isAdmin||mom.approved).map(mom => {
+              {visiblePosts.map(mom => {
                 const myLike = (likes[mom.id]||new Set()).has(user.id);
                 const likeCount = (likes[mom.id]||new Set()).size;
                 const momComments = comments[mom.id] || [];
@@ -3248,8 +3403,17 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                 );
               })}
             </div>
-          )}
-        </>
+            {/* Load more / end of feed */}
+            {hasMore ? (
+              <button className="feed-load-more" onClick={() => setFeedPage(p => p + 1)}>
+                LOAD MORE ({totalPosts - visiblePosts.length} remaining)
+              </button>
+            ) : totalPosts > FEED_PAGE_SIZE && (
+              <div className="feed-end">You've reached the end</div>
+            )}
+            </>);
+          })()}
+        </div>
       )}
 
       {/* ── NOTIFICATIONS TAB ── */}
@@ -3574,7 +3738,6 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
 
   return (
     <div className="lb-root">
-      {true && <>
       {/* ── TOP 3 PODIUM ── */}
       {top3.length >= 3 && (
         <div className="lb-podium">
@@ -3640,7 +3803,6 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
           <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
         </div>
       )}
-      </>}
     </div>
   );
 }

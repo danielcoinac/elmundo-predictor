@@ -581,20 +581,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       return "new";                      // green — fresh order just came in
     }
     if (hasReady) return "ready";        // white pulse — ready to be picked up
-    return "confirmed";                  // blue — confirmed by bar
+    return "active";                     // blue — in progress
   };
 
   const statusStyle = (s) => ({
     empty:     { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", dot:null,      blink:false },
     new:       { bg:"rgba(34,197,94,.15)",   border:"rgba(34,197,94,.8)",     color:"#4ade80",               dot:"#4ade80", blink:false },
-    confirmed: { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
+    active:    { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
     ready:     { bg:"rgba(255,255,255,.1)",   border:"rgba(255,255,255,.7)",   color:"#e0e0e0",               dot:"#e0e0e0", blink:false },
     warning:   { bg:"rgba(251,191,36,.15)",  border:"rgba(251,191,36,.85)",   color:"#fbbf24",               dot:"#fbbf24", blink:false },
     urgent:    { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               dot:"#f87171", blink:true  },
   }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", dot:null, blink:false });
 
-  const statusColor = s => s==="pending"?"#f59e0b":s==="confirmed"?"#93c5fd":s==="ready"?"#fff":"rgba(255,255,255,.3)";
-  const statusLabel = s => s==="pending"?"NEW ORDER":s==="confirmed"?"CONFIRMED":s==="ready"?"READY":"";
+  const statusColor = s => s==="pending"?"#f59e0b":s==="ready"?"#fff":"rgba(255,255,255,.3)";
+  const statusLabel = s => s==="pending"?"NEW ORDER":s==="ready"?"READY":"";
 
   const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
   const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
@@ -685,8 +685,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
   const resetLayout = () => { setTables(FP_DEFAULT); setBarPos(FP_BAR_DEF); setEditSel(null); };
 
-  // ── Canvas height ──────────────────────────────────────────────────────────
-  const canvasH = Math.max(620, ...tables.map(t => t.y + t.h + 80));
+  // ── Canvas dimensions ───────────────────────────────────────────────────────
+  const canvasH = Math.max(700, ...tables.map(t => t.y + t.h + 80));
+  const CANVAS_MIN_W = 920;
 
   // ── Table element ──────────────────────────────────────────────────────────
   const TableEl = ({ tbl }) => {
@@ -808,15 +809,15 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
     return (
       <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
-        <div style={{background:"#111",border:"1px solid rgba(255,255,255,.12)",borderTop:"2px solid #fff",width:"92%",maxWidth:480,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.9),0 0 40px rgba(255,255,255,.03)"}} onClick={e=>e.stopPropagation()}>
+        <div className="fp-detail-panel" onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
-          <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,rgba(255,255,255,.04) 0%,transparent 100%)",flexShrink:0}}>
+          <div className="fp-detail-header">
             <div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>TABLE {selectedTable}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:4,fontWeight:600}}>{orders.length} order{orders.length!==1?"s":""}</div>
+              <div className="fp-detail-title">TABLE {selectedTable}</div>
+              <div className="fp-detail-sub">{orders.length} order{orders.length!==1?"s":""}</div>
             </div>
-            <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} className="fp-detail-close">✕</button>
           </div>
 
           {/* Orders */}
@@ -888,26 +889,26 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   };
 
   return (
-    <div style={{background:"#0a0a0a",minHeight:"70vh"}}>
+    <div className="fp-root">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div style={{background:"linear-gradient(180deg, #111 0%, #0a0a0a 100%)",borderBottom:"1px solid rgba(255,255,255,.06)",padding:"14px 16px 12px"}}>
+      <div className="fp-header">
 
         {/* Row 1: title + view toggle */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"#fff",letterSpacing:3,lineHeight:1,textShadow:"0 0 20px rgba(255,255,255,.1)"}}>FLOOR PLAN</span>
+        <div className="fp-header-row1">
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span className="fp-title">FLOOR PLAN</span>
             {fpView === "live" && (editMode ? (
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"#fff",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",padding:"3px 9px",borderRadius:3}}>EDIT MODE</span>
+              <span className="fp-edit-badge">EDIT MODE</span>
             ) : (
-              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"5px 11px",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .15s",borderRadius:3}}>✏ EDIT</button>
+              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} className="fp-edit-btn">✏ EDIT</button>
             ))}
           </div>
           {/* View toggle pill */}
-          <div style={{display:"flex",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:4,overflow:"hidden"}}>
-            {[{id:"live",label:"⬛ LIVE"},{id:"history",label:"📋 HISTORY"},{id:"report",label:"📊 REPORT"}].map(v=>(
+          <div className="fp-view-toggle">
+            {[{id:"live",label:"LIVE"},{id:"history",label:"HISTORY"},{id:"report",label:"REPORT"}].map(v=>(
               <button key={v.id} onClick={()=>{setFpView(v.id);if(v.id!=="live"){setEditMode(false);}}}
-                style={{padding:"7px 13px",background:fpView===v.id?"#fff":"transparent",color:fpView===v.id?"#000":"rgba(255,255,255,.35)",border:"none",fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",borderRadius:fpView===v.id?3:0,fontWeight:fpView===v.id?900:400}}>
+                className={`fp-view-btn ${fpView===v.id?"fp-view-btn-on":""}`}>
                 {v.label}
               </button>
             ))}
@@ -916,43 +917,43 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
         {/* Row 2: Stats cards — only in LIVE mode */}
         {fpView === "live" && (<>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
+          <div className="fp-stats-grid">
             {/* Urgent */}
-            <div style={{background:urgentTables.length>0?"rgba(248,113,113,.08)":"rgba(255,255,255,.02)",border:`1px solid ${urgentTables.length>0?"rgba(248,113,113,.25)":"rgba(255,255,255,.06)"}`,borderRadius:6,padding:"12px 8px",textAlign:"center",transition:"all .3s"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:urgentTables.length>0?"#f87171":"rgba(255,255,255,.15)",lineHeight:1,textShadow:urgentTables.length>0?"0 0 20px rgba(248,113,113,.4)":"none",transition:"all .3s"}}>{urgentTables.length}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>URGENT</div>
+            <div className="fp-stat-card" style={{background:urgentTables.length>0?"rgba(248,113,113,.08)":"rgba(255,255,255,.02)",borderColor:urgentTables.length>0?"rgba(248,113,113,.3)":"rgba(255,255,255,.06)"}}>
+              <div className="fp-stat-num" style={{color:urgentTables.length>0?"#f87171":"rgba(255,255,255,.15)",textShadow:urgentTables.length>0?"0 0 20px rgba(248,113,113,.4)":"none"}}>{urgentTables.length}</div>
+              <div className="fp-stat-label">URGENT</div>
             </div>
             {/* Pending */}
-            <div style={{background:pendingCount>0?"rgba(251,191,36,.06)":"rgba(255,255,255,.02)",border:`1px solid ${pendingCount>0?"rgba(251,191,36,.2)":"rgba(255,255,255,.06)"}`,borderRadius:6,padding:"12px 8px",textAlign:"center",transition:"all .3s"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:pendingCount>0?"#fbbf24":"rgba(255,255,255,.15)",lineHeight:1,textShadow:pendingCount>0?"0 0 20px rgba(251,191,36,.3)":"none",transition:"all .3s"}}>{pendingCount}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>PENDING</div>
+            <div className="fp-stat-card" style={{background:pendingCount>0?"rgba(251,191,36,.06)":"rgba(255,255,255,.02)",borderColor:pendingCount>0?"rgba(251,191,36,.25)":"rgba(255,255,255,.06)"}}>
+              <div className="fp-stat-num" style={{color:pendingCount>0?"#fbbf24":"rgba(255,255,255,.15)",textShadow:pendingCount>0?"0 0 20px rgba(251,191,36,.3)":"none"}}>{pendingCount}</div>
+              <div className="fp-stat-label">PENDING</div>
             </div>
             {/* Active */}
-            <div style={{background:activeOrders.length>0?"rgba(74,222,128,.06)":"rgba(255,255,255,.02)",border:`1px solid ${activeOrders.length>0?"rgba(74,222,128,.2)":"rgba(255,255,255,.06)"}`,borderRadius:6,padding:"12px 8px",textAlign:"center",transition:"all .3s"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:activeOrders.length>0?"#4ade80":"rgba(255,255,255,.15)",lineHeight:1,textShadow:activeOrders.length>0?"0 0 20px rgba(74,222,128,.3)":"none",transition:"all .3s"}}>{activeOrders.length}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>ACTIVE</div>
+            <div className="fp-stat-card" style={{background:activeOrders.length>0?"rgba(74,222,128,.06)":"rgba(255,255,255,.02)",borderColor:activeOrders.length>0?"rgba(74,222,128,.25)":"rgba(255,255,255,.06)"}}>
+              <div className="fp-stat-num" style={{color:activeOrders.length>0?"#4ade80":"rgba(255,255,255,.15)",textShadow:activeOrders.length>0?"0 0 20px rgba(74,222,128,.3)":"none"}}>{activeOrders.length}</div>
+              <div className="fp-stat-label">ACTIVE</div>
             </div>
             {/* Revenue */}
-            <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"12px 8px",textAlign:"center",position:"relative",boxShadow:"0 0 20px rgba(255,255,255,.02)"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s",textShadow:showFin?"0 0 16px rgba(255,255,255,.2)":"none"}}>${todayRevenue.toFixed(0)}</div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:6}}>
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.4)"}}>TODAY REV</span>
-                <button onClick={()=>setShowFin(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:1,opacity:.5,fontSize:10}}>{showFin?"👁":"🙈"}</button>
+            <div className="fp-stat-card" style={{background:"rgba(255,255,255,.03)",borderColor:"rgba(255,255,255,.12)",boxShadow:"0 0 20px rgba(255,255,255,.02)"}}>
+              <div className="fp-stat-num" style={{color:"#fff",filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",textShadow:showFin?"0 0 16px rgba(255,255,255,.2)":"none"}}>${todayRevenue.toFixed(0)}</div>
+              <div className="fp-stat-label" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                <span>TODAY REV</span>
+                <button onClick={()=>setShowFin(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:1,opacity:.5,fontSize:11}}>{showFin?"👁":"🙈"}</button>
               </div>
             </div>
             {/* Orders */}
-            <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.1)",borderRadius:6,padding:"12px 8px",textAlign:"center"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",lineHeight:1,filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",transition:"filter .25s"}}>{todayCount}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginTop:6}}>ORDERS</div>
+            <div className="fp-stat-card" style={{background:"rgba(255,255,255,.02)",borderColor:"rgba(255,255,255,.1)"}}>
+              <div className="fp-stat-num" style={{color:"#fff",filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none"}}>{todayCount}</div>
+              <div className="fp-stat-label">ORDERS</div>
             </div>
           </div>
 
-          {/* Row 3: color legend — pill badges */}
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#93c5fd",label:"CONFIRMED"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
-              <div key={label} style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:20,padding:"4px 10px 4px 8px"}}>
-                <div style={{width:6,height:6,borderRadius:"50%",background:color,boxShadow:`0 0 6px ${color}88`,flexShrink:0}}/>
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,color:"rgba(255,255,255,.45)"}}>{label}</span>
+          {/* Row 3: color legend */}
+          <div className="fp-legend">
+            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#fff",label:"READY"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
+              <div key={label} className="fp-legend-pill">
+                <div className="fp-legend-dot" style={{background:color,boxShadow:`0 0 6px ${color}88`}}/>
+                <span className="fp-legend-txt">{label}</span>
               </div>
             ))}
           </div>
@@ -963,47 +964,43 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {fpView === "live" && (<>
         {/* Edit toolbar */}
         {editMode && (
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(255,255,255,.03)",borderBottom:"1px solid rgba(255,255,255,.1)",flexWrap:"wrap"}}>
-            <button onClick={addTable} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>+ ADD TABLE</button>
-            <button onClick={resetLayout} style={{background:"transparent",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.45)",padding:"8px 14px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer"}}>↺ RESET</button>
-            <div style={{flex:1,fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600}}>Drag · □/○ shape · × delete · ⊿ resize</div>
-            <button onClick={saveLayout} style={{background:"#fff",border:"none",color:"#000",padding:"8px 20px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.15)"}}>✓ SAVE</button>
+          <div className="fp-edit-toolbar">
+            <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">+ ADD TABLE</button>
+            <button onClick={resetLayout} className="fp-toolbar-btn fp-toolbar-btn-reset">↺ RESET</button>
+            <div className="fp-toolbar-hint">Drag · □/○ shape · × delete · ⊿ resize</div>
+            <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
         )}
         {/* Canvas */}
-        <div style={{overflowX:"auto",overflowY:"visible",WebkitOverflowScrolling:"touch"}}>
+        <div className="fp-canvas-scroll">
           <div
             ref={canvasRef}
+            className="fp-canvas"
             style={{
-              position:"relative", width:700, minWidth:700, height:canvasH,
+              minWidth:CANVAS_MIN_W, height:canvasH,
               background: editMode
                 ? "radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px) 0 0 / 40px 40px, linear-gradient(180deg, #0e0e0e 0%, #0a0a0a 100%)"
                 : "radial-gradient(circle, rgba(255,255,255,.025) 0.8px, transparent 0.8px) 0 0 / 40px 40px, linear-gradient(180deg, rgba(255,255,255,.015) 0%, transparent 50%), #080808",
-              transition:"background .3s",
             }}
             onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
             onTouchMove={onMove} onTouchEnd={onEnd}
             onClick={()=>{ if(editMode) setEditSel(null); }}
           >
-            {/* BAR — dark wood, no text/emoji */}
+            {/* BAR — dark wood */}
             <div
+              className="fp-bar"
               style={{
-                position:"absolute", left:barPos.x, top:barPos.y, width:barPos.w, height:barPos.h,
-                background:"linear-gradient(135deg, #3b2010 0%, #5c3317 40%, #3b2010 100%)",
+                left:barPos.x, top:barPos.y, width:barPos.w, height:barPos.h,
                 border: editMode ? `2px dashed rgba(255,255,255,.5)` : "1.5px solid rgba(107,58,31,.7)",
-                borderRadius:8,
                 cursor: editMode ? (barDrag ? "grabbing" : "grab") : "default",
-                userSelect:"none", touchAction:"none",
                 boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.6)" : "inset 0 1px 0 rgba(255,255,255,.06), 0 4px 16px rgba(0,0,0,.5), 0 0 0 1px rgba(107,58,31,.3)",
                 transition: barDrag ? "none" : "border .2s",
                 zIndex: barDrag ? 20 : 2,
-                /* Wood grain effect via repeating gradient */
-                backgroundImage:"repeating-linear-gradient(92deg, transparent, transparent 8px, rgba(0,0,0,.08) 8px, rgba(0,0,0,.08) 9px), linear-gradient(135deg, #3b2010 0%, #6b3a1f 45%, #3b2010 100%)",
               }}
               onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
               onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
             >
-              {/* Resize handle in edit mode */}
+              <span className="fp-bar-label">BAR</span>
               {editMode && (
                 <div
                   onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = barPos.w; const startH = barPos.h;
@@ -1015,10 +1012,10 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
               )}
             </div>
             {/* Stairs */}
-            <div style={{position:"absolute",left:0,right:0,top:207,height:16,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-              <div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/>
-              <span style={{padding:"0 18px",fontFamily:"'Anton',sans-serif",fontSize:7,letterSpacing:6,color:"rgba(255,255,255,.15)",whiteSpace:"nowrap",background:"#080808",position:"relative",zIndex:1}}>▼  STAIRS  ▼</span>
-              <div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/>
+            <div className="fp-stairs">
+              <div className="fp-stairs-line"/>
+              <span className="fp-stairs-label">▼  STAIRS  ▼</span>
+              <div className="fp-stairs-line"/>
             </div>
             {/* Tables */}
             {tables.map(t => <TableEl key={t.id} tbl={t} />)}
@@ -1040,16 +1037,16 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           const sorted = Object.values(pendingItems).sort((a, b) => b.qty - a.qty);
           if (sorted.length === 0) return null;
           return (
-            <div style={{margin:"0 14px 16px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",padding:"14px 16px"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.4)",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div className="fp-pending-wrap">
+              <div className="fp-pending-header">
                 <span>PENDING ITEMS</span>
-                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:"rgba(255,255,255,.25)",letterSpacing:0}}>{sorted.reduce((s,i)=>s+i.qty,0)} total</span>
+                <span className="fp-pending-total">{sorted.reduce((s,i)=>s+i.qty,0)} total</span>
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              <div className="fp-pending-items">
                 {sorted.map(it => (
-                  <div key={it.name} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.12)",padding:"6px 12px",borderRadius:4}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#fff",lineHeight:1,textShadow:"0 0 10px rgba(255,255,255,.2)"}}>{it.qty}</span>
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.75)",fontWeight:600}}>{it.name}</span>
+                  <div key={it.name} className="fp-pending-item">
+                    <span className="fp-pending-qty">{it.qty}</span>
+                    <span className="fp-pending-name">{it.name}</span>
                   </div>
                 ))}
               </div>
