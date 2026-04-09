@@ -479,37 +479,50 @@ export default function App() {
 
   // Subscribe to Web Push and save subscription to Supabase
   const subscribeToPush = useCallback(async (uid) => {
+    console.log('[PUSH 1] subscribeToPush called, uid:', uid, 'already?', pushSubRef.current);
     if (pushSubRef.current) return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    console.log('[PUSH 2] SW:', 'serviceWorker' in navigator, 'PushMgr:', 'PushManager' in window, 'Notif:', 'Notification' in window);
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { console.warn('[PUSH] No SW or PushManager'); return; }
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!vapidKey) { console.warn('Push: VITE_VAPID_PUBLIC_KEY not set'); return; }
+    console.log('[PUSH 3] VAPID key:', vapidKey ? vapidKey.substring(0, 10) + '...' : 'MISSING');
+    if (!vapidKey) return;
+    console.log('[PUSH 4] Current permission:', Notification.permission);
     try {
-      // Request permission if not yet decided
       if (Notification.permission === 'default') {
+        console.log('[PUSH 5] Requesting permission...');
         const result = await Notification.requestPermission();
+        console.log('[PUSH 6] Permission result:', result);
         if (result !== 'granted') return;
       } else if (Notification.permission !== 'granted') {
+        console.warn('[PUSH] Permission denied/blocked');
         return;
       }
+      console.log('[PUSH 7] Waiting for SW ready...');
       const reg = await navigator.serviceWorker.ready;
+      console.log('[PUSH 8] SW ready, checking subscription...');
       let sub = await reg.pushManager.getSubscription();
+      console.log('[PUSH 9] Existing sub:', !!sub);
       if (!sub) {
+        console.log('[PUSH 10] Subscribing to push...');
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
+        console.log('[PUSH 11] Subscribed!', sub.endpoint.substring(0, 40) + '...');
       }
       pushSubRef.current = true;
       const subJSON = sub.toJSON();
-      await supabase.from('push_subscriptions').upsert({
+      console.log('[PUSH 12] Saving to Supabase...');
+      const { error } = await supabase.from('push_subscriptions').upsert({
         user_id: uid,
         endpoint: subJSON.endpoint,
         keys_p256dh: subJSON.keys.p256dh,
         keys_auth: subJSON.keys.auth,
       }, { onConflict: 'user_id,endpoint' });
-      console.log('Push: subscribed successfully');
+      if (error) console.error('[PUSH 13] Supabase error:', error);
+      else console.log('[PUSH 13] ✅ Saved to Supabase!');
     } catch (err) {
-      console.warn('Push subscription failed:', err);
+      console.error('[PUSH ERROR]', err);
     }
   }, [urlBase64ToUint8Array]);
 
