@@ -470,7 +470,7 @@ export default function App() {
     }
   }, []);
   const sendNotif = useCallback((title, body, tag) => {
-    if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+    if ("Notification" in window && Notification.permission === "granted") {
       try { new Notification(title, { body, icon: "/elmundo-logo.png", badge: "/icons/icon-192.png", tag: tag || undefined, silent: false }); } catch {}
     }
   }, []);
@@ -2857,7 +2857,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
         const { error } = await supabase.from("moment_likes").delete().eq("moment_id", momentId).eq("user_id", user.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id, user_name: user.name });
+        const { error } = await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id });
         if (error) throw error;
         try { navigator.vibrate?.([40]); } catch {}
         // Burst animation
