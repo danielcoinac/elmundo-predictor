@@ -234,7 +234,7 @@ export default function App() {
             toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
             sendNotif("Match Result!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
             // Push to ALL users (even those with app closed)
-            if (isAdminRef.current) sendPush({ title: "⚽ Match Result!", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
+            if (isAdminRef.current) sendPush({ title: "Match Result", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
             try { navigator.vibrate?.([100, 50, 100]); } catch {}
           }
         }
@@ -553,7 +553,7 @@ export default function App() {
           sendNotif("Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the community pulse!`, `match-reminder-${m.id}`);
           toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
           // Push to ALL users (even those with app closed)
-          if (isAdminRef.current) sendPush({ title: "⚽ Match in 1 hour!", body: `${m.home} vs ${m.away} — check the community pulse!`, tag: `reminder-${m.id}` });
+          if (isAdminRef.current) sendPush({ title: "Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict!`, tag: `reminder-${m.id}` });
         }, delay));
       }
     });
@@ -930,7 +930,7 @@ export default function App() {
     setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);
     // Push notification to the player
-    sendPush({ title: "💰 Credits Added!", body: `$${amount.toFixed(2)} credits have been added to your account`, tag: `topup-${userId}`, userIds: [userId] });
+    sendPush({ title: "Credits Added", body: `$${amount.toFixed(2)} has been added to your balance`, tag: `topup-${userId}`, userIds: [userId] });
     // Print top-up receipt
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
@@ -2884,7 +2884,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
             }
             // Push to post author if it's someone else's like
             if (m && m.posted_by !== user_id && user_id === user.id) {
-              sendPush({ title: "❤️ New Like!", body: `${user.name} liked your post`, tag: `like-${moment_id}`, userIds: [m.posted_by] });
+              sendPush({ title: `${user.name} liked your post`, body: "Tap to see your post", tag: `like-${moment_id}`, userIds: [m.posted_by] });
             }
             return ms;
           });
@@ -2907,7 +2907,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           }
           // Push to post author if it's someone else's comment
           if (m && m.posted_by !== c.user_id && c.user_id === user.id) {
-            sendPush({ title: "💬 New Comment!", body: `${user.name}: ${(c.body||"").substring(0,60)}`, tag: `comment-${c.moment_id}`, userIds: [m.posted_by] });
+            sendPush({ title: `${user.name} commented`, body: `${(c.body||"").substring(0,60)}`, tag: `comment-${c.moment_id}`, userIds: [m.posted_by] });
           }
           return ms;
         });

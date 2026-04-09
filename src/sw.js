@@ -71,18 +71,16 @@ self.addEventListener('push', (event) => {
     data = { title: 'El Mundo', body: event.data.text() };
   }
 
-  const title = data.title || 'El Mundo';
+  const title = data.title || 'Notification';
   const options = {
     body: data.body || '',
     icon: '/elmundo-logo.png',
-    badge: '/icons/icon-192.png',
     tag: data.tag || 'el-mundo-notification',
     data: {
       url: data.url || '/',
     },
-    vibrate: [100, 50, 100],
+    silent: false,
     renotify: !!data.tag,
-    actions: data.actions || [],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
