@@ -567,8 +567,11 @@ export default function App() {
   // Send push notification to specific user(s) via Edge Function
   const sendPush = useCallback(async ({ title, body, tag, url, userIds }) => {
     try {
-      await supabase.functions.invoke('send-push', {
-        body: { title, body, tag, url, user_ids: userIds },
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      await fetch(`${SUPA_URL}/functions/v1/send-push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, body, tag, url, user_ids: userIds }),
       });
     } catch {}
   }, []);
