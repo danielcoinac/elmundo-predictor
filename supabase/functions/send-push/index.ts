@@ -115,7 +115,7 @@ serve(async (req) => {
   }
 
   try {
-    const { title, body, tag, url, user_ids } = await req.json();
+    const { title, body, tag, url, user_ids } = JSON.parse(await req.text());
     if (!title || !body) return new Response(JSON.stringify({ error: "title and body required" }), { status: 400 });
 
     const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY")!;

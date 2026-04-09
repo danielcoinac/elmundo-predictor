@@ -565,12 +565,13 @@ export default function App() {
   }, [page, matches, sendNotif]);
 
   // Send push notification to specific user(s) via Edge Function
+  // Uses text/plain to avoid CORS preflight (Supabase gateway blocks OPTIONS)
   const sendPush = useCallback(async ({ title, body, tag, url, userIds }) => {
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       await fetch(`${SUPA_URL}/functions/v1/send-push`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({ title, body, tag, url, user_ids: userIds }),
       });
     } catch {}
