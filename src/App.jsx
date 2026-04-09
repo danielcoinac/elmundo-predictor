@@ -233,6 +233,8 @@ export default function App() {
             playMatchAlert();
             toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
             sendNotif("Match Result!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
+            // Push to ALL users (even those with app closed)
+            if (isAdmin) sendPush({ title: "⚽ Match Result!", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
             try { navigator.vibrate?.([100, 50, 100]); } catch {}
           }
         }
@@ -506,10 +508,24 @@ export default function App() {
     }
   }, [urlBase64ToUint8Array]);
 
-  // Local notification fallback (when push isn't available)
-  const sendNotif = useCallback((title, body, tag) => {
-    if ("Notification" in window && Notification.permission === "granted") {
-      try { new Notification(title, { body, icon: "/elmundo-logo.png", badge: "/icons/icon-192.png", tag: tag || undefined, silent: false }); } catch {}
+  // Send notification via service worker (works on mobile + desktop)
+  const sendNotif = useCallback(async (title, body, tag) => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      // Use service worker registration to show notification (required for mobile)
+      const reg = await navigator.serviceWorker?.ready;
+      if (reg) {
+        reg.showNotification(title, {
+          body, icon: "/elmundo-logo.png", badge: "/icons/icon-192.png",
+          tag: tag || undefined, vibrate: [100, 50, 100], renotify: !!tag,
+          data: { url: "/" },
+        });
+      } else {
+        // Fallback for desktop without SW
+        new Notification(title, { body, icon: "/elmundo-logo.png", tag: tag || undefined });
+      }
+    } catch {
+      try { new Notification(title, { body, icon: "/elmundo-logo.png" }); } catch {}
     }
   }, []);
 
@@ -1342,6 +1358,7 @@ export default function App() {
           showPassport={showPassport} setShowPassport={setShowPassport}
           passportStamps={passportStamps}
           sendNotif={sendNotif}
+          sendPush={sendPush}
         />
       )}
     </div>
@@ -2054,7 +2071,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 showPassport = false, setShowPassport, passportStamps = [],
-                qrTable = "", sendNotif = () => {} }) {
+                qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
@@ -2117,7 +2134,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches" && <ErrorBoundary name="matches"><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></ErrorBoundary>}
-          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} /></ErrorBoundary>}
+          {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} sendPush={sendPush} /></ErrorBoundary>}
           {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} /></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             onCancelOrder={cancelOrder}
@@ -2769,7 +2786,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
 /* ═══ MOMENTS ═══════════════════════════════════════════════════════════════ */
 const FEED_PAGE_SIZE = 15;
 
-function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0, appSettings = {}, sendNotif = ()=>{} }) {
+function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts = () => 0, appSettings = {}, sendNotif = ()=>{}, sendPush = ()=>{} }) {
   const [feedTab,  setFeedTab]  = useState("feed"); // "feed" | "notifs"
   const [showSearch, setShowSearch] = useState(false);
   const [searchFromFeed, setSearchFromFeed] = useState(false); // opened via card author click
@@ -2850,11 +2867,15 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
         const { moment_id, user_id, user_name } = p.new;
         if (moment_id && user_id) {
           setLikes(l => { const n={...l}; const s=new Set(n[moment_id]||[]); s.add(user_id); n[moment_id]=s; return n; });
-          // Notify if someone liked MY post
+          // Notify if someone liked MY post (local) + push to post author
           setMoments(ms => {
             const m = ms.find(x => x.id === moment_id);
             if (m && m.posted_by === user.id && user_id !== user.id) {
-              sendNotif("New Like!", `${user_name || "Someone"} liked your post`, `like-${moment_id}-${user_id}`);
+              sendNotif("New Like!", `${user_name || users[user_id]?.name || "Someone"} liked your post`, `like-${moment_id}-${user_id}`);
+            }
+            // Push to post author if it's someone else's like
+            if (m && m.posted_by !== user_id && user_id === user.id) {
+              sendPush({ title: "❤️ New Like!", body: `${user.name} liked your post`, tag: `like-${moment_id}`, userIds: [m.posted_by] });
             }
             return ms;
           });
@@ -2869,11 +2890,15 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       .on("postgres_changes", { event:"INSERT", schema:"public", table:"moment_comments" }, p => {
         const c = p.new;
         setComments(prev => { const n={...prev}; n[c.moment_id]=[...(n[c.moment_id]||[]), c]; return n; });
-        // Notify if someone commented on MY post
+        // Notify if someone commented on MY post (local) + push to post author
         setMoments(ms => {
           const m = ms.find(x => x.id === c.moment_id);
           if (m && m.posted_by === user.id && c.user_id !== user.id) {
             sendNotif("New Comment!", `${c.user_name || "Someone"}: ${(c.body||"").substring(0,60)}`, `comment-${c.id}`);
+          }
+          // Push to post author if it's someone else's comment
+          if (m && m.posted_by !== c.user_id && c.user_id === user.id) {
+            sendPush({ title: "💬 New Comment!", body: `${user.name}: ${(c.body||"").substring(0,60)}`, tag: `comment-${c.moment_id}`, userIds: [m.posted_by] });
           }
           return ms;
         });
