@@ -102,10 +102,16 @@ function base64UrlEncode(data: string | Uint8Array): string {
 //  EDGE FUNCTION: send-push
 // ══════════════════════════════════════════════════════════════════════════
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 serve(async (req) => {
-  // CORS
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" } });
+    return new Response("ok", { status: 204, headers: CORS_HEADERS });
   }
 
   try {
@@ -128,7 +134,7 @@ serve(async (req) => {
     const { data: subs, error } = await query;
     if (error) throw error;
     if (!subs || subs.length === 0) {
-      return new Response(JSON.stringify({ sent: 0 }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      return new Response(JSON.stringify({ sent: 0 }), { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
     }
 
     const payload = JSON.stringify({ title, body, tag: tag || "el-mundo", url: url || "/" });
@@ -160,12 +166,12 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ sent, cleaned: stale.length }), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   }
 });
