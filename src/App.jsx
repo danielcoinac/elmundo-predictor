@@ -1662,6 +1662,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
   const { t } = useLang();
   const evLabel = `${appSettings.eventName||"WORLD CUP"} ${appSettings.eventYear||2026}`;
   const [showTV,  setShowTV]  = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [phase,   setPhase]   = useState(0); // 0=hidden 1=logo-in 2=text-neon 3=settle 4=done
   const timersRef = useRef([]);
 
@@ -1776,8 +1777,11 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
             <FField label={t('email')}     val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
             <FField label={t('password')}  val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
             {err && <div className="auth-err"><span className="auth-err-dot">!</span>{err}</div>}
-            <button className="auth-cta" onClick={isLogin ? onLogin : onRegister}>
-              {isLogin ? t('signInBtn') : t('registerBtn')}
+            <button className="auth-cta" disabled={authLoading} onClick={async () => {
+              setAuthLoading(true);
+              try { await (isLogin ? onLogin : onRegister)(); } finally { setAuthLoading(false); }
+            }}>
+              {authLoading ? <span className="auth-spinner" /> : (isLogin ? t('signInBtn') : t('registerBtn'))}
             </button>
             <p className="auth-footer-text">
               {isLogin ? t('dontHaveAccount') + " " : t('alreadyHaveAccount') + " "}
