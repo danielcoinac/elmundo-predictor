@@ -552,6 +552,8 @@ export default function App() {
         notifTimersRef.current.push(setTimeout(() => {
           sendNotif("Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the community pulse!`, `match-reminder-${m.id}`);
           toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
+          // Push to ALL users (even those with app closed)
+          if (isAdminRef.current) sendPush({ title: "⚽ Match in 1 hour!", body: `${m.home} vs ${m.away} — check the community pulse!`, tag: `reminder-${m.id}` });
         }, delay));
       }
     });
@@ -927,6 +929,8 @@ export default function App() {
     // Update users state so Credits tab reflects new balance immediately
     setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);
+    // Push notification to the player
+    sendPush({ title: "💰 Credits Added!", body: `$${amount.toFixed(2)} credits have been added to your account`, tag: `topup-${userId}`, userIds: [userId] });
     // Print top-up receipt
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
