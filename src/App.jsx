@@ -2937,7 +2937,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
         if (error) throw error;
       } else {
         const { error } = await supabase.from("moment_likes").insert({ moment_id: momentId, user_id: user.id });
-        if (error) throw error;
+        if (error && error.code !== "23505") throw error; // ignore duplicate key
         try { navigator.vibrate?.([40]); } catch {}
         // Burst animation
         const particles = Array.from({length:7},(_,i)=>({ id:Date.now()+i, dx:(Math.random()-0.5)*80, dy:-(30+Math.random()*60) }));
