@@ -464,18 +464,63 @@ export default function App() {
 
   // ── Push Notifications ──────────────────────────────────────────────────
   const notifTimersRef = useRef([]);
-  const requestNotifPermission = useCallback(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
+  const pushSubRef = useRef(false); // prevent double-subscribe
+
+  // Helper: convert VAPID base64url key to Uint8Array
+  const urlBase64ToUint8Array = useCallback((base64String) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
   }, []);
+
+  // Subscribe to Web Push and save subscription to Supabase
+  const subscribeToPush = useCallback(async (uid) => {
+    if (pushSubRef.current) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidKey) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      // Check if already subscribed
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      }
+      pushSubRef.current = true;
+      // Save to Supabase (upsert so we don't duplicate)
+      const subJSON = sub.toJSON();
+      await supabase.from('push_subscriptions').upsert({
+        user_id: uid,
+        endpoint: subJSON.endpoint,
+        keys_p256dh: subJSON.keys.p256dh,
+        keys_auth: subJSON.keys.auth,
+      }, { onConflict: 'user_id,endpoint' });
+    } catch (err) {
+      console.warn('Push subscription failed:', err);
+    }
+  }, [urlBase64ToUint8Array]);
+
+  // Local notification fallback (when push isn't available)
   const sendNotif = useCallback((title, body, tag) => {
     if ("Notification" in window && Notification.permission === "granted") {
       try { new Notification(title, { body, icon: "/elmundo-logo.png", badge: "/icons/icon-192.png", tag: tag || undefined, silent: false }); } catch {}
     }
   }, []);
 
-  // Schedule "1 hour before match" reminders
+  // Subscribe to push when user logs in
+  useEffect(() => {
+    if (page === "app" && user?.id) {
+      subscribeToPush(user.id);
+    }
+  }, [page, user?.id, subscribeToPush]);
+
+  // Schedule "1 hour before match" reminders (local)
   useEffect(() => {
     if (page !== "app" || !matches.length) return;
     notifTimersRef.current.forEach(clearTimeout);
@@ -485,7 +530,7 @@ export default function App() {
       if (m.status === "finished") return;
       const ko = matchKickoff(m);
       if (!ko) return;
-      const reminderAt = ko.getTime() - 60 * 60 * 1000; // 1 hour before
+      const reminderAt = ko.getTime() - 60 * 60 * 1000;
       const delay = reminderAt - now;
       if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
         notifTimersRef.current.push(setTimeout(() => {
@@ -497,11 +542,13 @@ export default function App() {
     return () => notifTimersRef.current.forEach(clearTimeout);
   }, [page, matches, sendNotif]);
 
-  // Request permission on first user interaction
-  useEffect(() => {
-    const handler = () => { requestNotifPermission(); window.removeEventListener("click", handler); };
-    window.addEventListener("click", handler);
-    return () => window.removeEventListener("click", handler);
+  // Send push notification to specific user(s) via Edge Function
+  const sendPush = useCallback(async ({ title, body, tag, url, userIds }) => {
+    try {
+      await supabase.functions.invoke('send-push', {
+        body: { title, body, tag, url, user_ids: userIds },
+      });
+    } catch {}
   }, []);
 
   const doRegister = async () => {
