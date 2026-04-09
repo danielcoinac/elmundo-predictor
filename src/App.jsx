@@ -6,7 +6,7 @@ import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
 import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { printReceipt, FloorPlan } from "./components/StaffViews";
+import { FloorPlan } from "./components/StaffViews";
 import "./styles.css";
 
 /** Read event branding from localStorage — works in any context (outside React components) */
@@ -495,7 +495,7 @@ export default function App() {
       }
     });
     return () => notifTimersRef.current.forEach(clearTimeout);
-  }, [page, matches]);
+  }, [page, matches, sendNotif]);
 
   // Request permission on first user interaction
   useEffect(() => {
@@ -2028,7 +2028,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       const first = tabs[0];
       if (first) switchTab(first.id);
     }
-  }, [appSettings.noEventMode, appSettings.showMatches, appSettings.showLeaderboard, appSettings.showMundogram, appSettings.showMenu]);
+  }, [appTab, appSettings.noEventMode, appSettings.showMatches, appSettings.showLeaderboard, appSettings.showMundogram, appSettings.showMenu]);
 
   return (
     <div className="shell">
@@ -2957,9 +2957,11 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   };
   const onTouchMoveFeed = (e) => {
     if (pullStartRef.current === null || refreshing) return;
+    const el = feedScrollRef.current;
+    if (el && el.scrollTop > 0) { pullStartRef.current = null; setPullY(0); return; }
     const dy = e.touches[0].clientY - pullStartRef.current;
-    if (dy > 0) setPullY(Math.min(dy * 0.5, 120));
-    else { setPullY(0); pullStartRef.current = null; }
+    if (dy > 10) { setPullY(Math.min((dy - 10) * 0.45, 120)); }
+    else { setPullY(0); if (dy < -5) pullStartRef.current = null; }
   };
   const onTouchEndFeed = async () => {
     if (pullStartRef.current === null) return;

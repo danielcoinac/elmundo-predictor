@@ -68,7 +68,7 @@
   .ffield-lbl{display:block;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.45);margin-bottom:8px}
   .ffield-inp{width:100%;padding:15px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;font-family:'Outfit',sans-serif;font-size:16px;font-weight:500;transition:all .2s;outline:none;border-radius:10px}
   .ffield-inp::placeholder{color:rgba(255,255,255,.25)}
-  .ffield-inp:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.09);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
+  .ffield-inp:focus{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.06);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
   .auth-err{display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#fca5a5;margin-bottom:18px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;border-radius:6px}
   .auth-err-dot{font-family:'Anton',sans-serif;font-size:15px;color:#ef4444}
   .auth-cta{width:100%;padding:18px;background:#fff;color:#000;border:none;cursor:pointer;font-family:'Anton',sans-serif;font-size:11.5px;letter-spacing:5px;transition:all .15s;margin-bottom:22px;margin-top:6px;border-radius:10px}
@@ -77,7 +77,7 @@
   .auth-footer-link{color:rgba(255,255,255,.8);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
   /* ── SHELL ── */
-  .shell{display:flex;flex-direction:column;height:100vh;background:#000;max-width:100%;margin:0 auto;position:relative}
+  .shell{display:flex;flex-direction:column;height:100vh;height:100dvh;background:#000;max-width:100%;margin:0 auto;position:relative}
   .hdr{display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 20px;background:#000;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:200;flex-shrink:0}
   .hdr-logo-btn{background:none;border:none;padding:0;cursor:pointer;display:flex;align-items:center;opacity:.92;transition:opacity .15s, transform .15s}
   .hdr-logo-btn:hover{opacity:1;transform:scale(1.04)}
@@ -98,7 +98,7 @@
   .lang-toggle{padding:5px 10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1.5px;transition:all .15s;border-radius:6px}
   .lang-toggle:hover{background:rgba(255,255,255,.08);color:#fff}
   .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
-  .body{flex:1;overflow-y:auto;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
+  .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
   .body-inner{max-width:900px;margin:0 auto}
   .bot-nav{display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.07);height:calc(60px + env(safe-area-inset-bottom, 0px));padding-bottom:env(safe-area-inset-bottom, 0px);z-index:200}
   .bot-nav-inner{display:flex;width:100%;max-width:900px}
@@ -163,7 +163,7 @@
   .score-label-green{color:rgba(34,197,94,.6)}
   .score-inputs-row{display:flex;align-items:center;gap:8px}
   .sinput{width:52px;height:60px;text-align:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);color:#fff;font-family:'Anton',sans-serif;font-size:30px;outline:none;transition:all .2s;border-radius:8px}
-  .sinput:focus{border-color:rgba(255,255,255,.7);background:rgba(255,255,255,.12)}
+  .sinput:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(255,255,255,.08)}
   .sinput::placeholder{color:rgba(255,255,255,.25)}
   .ssep{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.2)}
   .mcard-foot{padding:0 14px 14px}
@@ -742,14 +742,7 @@
   .mom-sheet-title{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:3px;color:#fff;margin-bottom:4px}
   .mom-sheet-hint{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-bottom:12px}
   .mom-pick-area{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1.5px dashed rgba(255,255,255,.18);border-radius:12px;padding:32px 16px;margin-bottom:12px;cursor:pointer;transition:border-color .2s}
-  .mom-pick-area:hover{border-color:rgba(255,255,255,.4)}
-  .mom-preview-wrap{position:relative;margin-bottom:12px;border-radius:12px;overflow:hidden}
-  .mom-preview-img{width:100%;max-height:260px;object-fit:cover;display:block;border-radius:12px}
-  .mom-preview-change{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:20px;padding:4px 10px;font-size:11px;cursor:pointer}
-  .mom-caption-inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;padding:10px 14px;font-size:13px;border-radius:10px;outline:none;box-sizing:border-box;margin-bottom:0}
-  .mom-caption-inp::placeholder{color:rgba(255,255,255,.25)}
-  .mom-upload-btn{padding:13px;background:#fff;color:#000;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;cursor:pointer;border:none;border-radius:10px;text-align:center;transition:opacity .2s}
-  .mom-cancel-btn{padding:13px;background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.45);font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;cursor:pointer;border-radius:10px}
+  /* (moved to line ~853 — refined versions below) */
   /* ── Feed ── */
   .mom-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center}
   /* Refresh bar */
@@ -1596,12 +1589,7 @@
     background: rgba(255,255,255,.018) !important;
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
   }
-  /* Score inputs: white focus ring */
-  .sinput:focus{
-    border-color: rgba(255,255,255,.5) !important;
-    background: rgba(255,255,255,.04) !important;
-    box-shadow: 0 0 0 3px rgba(255,255,255,.08) !important;
-  }
+  /* (sinput:focus consolidated into base rule above) */
   /* Predict CTA: white hover */
   .pred-cta:hover:not(:disabled){
     border-color: rgba(255,255,255,.5) !important;
@@ -1705,12 +1693,7 @@
   .atab-on::after{ background: #fff !important; }
   .atab-on{ color: #fff !important; }
 
-  /* ── Search input focus: white ── */
-  .ffield-inp:focus{
-    border-color: rgba(255,255,255,.25) !important;
-    background: rgba(255,255,255,.03) !important;
-    box-shadow: 0 0 0 3px rgba(255,255,255,.06) !important;
-  }
+  /* (ffield-inp:focus consolidated into base rule above) */
 
   /* ── Header: subtle white glow behind logo on hover ── */
   .hdr-logo-btn:hover{
@@ -1817,3 +1800,124 @@
     background: var(--gold) !important;
     box-shadow: 0 0 8px rgba(201,168,76,.5) !important;
   }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MOBILE RESPONSIVE — max-width:480px
+  ══════════════════════════════════════════════════════════════════════════ */
+  @media(max-width:480px){
+    .hdr{height:56px;padding:0 14px}
+    .hdr-brand{font-size:14px;letter-spacing:2px}
+    .hdr-caption{font-size:5.5px}
+    .hdr-badge{padding:4px 8px}
+    .hdr-badge-pts{font-size:18px}
+    .admin-badge{font-size:7.5px;padding:4px 8px}
+    .lang-toggle{padding:4px 8px;font-size:8px}
+    .hdr-out{width:30px;height:30px}
+    .section-banner-title{font-size:26px}
+    .notification{left:12px;right:12px;bottom:74px;max-width:none}
+    .modal{padding:28px 20px;max-width:calc(100vw - 40px)}
+    .modal-title{font-size:20px}
+    .lb-pod-name{font-size:clamp(9px,2vw,13px)}
+    .lb-pod-pts{font-size:clamp(22px,4.5vw,36px)}
+    .lb-row{padding:12px 14px}
+    .lb-row-name{font-size:15px}
+    .lb-row-pts{font-size:18px}
+    .mcard-topstrip{padding:8px 12px 0}
+    .mcard-scoreboard{padding:12px 12px 10px}
+    .mcard-foot{padding:0 12px 12px}
+    .sinput{width:46px;height:52px;font-size:26px}
+    .score-digit{font-size:30px}
+    .score-digit-sm{font-size:24px}
+    .live-orders-grid{grid-template-columns:1fr;padding:10px}
+    .cart-fab{left:12px;right:12px}
+    .go-modal-panel{max-height:85vh;border-radius:14px 14px 0 0}
+    .prof-hero{padding:32px 16px 28px}
+    .prof-name{font-size:24px}
+    .stats-grid{gap:1px}
+    .scard{padding:18px 14px}
+    .mom-sheet{max-height:92vh;padding:14px 14px calc(24px + env(safe-area-inset-bottom,0px))}
+  }
+
+  /* ── Small phones (320px) ── */
+  @media(max-width:360px){
+    .hdr-badge{display:none}
+    .sinput{width:40px;height:46px;font-size:22px}
+    .score-digit{font-size:26px}
+    .lb-table-header{grid-template-columns:40px 1fr 60px}
+    .lb-row{grid-template-columns:40px 1fr 60px}
+    .modal{padding:24px 16px}
+    .section-banner-title{font-size:22px}
+  }
+
+  /* ── Tablet+ (768px) ── */
+  @media(min-width:768px){
+    .mcard-scoreboard{padding:20px 24px 18px;gap:16px}
+    .sinput{width:60px;height:68px;font-size:34px}
+    .score-digit{font-size:42px}
+    .notification{max-width:380px}
+    .modal{max-width:420px;padding:40px 32px}
+    .prof-hero{padding:52px 32px 42px}
+    .section-banner{padding:28px 24px 20px}
+    .section-banner-title{font-size:38px}
+    .menu-item-row{padding:16px 24px}
+    .lb-row{padding:18px 24px}
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Z-INDEX HIERARCHY (consolidated)
+  ══════════════════════════════════════════════════════════════════════════ */
+  /* Layer 100: content overlays */
+  /* Layer 200: sticky header + bottom nav (already set) */
+  /* Layer 300: FABs */
+  .cart-fab{z-index:300}
+  /* Layer 400-700: modals ascending */
+  /* Layer 800: system-level overlays */
+  .offline-bar{z-index:10000}
+  .notification{z-index:9500}
+  .winner-overlay{z-index:9800}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     ACCESSIBILITY — Focus outlines + contrast
+  ══════════════════════════════════════════════════════════════════════════ */
+  /* Visible focus ring for keyboard navigation (replaces outline:none) */
+  .ffield-inp:focus-visible,.sinput:focus-visible,.mom-caption-inp:focus-visible,
+  .mom-comment-inp:focus-visible,.chat-input:focus-visible,.psearch-inp:focus-visible,
+  .admin-sinput:focus-visible,.afield-inp:focus-visible,.ps-inp:focus-visible,
+  .cart-item-note-inp:focus-visible{
+    outline:2px solid rgba(255,255,255,.4);outline-offset:2px
+  }
+  /* Focus ring for buttons */
+  .bnav-btn:focus-visible,.pred-cta:focus-visible,.date-chip:focus-visible,
+  .auth-cta:focus-visible,.modal-del-btn:focus-visible,.modal-cancel-btn:focus-visible,
+  .order-place-btn:focus-visible,.menu-qty-btn:focus-visible,.admin-save-btn:focus-visible,
+  .cart-fab:focus-visible,.mom-upload-btn:focus-visible{
+    outline:2px solid rgba(255,255,255,.5);outline-offset:2px
+  }
+  /* Bump low-contrast text to WCAG AA minimum */
+  .hdr-caption{color:rgba(255,255,255,.35)}
+  .hdr-badge-label{color:rgba(255,255,255,.4)}
+  .score-label{color:rgba(255,255,255,.35)}
+  .modal-cancel-btn{color:rgba(255,255,255,.5)}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MISSING HOVER / ACTIVE / FOCUS STATES
+  ══════════════════════════════════════════════════════════════════════════ */
+  .bnav-btn:active{opacity:.6}
+  .date-chip:active{transform:scale(.96)}
+  .date-chip-on:active{transform:scale(.96)}
+  .pred-cta:active:not(:disabled){transform:scale(.98);opacity:.8}
+  .auth-cta:active{transform:scale(.98);opacity:.85}
+  .modal-del-btn:active{opacity:.7}
+  .modal-cancel-btn:active{opacity:.7}
+  .admin-save-btn:active{opacity:.7;transform:scale(.98)}
+  .admin-cancel-btn:active{opacity:.7}
+  .order-place-btn:active{opacity:.7;transform:scale(.98)}
+  .order-cancel-btn:active{opacity:.7}
+  .cart-fab:active{transform:scale(.97);opacity:.85}
+  .mom-upload-btn:active{opacity:.8;transform:scale(.98)}
+  .mom-cancel-btn:active{opacity:.7}
+  .lb-tog-btn:hover{color:rgba(255,255,255,.7)}
+  .admin-save-btn:hover{opacity:.88}
+  .match-tab-btn:hover{color:rgba(255,255,255,.6)}
+  .menu-item-row:active{background:rgba(255,255,255,.04)}
+  .lb-row:active{background:rgba(255,255,255,.04)}
