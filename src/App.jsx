@@ -234,7 +234,7 @@ export default function App() {
             toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
             sendNotif("Match Result!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
             // Push to ALL users (even those with app closed)
-            if (isAdmin) sendPush({ title: "⚽ Match Result!", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
+            if (isAdminRef.current) sendPush({ title: "⚽ Match Result!", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
             try { navigator.vibrate?.([100, 50, 100]); } catch {}
           }
         }
@@ -467,6 +467,7 @@ export default function App() {
   // ── Push Notifications ──────────────────────────────────────────────────
   const notifTimersRef = useRef([]);
   const pushSubRef = useRef(false); // prevent double-subscribe
+  const isAdminRef = useRef(false); // for use in closures (realtime callbacks)
 
   // Helper: convert VAPID base64url key to Uint8Array
   const urlBase64ToUint8Array = useCallback((base64String) => {
@@ -481,14 +482,13 @@ export default function App() {
     if (pushSubRef.current) return;
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!vapidKey) return;
+    if (!vapidKey) { console.warn('Push: VITE_VAPID_PUBLIC_KEY not set — push disabled (local notifications still work)'); return; }
+    if (Notification.permission !== 'granted') return; // Permission handled separately
     try {
       const reg = await navigator.serviceWorker.ready;
       // Check if already subscribed
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') return;
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidKey),
@@ -529,11 +529,17 @@ export default function App() {
     }
   }, []);
 
-  // Subscribe to push when user logs in
+  // Request notification permission + subscribe to push when user logs in
   useEffect(() => {
-    if (page === "app" && user?.id) {
+    if (page !== "app" || !user?.id) return;
+    (async () => {
+      // Always request notification permission (needed for local notifications too)
+      if ("Notification" in window && Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+      // Subscribe to Web Push (only works if VAPID key is set + permission granted)
       subscribeToPush(user.id);
-    }
+    })();
   }, [page, user?.id, subscribeToPush]);
 
   // Schedule "1 hour before match" reminders (local)
@@ -747,6 +753,7 @@ export default function App() {
 
   const isAdmin = user?.is_admin === true || user?.is_admin === 1 || user?.is_admin === "true"
     || user?.badge === "developer" || user?.badge === "owner";
+  isAdminRef.current = isAdmin; // keep ref in sync for realtime closures
 
   // ── MENU HANDLERS ──────────────────────────────────────────────────────────
   const saveMenuItem = async (item) => {
