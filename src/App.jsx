@@ -513,14 +513,18 @@ export default function App() {
       pushSubRef.current = true;
       const subJSON = sub.toJSON();
       console.log('[PUSH 12] Saving to Supabase...');
-      // Delete existing sub for this user+endpoint, then insert fresh (avoids needing UPDATE RLS policy)
-      await supabase.from('push_subscriptions').delete().eq('user_id', uid).eq('endpoint', subJSON.endpoint);
-      const { error } = await supabase.from('push_subscriptions').insert({
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[PUSH 12a] Auth session:', session ? 'yes (uid=' + session.user.id + ')' : 'NO SESSION');
+      // Delete existing sub for this user+endpoint, then insert fresh
+      const delRes = await supabase.from('push_subscriptions').delete().eq('user_id', uid).eq('endpoint', subJSON.endpoint);
+      console.log('[PUSH 12b] Delete result:', delRes.error ? delRes.error.message : 'ok');
+      const { data: insertData, error, status } = await supabase.from('push_subscriptions').insert({
         user_id: uid,
         endpoint: subJSON.endpoint,
         keys_p256dh: subJSON.keys.p256dh,
         keys_auth: subJSON.keys.auth,
-      });
+      }).select();
+      console.log('[PUSH 13] Insert status:', status, 'data:', insertData, 'error:', error);
       if (error) console.error('[PUSH 13] Supabase error:', error);
       else console.log('[PUSH 13] ✅ Saved to Supabase!');
     } catch (err) {
