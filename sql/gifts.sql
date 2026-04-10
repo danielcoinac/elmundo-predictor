@@ -28,7 +28,7 @@ ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
 -- Recipients can read their own gifts
 CREATE POLICY "Users can read own gifts"
   ON gifts FOR SELECT TO authenticated
-  USING (auth.uid() = recipient_id OR auth.uid() = sender_id);
+  USING (auth.uid() = recipient_id);
 
 -- Admins can read all gifts
 CREATE POLICY "Admins can read all gifts"
@@ -39,12 +39,17 @@ CREATE POLICY "Admins can read all gifts"
               AND (is_admin = true OR badge IN ('developer','owner','staff')))
   );
 
--- Authenticated users can gift to others (sender_id must match auth.uid)
-CREATE POLICY "Users can send gifts"
+-- System can insert passport completion gifts for the authenticated user
+-- (only when sender_id is NULL and type is 'passport' — prevents abuse)
+CREATE POLICY "System can insert passport gifts for self"
   ON gifts FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = sender_id);
+  WITH CHECK (
+    auth.uid() = recipient_id
+    AND sender_id IS NULL
+    AND type = 'passport'
+  );
 
--- Admins can insert any gift (including system/passport gifts with null sender)
+-- Admins can insert any gift (credits, items, passport) to any player
 CREATE POLICY "Admins can insert any gift"
   ON gifts FOR INSERT TO authenticated
   WITH CHECK (

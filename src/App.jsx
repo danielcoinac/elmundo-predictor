@@ -56,7 +56,6 @@ export default function App() {
   const [showPassport,   setShowPassport]   = useState(false);
   const [gifts,          setGifts]          = useState([]);
   const [showGifts,      setShowGifts]      = useState(false);
-  const [showSendGift,   setShowSendGift]   = useState(false);
   const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
@@ -381,14 +380,9 @@ export default function App() {
       }, payload => {
         if (payload.eventType === "INSERT" && payload.new) {
           setGifts(g => g.find(x => x.id === payload.new.id) ? g : [payload.new, ...g]);
-          // Alert: new gift received
-          const giftMsg = payload.new.type === "credits"
-            ? `You received $${(+payload.new.amount).toFixed(2)} in credits!`
-            : payload.new.type === "item"
-              ? `You received: ${payload.new.item_name || payload.new.title}`
-              : `${payload.new.title}`;
-          toast$(`🎁 ${giftMsg}`);
-          sendNotif("You got a gift!", giftMsg, `gift-${payload.new.id}`);
+          // Alert: new gift received — keep it a surprise, no details revealed
+          toast$(`🎁 You got a gift — check it out`);
+          sendNotif("You got a gift", "Check it out", `gift-${payload.new.id}`);
           try { navigator.vibrate?.([60, 40, 60, 40, 120]); } catch {}
         } else if (payload.eventType === "UPDATE" && payload.new) {
           setGifts(g => g.map(x => x.id === payload.new.id ? payload.new : x));
@@ -910,8 +904,8 @@ export default function App() {
             // Push notification to celebrate the milestone
             try {
               await sendPush({
-                title: "🏆 Passport Complete!",
-                body: "You just unlocked a special gift — tap to open MY GIFTS",
+                title: "You got a gift",
+                body: "Check it out",
                 tag: "passport-complete",
                 userIds: [user.id],
               });
@@ -1463,7 +1457,6 @@ export default function App() {
           passportStamps={passportStamps}
           gifts={gifts}
           showGifts={showGifts} setShowGifts={setShowGifts}
-          showSendGift={showSendGift} setShowSendGift={setShowSendGift}
           sendNotif={sendNotif}
           sendPush={sendPush}
         />
@@ -2179,7 +2172,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 showPassport = false, setShowPassport, passportStamps = [],
                 gifts = [], showGifts = false, setShowGifts = () => {},
-                showSendGift = false, setShowSendGift = () => {},
                 qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
@@ -2292,7 +2284,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             qrTable={qrTable}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
-          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} onOpenSendGift={() => setShowSendGift(true)} /></ErrorBoundary>}
+          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} /></ErrorBoundary>}
           {appTab === "vip" && user?.sponsor_tier && (
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
@@ -2351,15 +2343,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               gifts={gifts}
               onClose={() => setShowGifts(false)}
               onToast={onToast}
-            />
-          )}
-          {showSendGift && (
-            <SendGiftView
-              user={user}
-              users={users}
-              onClose={() => setShowSendGift(false)}
-              onToast={onToast}
-              sendPush={sendPush}
             />
           )}
         </div>
@@ -3445,37 +3428,54 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
              onTouchMove={onPtrMove}
              onTouchEnd={onPtrEnd}
              onTouchCancel={onPtrEnd}>
-          {/* ── Premium pull-to-refresh indicator ── */}
-          <div className="ptr2-wrap"
-               style={{
-                 height: `${ptrDist}px`,
-                 opacity: ptrDist > 4 ? 1 : 0,
-                 transition: ptrActive.current ? "none" : "height .35s cubic-bezier(.22,.61,.36,1), opacity .25s",
-               }}>
-            <div className="ptr2-inner">
-              <div className={`ptr2-ring ${ptrRefreshing ? "ptr2-ring-spinning" : ""}`}
+          {/* ── Premium El Mundo pull-to-refresh indicator ── */}
+          {(() => {
+            const p = Math.min(1, ptrDist / PTR_TRIGGER);
+            const ready = ptrDist >= PTR_TRIGGER;
+            return (
+              <div className="ptr3-wrap"
                    style={{
-                     transform: `rotate(${ptrRefreshing ? 0 : ptrDist * 4}deg) scale(${Math.min(1, ptrDist / PTR_TRIGGER)})`,
+                     height: `${ptrDist}px`,
+                     opacity: ptrDist > 2 ? 1 : 0,
+                     transition: ptrActive.current ? "none" : "height .45s cubic-bezier(.22,.61,.36,1), opacity .3s",
                    }}>
-                <svg viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="15" className="ptr2-ring-bg"/>
-                  <circle cx="18" cy="18" r="15" className="ptr2-ring-fg"
-                          style={{ strokeDashoffset: 94 - (Math.min(1, ptrDist / PTR_TRIGGER) * 94) }}/>
-                </svg>
-                <svg className="ptr2-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: ptrRefreshing ? 0 : 1 }}>
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <polyline points="19 12 12 19 5 12"/>
-                </svg>
+                <div className="ptr3-stage" style={{ transform: `translateY(${(ptrDist - 60) / 2}px)` }}>
+                  {/* soft glow halo that intensifies as you pull */}
+                  <div className="ptr3-halo" style={{ opacity: p * 0.9, transform: `scale(${0.6 + p * 0.5})` }}/>
+                  {/* outer ring — sweeping progress arc */}
+                  <svg className={`ptr3-ring ${ptrRefreshing ? "ptr3-ring-spin" : ""} ${ready ? "ptr3-ring-ready" : ""}`} width="62" height="62" viewBox="0 0 62 62">
+                    <defs>
+                      <linearGradient id="ptr3-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95"/>
+                        <stop offset="60%" stopColor="#ffffff" stopOpacity="0.7"/>
+                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0.35"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="31" cy="31" r="27" className="ptr3-ring-bg"/>
+                    <circle cx="31" cy="31" r="27" className="ptr3-ring-fg"
+                            stroke="url(#ptr3-grad)"
+                            style={{
+                              strokeDashoffset: ptrRefreshing ? 0 : 169.6 - (p * 169.6),
+                            }}/>
+                  </svg>
+                  {/* center logo — scales & subtly rotates */}
+                  <div className="ptr3-logo"
+                       style={{
+                         transform: `scale(${0.55 + p * 0.45}) rotate(${ptrRefreshing ? 0 : p * 20}deg)`,
+                         opacity: 0.2 + p * 0.8,
+                       }}>
+                    <img src="/elmundo-logo.png" alt="El Mundo" draggable="false"/>
+                  </div>
+                  {/* accent dot that lights up when ready */}
+                  <div className={`ptr3-tick ${ready ? "ptr3-tick-on" : ""}`} style={{ opacity: p }}/>
+                </div>
+                <div className={`ptr3-label ${ready ? "ptr3-label-ready" : ""} ${ptrRefreshing ? "ptr3-label-refresh" : ""}`}
+                     style={{ opacity: Math.max(0, (ptrDist - 20) / 40) }}>
+                  {ptrRefreshing ? "UPDATING" : ready ? "RELEASE" : "PULL TO REFRESH"}
+                </div>
               </div>
-              <div className="ptr2-label">
-                {ptrRefreshing
-                  ? "REFRESHING…"
-                  : ptrDist >= PTR_TRIGGER
-                    ? "RELEASE TO REFRESH"
-                    : "PULL TO REFRESH"}
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Cinematic World Cup hero banner */}
           <div className="mom-hero">
@@ -4792,7 +4792,7 @@ function PassportView({ user, stamps, matches = [], onClose }) {
 }
 
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate, passportStamps = [], onOpenPassport, gifts = [], onOpenGifts = ()=>{}, onOpenSendGift = ()=>{} }) {
+function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate, passportStamps = [], onOpenPassport, gifts = [], onOpenGifts = ()=>{} }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
@@ -5091,13 +5091,9 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
                 </div>
                 <div className="gifts-v2-text">
                   <div className="gifts-v2-title">MY GIFTS</div>
-                  <div className="gifts-v2-sub">
-                    {hasGifts
-                      ? unredeemed.length > 0
-                        ? `${unredeemed.length} unopened · ${gifts.length} total`
-                        : `${gifts.length} in history`
-                      : "No gifts yet"}
-                  </div>
+                  {unredeemed.length > 0 && (
+                    <div className="gifts-v2-sub">{unredeemed.length} unopened</div>
+                  )}
                 </div>
               </div>
               <button className="gifts-v2-open" onClick={onOpenGifts}>
@@ -5117,13 +5113,9 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
                 </div>
                 {passportStamps.length >= matches.length
                   ? <div className="gifts-v2-passport-hint gifts-v2-passport-done">COMPLETE — reward unlocked in your gifts</div>
-                  : <div className="gifts-v2-passport-hint">Order during every match to complete your passport</div>}
+                  : <div className="gifts-v2-passport-hint">Collect all stamps by ordering anything during each match — complete it and get a guaranteed gift!</div>}
               </div>
             )}
-            <button className="gifts-v2-send" onClick={onOpenSendGift}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              SEND A GIFT TO A PLAYER
-            </button>
           </div>
         );
       })()}
@@ -5349,173 +5341,6 @@ function MyGiftsView({ user, gifts = [], onClose, onToast = ()=>{} }) {
         </div>
       </div>
     </>
-  );
-}
-
-/* ═══ SEND GIFT ════════════════════════════════════════════════════════════ */
-function SendGiftView({ user, users = {}, onClose, onToast = ()=>{}, sendPush = ()=>{} }) {
-  const [step, setStep] = useState(1); // 1=pick player, 2=compose, 3=sent
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(null);
-  const [type, setType] = useState("credits"); // "credits" | "item"
-  const [amount, setAmount] = useState("5");
-  const [itemName, setItemName] = useState("");
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const userList = Object.values(users).filter(u => u.id !== user.id && !u.is_banned);
-  const results = query.trim().length > 0
-    ? userList.filter(u =>
-        u.name?.toLowerCase().includes(query.toLowerCase()) ||
-        String(u.player_number || "").includes(query))
-    : userList.slice(0, 15);
-
-  const send = async () => {
-    if (sending) return;
-    if (!selected) return;
-    if (type === "credits") {
-      const amt = parseFloat(amount);
-      if (!amt || amt <= 0) { onToast("Enter a valid amount", false); return; }
-    } else if (type === "item" && !itemName.trim()) {
-      onToast("Enter an item name", false);
-      return;
-    }
-    setSending(true);
-    try {
-      const payload = {
-        recipient_id: selected.id,
-        sender_id: user.id,
-        sender_name: user.name,
-        type,
-        title: type === "credits"
-          ? `$${parseFloat(amount).toFixed(2)} in credits`
-          : itemName.trim(),
-        description: type === "credits"
-          ? `A credits top-up from ${user.name}`
-          : `A free ${itemName.trim()} from ${user.name}`,
-        amount: type === "credits" ? parseFloat(amount) : 0,
-        item_name: type === "item" ? itemName.trim() : null,
-        message: message.trim() || null,
-      };
-      const { error } = await supabase.from("gifts").insert(payload);
-      if (error) throw error;
-      // Push notification to the recipient
-      try {
-        await sendPush({
-          title: "You just got a gift",
-          body: type === "credits"
-            ? `${user.name} sent you $${parseFloat(amount).toFixed(2)} in credits`
-            : `${user.name} sent you ${itemName.trim()}`,
-          tag: `gift-from-${user.id}`,
-          userIds: [selected.id],
-        });
-      } catch {}
-      setStep(3);
-    } catch (err) {
-      console.error("Send gift failed", err);
-      onToast("Could not send gift — please try again", false);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="gv-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="gv-modal gv-modal-send">
-        <button className="gv-close" onClick={onClose}>✕</button>
-
-        {step === 1 && (
-          <>
-            <div className="gv-header">
-              <div className="gv-title">SEND A GIFT</div>
-              <div className="gv-sub">Pick a player to surprise</div>
-            </div>
-            <div className="sg-search-wrap">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input className="sg-search-inp" placeholder="Search by name or #number…" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
-              {query && <button className="sg-search-clr" onClick={() => setQuery("")}>✕</button>}
-            </div>
-            <div className="sg-results">
-              {results.length === 0
-                ? <div className="sg-hint">No players found for "{query}"</div>
-                : results.map(u => (
-                  <div key={u.id} className="sg-row" onClick={() => { setSelected(u); setStep(2); }}>
-                    <Av u={u} size={44} fontSize={17}/>
-                    <div className="sg-row-info">
-                      <div className="sg-row-name">{u.name}</div>
-                      {u.player_number && <div className="sg-row-num">#{u.player_number}</div>}
-                    </div>
-                    <span className="sg-row-arr">›</span>
-                  </div>
-                ))}
-            </div>
-          </>
-        )}
-
-        {step === 2 && selected && (
-          <>
-            <button className="sg-back" onClick={() => { setSelected(null); setStep(1); }}>← BACK</button>
-            <div className="gv-header">
-              <div className="gv-title">COMPOSE GIFT</div>
-              <div className="gv-sub">To · {selected.name}{selected.player_number ? ` · #${selected.player_number}` : ""}</div>
-            </div>
-
-            <div className="sg-compose">
-              <div className="sg-type-row">
-                <button className={`sg-type-btn ${type==="credits"?"sg-type-on":""}`} onClick={() => setType("credits")}>
-                  <span className="sg-type-ico">💳</span>
-                  <span className="sg-type-lbl">CREDITS</span>
-                </button>
-                <button className={`sg-type-btn ${type==="item"?"sg-type-on":""}`} onClick={() => setType("item")}>
-                  <span className="sg-type-ico">🥃</span>
-                  <span className="sg-type-lbl">FREE ITEM</span>
-                </button>
-              </div>
-
-              {type === "credits" ? (
-                <>
-                  <div className="sg-field-lbl">AMOUNT (USD)</div>
-                  <div className="sg-amount-row">
-                    {[5, 10, 20, 50].map(v => (
-                      <button key={v} className={`sg-amt-btn ${+amount === v ? "sg-amt-on" : ""}`} onClick={() => setAmount(String(v))}>${v}</button>
-                    ))}
-                  </div>
-                  <div className="sg-amount-custom-wrap">
-                    <span className="sg-amount-prefix">$</span>
-                    <input className="sg-amount-inp" type="number" min="1" step="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Custom"/>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="sg-field-lbl">ITEM NAME</div>
-                  <input className="sg-text-inp" placeholder="e.g. Corona, Mojito, Burger…" value={itemName} onChange={e => setItemName(e.target.value)} maxLength={60}/>
-                </>
-              )}
-
-              <div className="sg-field-lbl" style={{marginTop:18}}>PERSONAL MESSAGE (OPTIONAL)</div>
-              <textarea className="sg-msg-inp" placeholder="Add a note…" value={message} onChange={e => setMessage(e.target.value)} maxLength={140} rows={3}/>
-
-              <button className="sg-send-btn" onClick={send} disabled={sending || (type === "item" && !itemName.trim())}>
-                {sending ? "SENDING…" : "SEND GIFT"}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === 3 && selected && (
-          <div className="sg-sent">
-            <div className="sg-sent-burst"/>
-            <div className="sg-sent-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div className="sg-sent-title">GIFT SENT</div>
-            <div className="sg-sent-sub">{selected.name} will see it instantly in their My Gifts</div>
-            <button className="sg-sent-btn" onClick={onClose}>DONE</button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -5896,16 +5721,11 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
       }));
       const { error } = await supabase.from("gifts").insert(payloads);
       if (error) throw error;
-      // Push notification to recipient(s)
+      // Push notification to recipient(s) — keep it a surprise, no details revealed
       try {
-        const pushBody = type === "credits"
-          ? `You received $${parseFloat(amount).toFixed(2)} in credits`
-          : type === "item"
-            ? `You received ${itemName.trim()}`
-            : "A special reward is waiting for you";
         await sendPush({
-          title: "You just got a gift",
-          body: pushBody,
+          title: "You got a gift",
+          body: "Check it out",
           tag: `gift-${Date.now()}`,
           userIds: recipients,
         });
