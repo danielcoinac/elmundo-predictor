@@ -65,17 +65,35 @@ export default function App() {
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
   }, []);
 
-  // Load global app settings from Supabase (shared for all users)
+  // Load global app settings from Supabase (shared for ALL users/devices)
   useEffect(() => {
     (async () => {
-      const saved = await sget("em_app_settings");
-      if (saved) setAppSettings(prev => ({ ...APP_SETTINGS_DEF, ...saved }));
+      // Try Supabase first (source of truth), fall back to localStorage cache
+      const { data } = await supabase.from("app_settings").select("value").eq("key", "global").maybeSingle();
+      if (data?.value) {
+        setAppSettings(prev => ({ ...APP_SETTINGS_DEF, ...data.value }));
+        try { localStorage.setItem("em_app_settings", JSON.stringify(data.value)); } catch {}
+      } else {
+        const saved = await sget("em_app_settings");
+        if (saved) setAppSettings(prev => ({ ...APP_SETTINGS_DEF, ...saved }));
+      }
     })();
+    // Listen for realtime changes so all devices sync instantly
+    const ch = supabase.channel("rt-app-settings")
+      .on("postgres_changes", { event:"*", schema:"public", table:"app_settings", filter:"key=eq.global" }, payload => {
+        const v = payload.new?.value;
+        if (v) {
+          setAppSettings(prev => ({ ...APP_SETTINGS_DEF, ...v }));
+          try { localStorage.setItem("em_app_settings", JSON.stringify(v)); } catch {}
+        }
+      }).subscribe();
+    return () => supabase.removeChannel(ch);
   }, []);
   const saveAppSettings = async (updates) => {
     const n = { ...appSettings, ...updates };
     setAppSettings(n);
-    await sset("em_app_settings", n);
+    try { localStorage.setItem("em_app_settings", JSON.stringify(n)); } catch {}
+    await supabase.from("app_settings").upsert({ key: "global", value: n }, { onConflict: "key" });
   };
 
   useEffect(() => {
@@ -2086,6 +2104,38 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
 
+  // "Add to Home Screen" prompt
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const deferredPromptRef = useRef(null);
+  useEffect(() => {
+    // Already installed as PWA or dismissed before
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const dismissed = localStorage.getItem("em_install_dismissed");
+    if (isStandalone || dismissed) return;
+    // Android: listen for beforeinstallprompt
+    const handler = (e) => { e.preventDefault(); deferredPromptRef.current = e; setShowInstallBanner(true); };
+    window.addEventListener("beforeinstallprompt", handler);
+    // iOS: show manual instructions after 3 seconds
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    let timer;
+    if (isIOS) timer = setTimeout(() => setShowInstallBanner(true), 3000);
+    return () => { window.removeEventListener("beforeinstallprompt", handler); clearTimeout(timer); };
+  }, []);
+  const handleInstall = async () => {
+    if (deferredPromptRef.current) {
+      deferredPromptRef.current.prompt();
+      await deferredPromptRef.current.userChoice;
+      deferredPromptRef.current = null;
+    }
+    setShowInstallBanner(false);
+    localStorage.setItem("em_install_dismissed", "1");
+  };
+  const dismissInstall = () => {
+    setShowInstallBanner(false);
+    localStorage.setItem("em_install_dismissed", "1");
+  };
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
   const switchTab = (id) => { setAnimKey(id); setAppTab(id); if (id === "floorplan" && setNewOrderAlert) setNewOrderAlert(false); };
 
   const tabs = [
@@ -2214,6 +2264,23 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
           )}
         </div>
       </main>
+      {/* Add to Home Screen banner */}
+      {showInstallBanner && (
+        <div className="install-banner">
+          <div className="install-banner-inner">
+            <img src="/elmundo-logo.png" alt="" className="install-banner-icon" />
+            <div className="install-banner-text">
+              <div className="install-banner-title">Add El Mundo to your home screen</div>
+              <div className="install-banner-desc">{isIOS ? "Tap the share button, then \"Add to Home Screen\"" : "Get the full app experience with quick access"}</div>
+            </div>
+            <div className="install-banner-actions">
+              {!isIOS && <button className="install-banner-btn" onClick={handleInstall}>Install</button>}
+              <button className="install-banner-close" onClick={dismissInstall}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="bot-nav">
         <div className="bot-nav-inner">
           {tabs.map(({ id, label, ico }) => (
@@ -2820,10 +2887,6 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   const [imgRatios, setImgRatios] = useState({}); // momentId -> aspect ratio string
   // Feed pagination
   const [feedPage, setFeedPage] = useState(1);
-  // Pull-to-refresh
-  const [pullY, setPullY] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const pullStartRef = useRef(null);
   const feedScrollRef = useRef(null);
 
   const load = async () => {
@@ -3033,32 +3096,6 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
     return `${Math.floor(s/86400)}d ago`;
   };
 
-  // Pull-to-refresh handlers
-  const PULL_THRESHOLD = 80;
-  const onTouchStartFeed = (e) => {
-    const el = feedScrollRef.current;
-    if (!el || el.scrollTop > 5 || refreshing) return;
-    pullStartRef.current = e.touches[0].clientY;
-  };
-  const onTouchMoveFeed = (e) => {
-    if (pullStartRef.current === null || refreshing) return;
-    const el = feedScrollRef.current;
-    if (el && el.scrollTop > 0) { pullStartRef.current = null; setPullY(0); return; }
-    const dy = e.touches[0].clientY - pullStartRef.current;
-    if (dy > 10) { setPullY(Math.min((dy - 10) * 0.45, 120)); }
-    else { setPullY(0); if (dy < -5) pullStartRef.current = null; }
-  };
-  const onTouchEndFeed = async () => {
-    if (pullStartRef.current === null) return;
-    pullStartRef.current = null;
-    if (pullY >= PULL_THRESHOLD) {
-      setRefreshing(true);
-      await load();
-      setFeedPage(1);
-      setRefreshing(false);
-    }
-    setPullY(0);
-  };
 
   const unseenNotifs = notifs.filter(n => !notifSeen.includes(n.id)).length;
 
@@ -3256,15 +3293,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
-        <div ref={feedScrollRef}
-          onTouchStart={onTouchStartFeed} onTouchMove={onTouchMoveFeed} onTouchEnd={onTouchEndFeed}>
-          {/* Pull-to-refresh indicator */}
-          <div className="ptr-wrap" style={{height: pullY > 0 || refreshing ? Math.max(pullY, refreshing ? 50 : 0) : 0, opacity: pullY > 10 || refreshing ? 1 : 0}}>
-            <div className={`ptr-spinner ${refreshing ? "ptr-spinning" : ""}`} style={{transform: refreshing ? undefined : `rotate(${pullY * 3}deg)`}}>
-              {pullY >= PULL_THRESHOLD || refreshing ? "↻" : "↓"}
-            </div>
-            <span className="ptr-text">{refreshing ? "Refreshing…" : pullY >= PULL_THRESHOLD ? "Release to refresh" : "Pull down to refresh"}</span>
-          </div>
+        <div ref={feedScrollRef}>
           {/* Cinematic World Cup hero banner */}
           <div className="mom-hero">
             <div className="mom-hero-bg"/>
@@ -5124,9 +5153,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
 /* ── Admin: App Settings ── */
 function AdminAppSettings({ appSettings = {}, onSave }) {
-  const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP", ...appSettings };
-  const [yearInput, setYearInput] = useState(String(s.eventYear));
-  const [nameInput, setNameInput] = useState(s.eventName||"WORLD CUP");
+  const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, ...appSettings };
   const Toggle = ({ label, desc, val, onToggle }) => (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"rgba(255,255,255,.03)",border:`1px solid ${val?"rgba(255,255,255,.12)":"rgba(255,255,255,.06)"}`,marginBottom:8}}>
       <div>
@@ -5142,59 +5169,13 @@ function AdminAppSettings({ appSettings = {}, onSave }) {
     <div className="vpad">
       <div className="section-banner">
         <div className="sb-label">APP SETTINGS</div>
-        <div className="sb-sub">Control which tabs are visible and toggle event mode</div>
+        <div className="sb-sub">Control which tabs are visible for all users</div>
       </div>
       <div style={{padding:"0 14px 24px"}}>
-        {/* Event Name & Year */}
         <div style={{marginBottom:20}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT BRANDING</div>
-          <div style={{display:"flex",gap:8,marginBottom:8}}>
-            <div style={{flex:2}}>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:4}}>Event Name</div>
-              <input className="afield-inp" value={nameInput} onChange={e=>setNameInput(e.target.value)}
-                placeholder="WORLD CUP" style={{width:"100%",textTransform:"uppercase"}} />
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:4}}>Year</div>
-              <input className="afield-inp" type="number" value={yearInput} onChange={e=>setYearInput(e.target.value)}
-                placeholder="2026" style={{width:"100%"}} />
-            </div>
-          </div>
-          <button className="admin-save-btn" style={{width:"100%",padding:"10px"}}
-            onClick={()=>{ const yr=parseInt(yearInput); if(yr>2000&&yr<2100) onSave({eventYear:yr,eventName:nameInput.trim().toUpperCase()||"WORLD CUP"}); }}>
-            SAVE EVENT BRANDING
-          </button>
-        </div>
-
-        {/* Event Mode */}
-        <div style={{marginBottom:20}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>EVENT MODE</div>
-          <div style={{padding:"16px",background:s.noEventMode?"rgba(255,255,255,.04)":"rgba(255,255,255,.04)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.08)":"rgba(255,255,255,.18)"}`,marginBottom:8}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:s.noEventMode?"rgba(255,255,255,.35)":"rgba(255,255,255,.9)"}}>
-                  {s.noEventMode ? "EVENT DISABLED" : "⚽ WORLD CUP MODE ACTIVE"}
-                </div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:"'Outfit',sans-serif"}}>
-                  {s.noEventMode ? "Matches & leaderboard tabs are hidden. App runs in restaurant-only mode." : "Matches and leaderboard are shown. Disable when the event ends."}
-                </div>
-              </div>
-              <div onClick={()=>onSave({noEventMode:!s.noEventMode})} style={{width:44,height:24,borderRadius:12,background:s.noEventMode?"rgba(255,255,255,.1)":"rgba(255,255,255,.9)",border:`1px solid ${s.noEventMode?"rgba(255,255,255,.15)":"rgba(255,255,255,.9)"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0,marginLeft:16}}>
-                <div style={{position:"absolute",top:3,left:s.noEventMode?3:22,width:16,height:16,borderRadius:"50%",background:s.noEventMode?"rgba(255,255,255,.4)":"#000",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* Individual Tab Visibility */}
-        {!s.noEventMode && (
-          <div style={{marginBottom:20}}>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>TAB VISIBILITY</div>
-            <Toggle label="MATCHES" desc="World Cup match predictions tab" val={s.showMatches} onToggle={()=>onSave({showMatches:!s.showMatches})} />
-            <Toggle label="LEADERBOARD" desc="Player rankings and points tab" val={s.showLeaderboard} onToggle={()=>onSave({showLeaderboard:!s.showLeaderboard})} />
-          </div>
-        )}
-        <div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>RESTAURANT TABS</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>TAB VISIBILITY</div>
+          <Toggle label="MATCHES" desc="World Cup match predictions tab" val={s.showMatches} onToggle={()=>onSave({showMatches:!s.showMatches})} />
+          <Toggle label="LEADERBOARD" desc="Player rankings and points tab" val={s.showLeaderboard} onToggle={()=>onSave({showLeaderboard:!s.showLeaderboard})} />
           <Toggle label="MUNDOGRAM" desc="Social photo feed tab" val={s.showMundogram} onToggle={()=>onSave({showMundogram:!s.showMundogram})} />
           <Toggle label="MENU" desc="Food & drinks ordering tab" val={s.showMenu} onToggle={()=>onSave({showMenu:!s.showMenu})} />
         </div>

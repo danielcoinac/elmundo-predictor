@@ -103,6 +103,18 @@
   .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
   .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
   .body-inner{max-width:900px;margin:0 auto}
+  /* Install Banner */
+  .install-banner{position:fixed;bottom:calc(60px + env(safe-area-inset-bottom, 0px));left:0;right:0;z-index:250;padding:0 12px 8px;animation:installSlide .3s ease-out}
+  @keyframes installSlide{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+  .install-banner-inner{display:flex;align-items:center;gap:12px;background:rgba(20,20,20,.97);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 16px}
+  .install-banner-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0}
+  .install-banner-text{flex:1;min-width:0}
+  .install-banner-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:.5px;color:#fff}
+  .install-banner-desc{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.45);margin-top:2px;line-height:1.3}
+  .install-banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .install-banner-btn{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1px;background:#fff;color:#000;border:none;padding:8px 16px;border-radius:8px;cursor:pointer}
+  .install-banner-close{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px 8px}
+
   .bot-nav{display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.07);height:calc(60px + env(safe-area-inset-bottom, 0px));padding-bottom:env(safe-area-inset-bottom, 0px);z-index:200}
   .bot-nav-inner{display:flex;width:100%;max-width:900px}
   .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent;border:none;color:rgba(255,255,255,.18);cursor:pointer;transition:color .2s;position:relative;padding:0}
