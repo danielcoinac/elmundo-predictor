@@ -2973,51 +2973,20 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   const feedScrollRef = useRef(null);
 
   // ── Premium pull-to-refresh ──
-  const PTR_MAX = 90;        // max pull distance (hard cap)
-  const PTR_TRIGGER = 70;    // distance to trigger refresh
+  // Hardcoded distances (px)
+  const PTR_MAX = 110;
+  const PTR_TRIGGER = 78;
   const [ptrDist, setPtrDist] = useState(0);
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
-  const ptrStartY = useRef(null);
-  const ptrActive = useRef(false);
-  const ptrHaptic = useRef(false);
-
-  const onPtrStart = (e) => {
-    // Only engage when scrolled to the very top of the page
-    if (window.scrollY > 0) return;
-    ptrStartY.current = e.touches[0].clientY;
-    ptrActive.current = true;
-    ptrHaptic.current = false;
-  };
-  const onPtrMove = (e) => {
-    if (!ptrActive.current || ptrStartY.current == null || ptrRefreshing) return;
-    const dy = e.touches[0].clientY - ptrStartY.current;
-    if (dy <= 0) { setPtrDist(0); return; }
-    // Rubber-band curve: asymptotic approach to PTR_MAX
-    const eased = Math.min(PTR_MAX, dy * 0.5);
-    setPtrDist(eased);
-    if (!ptrHaptic.current && eased >= PTR_TRIGGER) {
-      ptrHaptic.current = true;
-      try { navigator.vibrate?.(18); } catch {}
-    }
-    if (eased > 6) { try { e.preventDefault(); } catch {} }
-  };
-  const onPtrEnd = async () => {
-    if (!ptrActive.current) return;
-    ptrActive.current = false;
-    if (ptrDist >= PTR_TRIGGER && !ptrRefreshing) {
-      setPtrRefreshing(true);
-      setPtrDist(PTR_TRIGGER);
-      try { await load(); } catch {}
-      // Let the spinner show at least briefly for a premium feel
-      setTimeout(() => {
-        setPtrRefreshing(false);
-        setPtrDist(0);
-      }, 600);
-    } else {
-      setPtrDist(0);
-    }
-    ptrStartY.current = null;
-  };
+  const ptrActiveRef = useRef(false);
+  const ptrDragRef   = useRef(false); // true once we've confirmed this is a vertical pull
+  const ptrStartYRef = useRef(0);
+  const ptrStartXRef = useRef(0);
+  const ptrLastDistRef = useRef(0);
+  const ptrScrollerRef = useRef(null);
+  const ptrRefreshingRef = useRef(false);
+  // keep ref in sync with state for handler closure
+  useEffect(() => { ptrRefreshingRef.current = ptrRefreshing; }, [ptrRefreshing]);
 
   const load = async () => {
     const { data: ms } = await supabase.from("moments").select("*").order("created_at", { ascending: false });
@@ -3049,6 +3018,112 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
     notifList.sort((a,b) => b.time > a.time ? 1 : -1);
     setNotifs(notifList);
   };
+
+  // ── Pull-to-refresh touch handling (non-passive, targets actual scroller) ──
+  useEffect(() => {
+    if (feedTab !== "feed") return;
+    // The real scroll container is <main class="body"> — find it by walking up.
+    const anchor = feedScrollRef.current;
+    if (!anchor) return;
+    let scroller = anchor.parentElement;
+    while (scroller) {
+      const cs = getComputedStyle(scroller);
+      if (cs.overflowY === "auto" || cs.overflowY === "scroll") break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) scroller = document.querySelector("main.body") || window;
+    ptrScrollerRef.current = scroller;
+
+    const getScrollTop = () => scroller === window
+      ? window.scrollY || document.documentElement.scrollTop
+      : scroller.scrollTop;
+
+    const onTouchStart = (e) => {
+      if (ptrRefreshingRef.current) return;
+      if (getScrollTop() > 0) return;
+      const t = e.touches[0];
+      ptrStartYRef.current = t.clientY;
+      ptrStartXRef.current = t.clientX;
+      ptrActiveRef.current = true;
+      ptrDragRef.current = false;
+      ptrLastDistRef.current = 0;
+    };
+
+    const onTouchMove = (e) => {
+      if (!ptrActiveRef.current || ptrRefreshingRef.current) return;
+      const t = e.touches[0];
+      const dy = t.clientY - ptrStartYRef.current;
+      const dx = t.clientX - ptrStartXRef.current;
+      // Ignore horizontal swipes
+      if (!ptrDragRef.current) {
+        if (Math.abs(dx) > Math.abs(dy)) { ptrActiveRef.current = false; return; }
+        if (dy > 6) ptrDragRef.current = true;
+        else return;
+      }
+      // Only pulling down counts
+      if (dy <= 0) {
+        if (ptrLastDistRef.current > 0) { setPtrDist(0); ptrLastDistRef.current = 0; }
+        return;
+      }
+      // If user scrolled the content away from top mid-drag, abort
+      if (getScrollTop() > 0) {
+        ptrActiveRef.current = false;
+        if (ptrLastDistRef.current > 0) { setPtrDist(0); ptrLastDistRef.current = 0; }
+        return;
+      }
+      // Rubber-band curve: asymptotic approach to PTR_MAX
+      const raw = dy * 0.55;
+      const eased = raw < PTR_MAX ? raw : PTR_MAX - Math.pow(PTR_MAX, 2) / (PTR_MAX + (raw - PTR_MAX));
+      const clamped = Math.max(0, Math.min(PTR_MAX, eased));
+      ptrLastDistRef.current = clamped;
+      setPtrDist(clamped);
+      // Haptic tick when crossing trigger threshold
+      if (clamped >= PTR_TRIGGER && !ptrActiveRef.hapticFired) {
+        ptrActiveRef.hapticFired = true;
+        try { navigator.vibrate?.(18); } catch {}
+      }
+      if (clamped < PTR_TRIGGER && ptrActiveRef.hapticFired) {
+        ptrActiveRef.hapticFired = false;
+      }
+      // CRITICAL: block native scroll/overscroll while pulling
+      try { e.preventDefault(); } catch {}
+    };
+
+    const onTouchEnd = async () => {
+      if (!ptrActiveRef.current && ptrLastDistRef.current === 0) return;
+      const wasActive = ptrActiveRef.current;
+      ptrActiveRef.current = false;
+      ptrDragRef.current = false;
+      ptrActiveRef.hapticFired = false;
+      if (!wasActive) return;
+      if (ptrLastDistRef.current >= PTR_TRIGGER && !ptrRefreshingRef.current) {
+        setPtrRefreshing(true);
+        setPtrDist(PTR_TRIGGER);
+        try { navigator.vibrate?.([12, 40, 12]); } catch {}
+        try { await load(); } catch {}
+        // Hold briefly so animation reads as premium
+        await new Promise(r => setTimeout(r, 700));
+        setPtrRefreshing(false);
+        setPtrDist(0);
+        ptrLastDistRef.current = 0;
+      } else {
+        setPtrDist(0);
+        ptrLastDistRef.current = 0;
+      }
+    };
+
+    // Must be non-passive so preventDefault works
+    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroller.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    scroller.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    scroller.addEventListener("touchcancel",onTouchEnd,   { passive: true });
+    return () => {
+      scroller.removeEventListener("touchstart", onTouchStart);
+      scroller.removeEventListener("touchmove",  onTouchMove);
+      scroller.removeEventListener("touchend",   onTouchEnd);
+      scroller.removeEventListener("touchcancel",onTouchEnd);
+    };
+  }, [feedTab]);
 
   useEffect(() => {
     load();
@@ -3423,11 +3498,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
-        <div ref={feedScrollRef}
-             onTouchStart={onPtrStart}
-             onTouchMove={onPtrMove}
-             onTouchEnd={onPtrEnd}
-             onTouchCancel={onPtrEnd}>
+        <div ref={feedScrollRef}>
           {/* ── Premium El Mundo pull-to-refresh indicator ── */}
           {(() => {
             const p = Math.min(1, ptrDist / PTR_TRIGGER);
@@ -3437,7 +3508,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                    style={{
                      height: `${ptrDist}px`,
                      opacity: ptrDist > 2 ? 1 : 0,
-                     transition: ptrActive.current ? "none" : "height .45s cubic-bezier(.22,.61,.36,1), opacity .3s",
+                     transition: ptrActiveRef.current ? "none" : "height .45s cubic-bezier(.22,.61,.36,1), opacity .3s",
                    }}>
                 <div className="ptr3-stage" style={{ transform: `translateY(${(ptrDist - 60) / 2}px)` }}>
                   {/* soft glow halo that intensifies as you pull */}
