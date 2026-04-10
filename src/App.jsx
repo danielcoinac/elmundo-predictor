@@ -54,6 +54,9 @@ export default function App() {
   const [winnerData,   setWinnerData]   = useState(null);
   const [passportStamps, setPassportStamps] = useState([]);
   const [showPassport,   setShowPassport]   = useState(false);
+  const [gifts,          setGifts]          = useState([]);
+  const [showGifts,      setShowGifts]      = useState(false);
+  const [showSendGift,   setShowSendGift]   = useState(false);
   const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
@@ -161,6 +164,10 @@ export default function App() {
           // Load passport stamps
           const { data: stampRows } = await supabase.from("passport_stamps").select("*").eq("user_id", session.user.id).order("earned_at");
           if (stampRows) setPassportStamps(stampRows);
+
+          // Load gifts
+          const { data: giftRows } = await supabase.from("gifts").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false });
+          if (giftRows) setGifts(giftRows);
 
           // Restore active group order if user is still a member
           const { data: memRow } = await supabase
@@ -366,6 +373,30 @@ export default function App() {
       .subscribe();
     globalChannelRef.current = globalSub;
 
+    // ── 9b. MY GIFTS — Realtime ──────────────────────────────────────────────
+    const giftSub = supabase.channel("rt-gifts-me")
+      .on("postgres_changes", {
+        event:"*", schema:"public", table:"gifts",
+        filter:`recipient_id=eq.${uid}`
+      }, payload => {
+        if (payload.eventType === "INSERT" && payload.new) {
+          setGifts(g => g.find(x => x.id === payload.new.id) ? g : [payload.new, ...g]);
+          // Alert: new gift received
+          const giftMsg = payload.new.type === "credits"
+            ? `You received $${(+payload.new.amount).toFixed(2)} in credits!`
+            : payload.new.type === "item"
+              ? `You received: ${payload.new.item_name || payload.new.title}`
+              : `${payload.new.title}`;
+          toast$(`🎁 ${giftMsg}`);
+          sendNotif("You got a gift!", giftMsg, `gift-${payload.new.id}`);
+          try { navigator.vibrate?.([60, 40, 60, 40, 120]); } catch {}
+        } else if (payload.eventType === "UPDATE" && payload.new) {
+          setGifts(g => g.map(x => x.id === payload.new.id ? payload.new : x));
+        } else if (payload.eventType === "DELETE" && payload.old) {
+          setGifts(g => g.filter(x => x.id !== payload.old.id));
+        }
+      }).subscribe();
+
     // ── 10. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
     // Only fetches the user's own lightweight data — failsafe if Realtime misses anything
     // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
@@ -389,6 +420,7 @@ export default function App() {
       supabase.removeChannel(creditNotifSub);
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
       supabase.removeChannel(globalSub);
+      supabase.removeChannel(giftSub);
       clearInterval(fallback);
     };
   }, [page, user?.id]);
@@ -835,6 +867,7 @@ export default function App() {
       const koStr = `${ko.getFullYear()}-${String(ko.getMonth()+1).padStart(2,"0")}-${String(ko.getDate()).padStart(2,"0")}`;
       return koStr === todayStr;
     });
+    let stampsAdded = 0;
     for (const lm of liveMatches) {
       // Skip if already earned for this match
       if (passportStamps.some(s => s.match_id === lm.id)) continue;
@@ -842,8 +875,52 @@ export default function App() {
         const { data } = await supabase.from("passport_stamps").insert({
           user_id: user.id, stamp_type: "match_day", match_id: lm.id,
         }).select().maybeSingle();
-        if (data) setPassportStamps(prev => [...prev, data]);
+        if (data) {
+          setPassportStamps(prev => [...prev, data]);
+          stampsAdded++;
+        }
       } catch (e) { /* duplicate = ignore */ }
+    }
+    // ── PASSPORT COMPLETION GIFT ──
+    // If user just earned their final stamp (reached matches.length total), auto-create
+    // a passport-type gift. Guard with localStorage so it's never duplicated.
+    if (stampsAdded > 0 && matches.length > 0) {
+      const newTotal = passportStamps.length + stampsAdded;
+      const completionKey = `em_passport_done_${user.id}`;
+      const alreadyGifted = localStorage.getItem(completionKey) === "1";
+      if (newTotal >= matches.length && !alreadyGifted) {
+        try {
+          // Double-check the DB doesn't already have a passport completion gift
+          const { data: existing } = await supabase.from("gifts")
+            .select("id")
+            .eq("recipient_id", user.id)
+            .eq("type", "passport")
+            .limit(1)
+            .maybeSingle();
+          if (!existing) {
+            await supabase.from("gifts").insert({
+              recipient_id: user.id,
+              sender_id: null,
+              sender_name: "El Mundo",
+              type: "passport",
+              title: "PASSPORT COMPLETE",
+              description: "You collected all stamps! Visit the bar to claim your exclusive El Mundo reward.",
+              message: "Congratulations, Champion! You watched every match and earned your reward. Show this gift to the staff to collect.",
+            });
+            // Push notification to celebrate the milestone
+            try {
+              await sendPush({
+                title: "🏆 Passport Complete!",
+                body: "You just unlocked a special gift — tap to open MY GIFTS",
+                tag: "passport-complete",
+                userIds: [user.id],
+              });
+            } catch {}
+            try { navigator.vibrate?.([100, 50, 100, 50, 200]); } catch {}
+          }
+          localStorage.setItem(completionKey, "1");
+        } catch (e) { /* ignore */ }
+      }
     }
   };
 
@@ -1384,6 +1461,9 @@ export default function App() {
           winnerData={winnerData} setWinnerData={setWinnerData}
           showPassport={showPassport} setShowPassport={setShowPassport}
           passportStamps={passportStamps}
+          gifts={gifts}
+          showGifts={showGifts} setShowGifts={setShowGifts}
+          showSendGift={showSendGift} setShowSendGift={setShowSendGift}
           sendNotif={sendNotif}
           sendPush={sendPush}
         />
@@ -2098,6 +2178,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 showPassport = false, setShowPassport, passportStamps = [],
+                gifts = [], showGifts = false, setShowGifts = () => {},
+                showSendGift = false, setShowSendGift = () => {},
                 qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
@@ -2210,7 +2292,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             qrTable={qrTable}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
-          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} /></ErrorBoundary>}
+          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} onOpenSendGift={() => setShowSendGift(true)} /></ErrorBoundary>}
           {appTab === "vip" && user?.sponsor_tier && (
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
@@ -2235,6 +2317,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSetFloorplanAccess={adminSetFloorplanAccess}
               appSettings={appSettings}
               onSaveAppSettings={onSaveAppSettings}
+              sendPush={sendPush}
               onAnnounceWinner={async () => {
                 const winner = board[0] || null;
                 setWinnerData(winner);
@@ -2260,6 +2343,23 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               stamps={passportStamps}
               matches={matches}
               onClose={() => setShowPassport(false)}
+            />
+          )}
+          {showGifts && (
+            <MyGiftsView
+              user={user}
+              gifts={gifts}
+              onClose={() => setShowGifts(false)}
+              onToast={onToast}
+            />
+          )}
+          {showSendGift && (
+            <SendGiftView
+              user={user}
+              users={users}
+              onClose={() => setShowSendGift(false)}
+              onToast={onToast}
+              sendPush={sendPush}
             />
           )}
         </div>
@@ -2889,6 +2989,53 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
   const [feedPage, setFeedPage] = useState(1);
   const feedScrollRef = useRef(null);
 
+  // ── Premium pull-to-refresh ──
+  const PTR_MAX = 90;        // max pull distance (hard cap)
+  const PTR_TRIGGER = 70;    // distance to trigger refresh
+  const [ptrDist, setPtrDist] = useState(0);
+  const [ptrRefreshing, setPtrRefreshing] = useState(false);
+  const ptrStartY = useRef(null);
+  const ptrActive = useRef(false);
+  const ptrHaptic = useRef(false);
+
+  const onPtrStart = (e) => {
+    // Only engage when scrolled to the very top of the page
+    if (window.scrollY > 0) return;
+    ptrStartY.current = e.touches[0].clientY;
+    ptrActive.current = true;
+    ptrHaptic.current = false;
+  };
+  const onPtrMove = (e) => {
+    if (!ptrActive.current || ptrStartY.current == null || ptrRefreshing) return;
+    const dy = e.touches[0].clientY - ptrStartY.current;
+    if (dy <= 0) { setPtrDist(0); return; }
+    // Rubber-band curve: asymptotic approach to PTR_MAX
+    const eased = Math.min(PTR_MAX, dy * 0.5);
+    setPtrDist(eased);
+    if (!ptrHaptic.current && eased >= PTR_TRIGGER) {
+      ptrHaptic.current = true;
+      try { navigator.vibrate?.(18); } catch {}
+    }
+    if (eased > 6) { try { e.preventDefault(); } catch {} }
+  };
+  const onPtrEnd = async () => {
+    if (!ptrActive.current) return;
+    ptrActive.current = false;
+    if (ptrDist >= PTR_TRIGGER && !ptrRefreshing) {
+      setPtrRefreshing(true);
+      setPtrDist(PTR_TRIGGER);
+      try { await load(); } catch {}
+      // Let the spinner show at least briefly for a premium feel
+      setTimeout(() => {
+        setPtrRefreshing(false);
+        setPtrDist(0);
+      }, 600);
+    } else {
+      setPtrDist(0);
+    }
+    ptrStartY.current = null;
+  };
+
   const load = async () => {
     const { data: ms } = await supabase.from("moments").select("*").order("created_at", { ascending: false });
     if (!ms?.length) { setMoments([]); return; }
@@ -3293,7 +3440,43 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
-        <div ref={feedScrollRef}>
+        <div ref={feedScrollRef}
+             onTouchStart={onPtrStart}
+             onTouchMove={onPtrMove}
+             onTouchEnd={onPtrEnd}
+             onTouchCancel={onPtrEnd}>
+          {/* ── Premium pull-to-refresh indicator ── */}
+          <div className="ptr2-wrap"
+               style={{
+                 height: `${ptrDist}px`,
+                 opacity: ptrDist > 4 ? 1 : 0,
+                 transition: ptrActive.current ? "none" : "height .35s cubic-bezier(.22,.61,.36,1), opacity .25s",
+               }}>
+            <div className="ptr2-inner">
+              <div className={`ptr2-ring ${ptrRefreshing ? "ptr2-ring-spinning" : ""}`}
+                   style={{
+                     transform: `rotate(${ptrRefreshing ? 0 : ptrDist * 4}deg) scale(${Math.min(1, ptrDist / PTR_TRIGGER)})`,
+                   }}>
+                <svg viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15" className="ptr2-ring-bg"/>
+                  <circle cx="18" cy="18" r="15" className="ptr2-ring-fg"
+                          style={{ strokeDashoffset: 94 - (Math.min(1, ptrDist / PTR_TRIGGER) * 94) }}/>
+                </svg>
+                <svg className="ptr2-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: ptrRefreshing ? 0 : 1 }}>
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <polyline points="19 12 12 19 5 12"/>
+                </svg>
+              </div>
+              <div className="ptr2-label">
+                {ptrRefreshing
+                  ? "REFRESHING…"
+                  : ptrDist >= PTR_TRIGGER
+                    ? "RELEASE TO REFRESH"
+                    : "PULL TO REFRESH"}
+              </div>
+            </div>
+          </div>
+
           {/* Cinematic World Cup hero banner */}
           <div className="mom-hero">
             <div className="mom-hero-bg"/>
@@ -4609,7 +4792,7 @@ function PassportView({ user, stamps, matches = [], onClose }) {
 }
 
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate, passportStamps = [], onOpenPassport }) {
+function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUpdate, passportStamps = [], onOpenPassport, gifts = [], onOpenGifts = ()=>{}, onOpenSendGift = ()=>{} }) {
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
@@ -4887,30 +5070,63 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         <div className="sc-cta-sub">Generate a card to invite friends to the game</div>
       </div>
 
-      {/* ── MY GIFTS ── */}
-      <div className="gifts-card">
-        <div className="gifts-header">
-          <span className="gifts-icon">🎁</span>
-          <div>
-            <div className="gifts-title">MY GIFTS</div>
-            <div className="gifts-sub">Complete your passport to unlock rewards</div>
+      {/* ── MY GIFTS (premium card, opens MyGiftsView) ── */}
+      {(() => {
+        const unredeemed = gifts.filter(g => !g.redeemed);
+        const hasGifts = gifts.length > 0;
+        return (
+          <div className="gifts-card-v2">
+            <div className="gifts-v2-shimmer"/>
+            <div className="gifts-v2-inner">
+              <div className="gifts-v2-left">
+                <div className="gifts-v2-icon-wrap">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="gifts-v2-icon">
+                    <polyline points="20 12 20 22 4 22 4 12"/>
+                    <rect x="2" y="7" width="20" height="5"/>
+                    <line x1="12" y1="22" x2="12" y2="7"/>
+                    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                  </svg>
+                  {unredeemed.length > 0 && <span className="gifts-v2-badge">{unredeemed.length}</span>}
+                </div>
+                <div className="gifts-v2-text">
+                  <div className="gifts-v2-title">MY GIFTS</div>
+                  <div className="gifts-v2-sub">
+                    {hasGifts
+                      ? unredeemed.length > 0
+                        ? `${unredeemed.length} unopened · ${gifts.length} total`
+                        : `${gifts.length} in history`
+                      : "No gifts yet"}
+                  </div>
+                </div>
+              </div>
+              <button className="gifts-v2-open" onClick={onOpenGifts}>
+                OPEN
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+            {/* Passport progress ribbon — stays in profile for visibility */}
+            {matches.length > 0 && (
+              <div className="gifts-v2-passport">
+                <div className="gifts-v2-passport-top">
+                  <span className="gifts-v2-passport-lbl">EL MUNDO PASSPORT</span>
+                  <span className="gifts-v2-passport-count">{passportStamps.length} / {matches.length}</span>
+                </div>
+                <div className="gifts-v2-bar-track">
+                  <div className="gifts-v2-bar-fill" style={{ width: `${Math.round(passportStamps.length / matches.length * 100)}%` }}/>
+                </div>
+                {passportStamps.length >= matches.length
+                  ? <div className="gifts-v2-passport-hint gifts-v2-passport-done">COMPLETE — reward unlocked in your gifts</div>
+                  : <div className="gifts-v2-passport-hint">Order during every match to complete your passport</div>}
+              </div>
+            )}
+            <button className="gifts-v2-send" onClick={onOpenSendGift}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              SEND A GIFT TO A PLAYER
+            </button>
           </div>
-        </div>
-        <div className="gifts-progress">
-          <div className="gifts-bar-track">
-            <div className="gifts-bar-fill" style={{ width: `${matches.length > 0 ? Math.round(passportStamps.length / matches.length * 100) : 0}%` }}/>
-          </div>
-          <div className="gifts-bar-label">{passportStamps.length} / {matches.length} stamps</div>
-        </div>
-        {passportStamps.length >= matches.length && matches.length > 0 ? (
-          <div className="gifts-complete">
-            <span className="gifts-complete-icon">🏆</span>
-            <span className="gifts-complete-text">PASSPORT COMPLETE! Check with staff for your reward.</span>
-          </div>
-        ) : (
-          <div className="gifts-hint">Collect all stamps by ordering during every World Cup match at El Mundo to earn a special gift!</div>
-        )}
-      </div>
+        );
+      })()}
 
       <div className="info-card">
         <div className="info-title">⚽ HOW POINTS WORK</div>
@@ -4919,6 +5135,386 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 
       {/* ── SPONSORS SECTION ── */}
       <SponsorsSection />
+    </div>
+  );
+}
+
+/* ═══ MY GIFTS ═════════════════════════════════════════════════════════════ */
+function MyGiftsView({ user, gifts = [], onClose, onToast = ()=>{} }) {
+  const [tab, setTab] = useState("active"); // "active" | "history"
+  const [redeeming, setRedeeming] = useState(null);
+  const [openedGift, setOpenedGift] = useState(null); // full-screen gift reveal
+  const [showInstructions, setShowInstructions] = useState(null); // for item gifts after redeem
+
+  const active  = gifts.filter(g => !g.redeemed);
+  const history = gifts.filter(g => g.redeemed);
+  const list = tab === "active" ? active : history;
+
+  const redeemCredits = async (g) => {
+    if (redeeming) return;
+    setRedeeming(g.id);
+    try {
+      // Add amount to user's credit balance
+      const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", user.id).maybeSingle();
+      const newBal = (+(cur?.balance || 0)) + (+g.amount || 0);
+      await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal });
+      // Mark gift as redeemed
+      await supabase.from("gifts").update({ redeemed: true, redeemed_at: new Date().toISOString(), redeemed_by: user.id }).eq("id", g.id);
+      onToast(`+$${(+g.amount).toFixed(2)} credits added to your account`);
+      try { navigator.vibrate?.([60, 40, 120]); } catch {}
+    } catch (err) {
+      console.error("Redeem failed", err);
+      onToast("Could not redeem — please try again", false);
+    } finally {
+      setRedeeming(null);
+    }
+  };
+
+  const redeemItem = async (g) => {
+    // Item gifts: do NOT mark as redeemed from the player side.
+    // Staff must mark them as redeemed in the admin panel after physical pickup.
+    // Here we just show the instructions popup.
+    setShowInstructions(g);
+  };
+
+  const dismissOpenedGift = () => setOpenedGift(null);
+
+  // Auto-open the newest unredeemed gift once (premium reveal animation)
+  useEffect(() => {
+    const latest = active[0];
+    if (!latest) return;
+    const seenKey = `em_gift_seen_${latest.id}`;
+    if (localStorage.getItem(seenKey)) return;
+    setOpenedGift(latest);
+    try { localStorage.setItem(seenKey, "1"); } catch {}
+  }, []); // eslint-disable-line
+
+  const giftIcon = (g) => {
+    if (g.type === "credits") {
+      return (
+        <div className="gift-card-badge gift-card-badge-credits">
+          <img src="/elmundo-logo.png" alt="" className="gift-card-logo"/>
+          <div className="gift-card-amount">${(+g.amount || 0).toFixed(2)}</div>
+          <div className="gift-card-amount-lbl">CREDITS</div>
+        </div>
+      );
+    }
+    if (g.type === "item") {
+      return (
+        <div className="gift-card-badge gift-card-badge-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="gift-card-item-ico">
+            <polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/>
+            <line x1="12" y1="22" x2="12" y2="7"/>
+            <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+            <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+          </svg>
+          <div className="gift-card-item-name">{g.item_name || "FREE ITEM"}</div>
+        </div>
+      );
+    }
+    // passport type
+    return (
+      <div className="gift-card-badge gift-card-badge-passport">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="gift-card-trophy">
+          <path d="M8 21h8M12 17v4M17 4h3a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5M7 4H4a1 1 0 0 0-1 1v2a5 5 0 0 0 5 5"/>
+          <path d="M17 4H7v7a5 5 0 0 0 10 0V4z"/>
+        </svg>
+        <div className="gift-card-passport-lbl">PASSPORT</div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* ── Full-screen gift reveal (first time opening) ── */}
+      {openedGift && (
+        <div className="gift-reveal-overlay" onClick={dismissOpenedGift}>
+          <div className="gift-reveal-burst"/>
+          <div className="gift-reveal-rays"/>
+          <div className="gift-reveal-card" onClick={e=>e.stopPropagation()}>
+            <div className="gift-reveal-eyebrow">YOU JUST RECEIVED A GIFT</div>
+            <div className="gift-reveal-icon-wrap">{giftIcon(openedGift)}</div>
+            <div className="gift-reveal-title">{openedGift.title}</div>
+            {openedGift.description && <div className="gift-reveal-desc">{openedGift.description}</div>}
+            {openedGift.sender_name && <div className="gift-reveal-from">From · {openedGift.sender_name}</div>}
+            {openedGift.message && <div className="gift-reveal-msg">"{openedGift.message}"</div>}
+            <button className="gift-reveal-close" onClick={dismissOpenedGift}>TAP TO CONTINUE</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Redeem instructions popup (item gifts) ── */}
+      {showInstructions && (
+        <div className="gift-instr-overlay" onClick={e => { if (e.target === e.currentTarget) setShowInstructions(null); }}>
+          <div className="gift-instr-card">
+            <button className="gift-instr-close" onClick={() => setShowInstructions(null)}>✕</button>
+            <div className="gift-instr-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div className="gift-instr-title">HOW TO REDEEM</div>
+            <div className="gift-instr-item">{showInstructions.item_name || showInstructions.title}</div>
+            <div className="gift-instr-steps">
+              <div className="gift-instr-step"><span className="gift-instr-num">1</span>Walk up to the El Mundo bar</div>
+              <div className="gift-instr-step"><span className="gift-instr-num">2</span>Show this screen to the staff</div>
+              <div className="gift-instr-step"><span className="gift-instr-num">3</span>Staff will mark it redeemed and prepare your item</div>
+            </div>
+            <div className="gift-instr-code">
+              <div className="gift-instr-code-lbl">GIFT CODE</div>
+              <div className="gift-instr-code-val">#{showInstructions.id.slice(0,8).toUpperCase()}</div>
+            </div>
+            <div className="gift-instr-player">
+              <div className="gift-instr-player-lbl">PLAYER</div>
+              <div className="gift-instr-player-val">{user.name}{user.player_number ? ` · #${user.player_number}` : ""}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Main MY GIFTS overlay ── */}
+      <div className="gv-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="gv-modal">
+          <button className="gv-close" onClick={onClose}>✕</button>
+          <div className="gv-header">
+            <div className="gv-title">MY GIFTS</div>
+            <div className="gv-sub">Rewards, top-ups and surprises from El Mundo</div>
+          </div>
+          <div className="gv-tabs">
+            <button className={`gv-tab ${tab==="active"?"gv-tab-on":""}`} onClick={() => setTab("active")}>
+              ACTIVE {active.length > 0 && <span className="gv-tab-count">{active.length}</span>}
+            </button>
+            <button className={`gv-tab ${tab==="history"?"gv-tab-on":""}`} onClick={() => setTab("history")}>
+              HISTORY {history.length > 0 && <span className="gv-tab-count">{history.length}</span>}
+            </button>
+          </div>
+
+          <div className="gv-list">
+            {list.length === 0 ? (
+              <div className="gv-empty">
+                <div className="gv-empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 12 20 22 4 22 4 12"/>
+                    <rect x="2" y="7" width="20" height="5"/>
+                    <line x1="12" y1="22" x2="12" y2="7"/>
+                    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                  </svg>
+                </div>
+                <div className="gv-empty-title">{tab === "active" ? "NO ACTIVE GIFTS" : "NO HISTORY YET"}</div>
+                <div className="gv-empty-hint">{tab === "active"
+                  ? "Order during matches, complete your passport, or receive a gift from another player"
+                  : "Redeemed gifts will appear here"}</div>
+              </div>
+            ) : list.map((g, i) => (
+              <div key={g.id} className={`gift-card ${g.redeemed ? "gift-card-done" : ""}`} style={{animationDelay:`${i*.05}s`}}>
+                <div className="gift-card-shine"/>
+                <div className="gift-card-main">
+                  {giftIcon(g)}
+                  <div className="gift-card-info">
+                    <div className="gift-card-type-lbl">
+                      {g.type === "credits" ? "CREDITS TOP-UP" : g.type === "passport" ? "PASSPORT REWARD" : "FREE ITEM"}
+                    </div>
+                    <div className="gift-card-title">{g.title}</div>
+                    {g.description && <div className="gift-card-desc">{g.description}</div>}
+                    {g.sender_name && <div className="gift-card-from">from {g.sender_name}</div>}
+                    {g.message && <div className="gift-card-msg">"{g.message}"</div>}
+                    <div className="gift-card-date">
+                      {g.redeemed
+                        ? `Redeemed ${new Date(g.redeemed_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}`
+                        : `Received ${new Date(g.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}`}
+                    </div>
+                  </div>
+                </div>
+                {!g.redeemed && (
+                  <div className="gift-card-actions">
+                    {g.type === "credits" ? (
+                      <button className="gift-redeem-btn gift-redeem-credits" onClick={() => redeemCredits(g)} disabled={redeeming === g.id}>
+                        {redeeming === g.id ? "REDEEMING…" : "REDEEM TO BALANCE"}
+                      </button>
+                    ) : (
+                      <button className="gift-redeem-btn" onClick={() => redeemItem(g)}>
+                        HOW TO REDEEM
+                      </button>
+                    )}
+                  </div>
+                )}
+                {g.redeemed && (
+                  <div className="gift-card-done-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    REDEEMED
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ═══ SEND GIFT ════════════════════════════════════════════════════════════ */
+function SendGiftView({ user, users = {}, onClose, onToast = ()=>{}, sendPush = ()=>{} }) {
+  const [step, setStep] = useState(1); // 1=pick player, 2=compose, 3=sent
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [type, setType] = useState("credits"); // "credits" | "item"
+  const [amount, setAmount] = useState("5");
+  const [itemName, setItemName] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const userList = Object.values(users).filter(u => u.id !== user.id && !u.is_banned);
+  const results = query.trim().length > 0
+    ? userList.filter(u =>
+        u.name?.toLowerCase().includes(query.toLowerCase()) ||
+        String(u.player_number || "").includes(query))
+    : userList.slice(0, 15);
+
+  const send = async () => {
+    if (sending) return;
+    if (!selected) return;
+    if (type === "credits") {
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0) { onToast("Enter a valid amount", false); return; }
+    } else if (type === "item" && !itemName.trim()) {
+      onToast("Enter an item name", false);
+      return;
+    }
+    setSending(true);
+    try {
+      const payload = {
+        recipient_id: selected.id,
+        sender_id: user.id,
+        sender_name: user.name,
+        type,
+        title: type === "credits"
+          ? `$${parseFloat(amount).toFixed(2)} in credits`
+          : itemName.trim(),
+        description: type === "credits"
+          ? `A credits top-up from ${user.name}`
+          : `A free ${itemName.trim()} from ${user.name}`,
+        amount: type === "credits" ? parseFloat(amount) : 0,
+        item_name: type === "item" ? itemName.trim() : null,
+        message: message.trim() || null,
+      };
+      const { error } = await supabase.from("gifts").insert(payload);
+      if (error) throw error;
+      // Push notification to the recipient
+      try {
+        await sendPush({
+          title: "You just got a gift",
+          body: type === "credits"
+            ? `${user.name} sent you $${parseFloat(amount).toFixed(2)} in credits`
+            : `${user.name} sent you ${itemName.trim()}`,
+          tag: `gift-from-${user.id}`,
+          userIds: [selected.id],
+        });
+      } catch {}
+      setStep(3);
+    } catch (err) {
+      console.error("Send gift failed", err);
+      onToast("Could not send gift — please try again", false);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="gv-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="gv-modal gv-modal-send">
+        <button className="gv-close" onClick={onClose}>✕</button>
+
+        {step === 1 && (
+          <>
+            <div className="gv-header">
+              <div className="gv-title">SEND A GIFT</div>
+              <div className="gv-sub">Pick a player to surprise</div>
+            </div>
+            <div className="sg-search-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input className="sg-search-inp" placeholder="Search by name or #number…" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
+              {query && <button className="sg-search-clr" onClick={() => setQuery("")}>✕</button>}
+            </div>
+            <div className="sg-results">
+              {results.length === 0
+                ? <div className="sg-hint">No players found for "{query}"</div>
+                : results.map(u => (
+                  <div key={u.id} className="sg-row" onClick={() => { setSelected(u); setStep(2); }}>
+                    <Av u={u} size={44} fontSize={17}/>
+                    <div className="sg-row-info">
+                      <div className="sg-row-name">{u.name}</div>
+                      {u.player_number && <div className="sg-row-num">#{u.player_number}</div>}
+                    </div>
+                    <span className="sg-row-arr">›</span>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
+
+        {step === 2 && selected && (
+          <>
+            <button className="sg-back" onClick={() => { setSelected(null); setStep(1); }}>← BACK</button>
+            <div className="gv-header">
+              <div className="gv-title">COMPOSE GIFT</div>
+              <div className="gv-sub">To · {selected.name}{selected.player_number ? ` · #${selected.player_number}` : ""}</div>
+            </div>
+
+            <div className="sg-compose">
+              <div className="sg-type-row">
+                <button className={`sg-type-btn ${type==="credits"?"sg-type-on":""}`} onClick={() => setType("credits")}>
+                  <span className="sg-type-ico">💳</span>
+                  <span className="sg-type-lbl">CREDITS</span>
+                </button>
+                <button className={`sg-type-btn ${type==="item"?"sg-type-on":""}`} onClick={() => setType("item")}>
+                  <span className="sg-type-ico">🥃</span>
+                  <span className="sg-type-lbl">FREE ITEM</span>
+                </button>
+              </div>
+
+              {type === "credits" ? (
+                <>
+                  <div className="sg-field-lbl">AMOUNT (USD)</div>
+                  <div className="sg-amount-row">
+                    {[5, 10, 20, 50].map(v => (
+                      <button key={v} className={`sg-amt-btn ${+amount === v ? "sg-amt-on" : ""}`} onClick={() => setAmount(String(v))}>${v}</button>
+                    ))}
+                  </div>
+                  <div className="sg-amount-custom-wrap">
+                    <span className="sg-amount-prefix">$</span>
+                    <input className="sg-amount-inp" type="number" min="1" step="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Custom"/>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="sg-field-lbl">ITEM NAME</div>
+                  <input className="sg-text-inp" placeholder="e.g. Corona, Mojito, Burger…" value={itemName} onChange={e => setItemName(e.target.value)} maxLength={60}/>
+                </>
+              )}
+
+              <div className="sg-field-lbl" style={{marginTop:18}}>PERSONAL MESSAGE (OPTIONAL)</div>
+              <textarea className="sg-msg-inp" placeholder="Add a note…" value={message} onChange={e => setMessage(e.target.value)} maxLength={140} rows={3}/>
+
+              <button className="sg-send-btn" onClick={send} disabled={sending || (type === "item" && !itemName.trim())}>
+                {sending ? "SENDING…" : "SEND GIFT"}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 3 && selected && (
+          <div className="sg-sent">
+            <div className="sg-sent-burst"/>
+            <div className="sg-sent-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div className="sg-sent-title">GIFT SENT</div>
+            <div className="sg-sent-sub">{selected.name} will see it instantly in their My Gifts</div>
+            <button className="sg-sent-btn" onClick={onClose}>DONE</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -5030,7 +5626,7 @@ function AdminDashboard({ allOrders, users, board }) {
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{} }) {
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{}, sendPush = ()=>{} }) {
   const [section, setSection] = useState("dashboard");
 
   const GROUPS = [
@@ -5063,6 +5659,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
         { id:"matches",   label:"Matches"   },
         { id:"rules",     label:"Rules"     },
         { id:"vip",       label:"VIP Perks" },
+        { id:"gifts",     label:"Gifts"     },
         { id:"passGifts", label:"Passport Gifts" },
         { id:"integrity", label:"Integrity" },
       ]
@@ -5143,6 +5740,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "tables"     && <AdminTables />}
       {section === "tableqr"    && <AdminTableQR />}
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
+      {section === "gifts"      && <AdminGifts users={users} sendPush={sendPush} />}
       {section === "passGifts" && <AdminPassportGifts users={users} matches={matches} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
       {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
@@ -5221,6 +5819,314 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Admin: Gifts (create, history, redeem item gifts) ── */
+function AdminGifts({ users, sendPush = ()=>{} }) {
+  const [allGifts, setAllGifts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("active"); // "active" | "history"
+  const [showCreate, setShowCreate] = useState(false);
+  const [recipientQ, setRecipientQ] = useState("");
+  const [recipient, setRecipient] = useState(null);
+  const [type, setType] = useState("credits");
+  const [amount, setAmount] = useState("10");
+  const [title, setTitle] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [description, setDescription] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+
+  const loadGifts = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("gifts").select("*").order("created_at", { ascending: false });
+    setAllGifts(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadGifts();
+    const ch = supabase.channel("rt-admin-gifts")
+      .on("postgres_changes", { event:"*", schema:"public", table:"gifts" }, () => loadGifts())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  const userList = Object.values(users).filter(u => !u.is_banned);
+  const recipientResults = recipientQ.trim().length > 0
+    ? userList.filter(u =>
+        u.name?.toLowerCase().includes(recipientQ.toLowerCase()) ||
+        String(u.player_number || "").includes(recipientQ))
+    : userList.slice(0, 12);
+
+  const resetForm = () => {
+    setRecipient(null);
+    setRecipientQ("");
+    setType("credits");
+    setAmount("10");
+    setTitle("");
+    setItemName("");
+    setDescription("");
+    setBulkMode(false);
+  };
+
+  const createGift = async () => {
+    if (creating) return;
+    if (!bulkMode && !recipient) { alert("Pick a recipient first"); return; }
+    if (type === "credits" && (!amount || parseFloat(amount) <= 0)) { alert("Enter a valid amount"); return; }
+    if (type === "item" && !itemName.trim()) { alert("Enter an item name"); return; }
+    setCreating(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const recipients = bulkMode ? userList.map(u => u.id) : [recipient.id];
+      const payloads = recipients.map(rid => ({
+        recipient_id: rid,
+        sender_id: authUser?.id || null,
+        sender_name: "El Mundo",
+        type,
+        title: title.trim()
+          || (type === "credits" ? `$${parseFloat(amount).toFixed(2)} in credits`
+            : type === "item" ? itemName.trim()
+            : "Special reward"),
+        description: description.trim() || null,
+        amount: type === "credits" ? parseFloat(amount) : 0,
+        item_name: type === "item" ? itemName.trim() : null,
+      }));
+      const { error } = await supabase.from("gifts").insert(payloads);
+      if (error) throw error;
+      // Push notification to recipient(s)
+      try {
+        const pushBody = type === "credits"
+          ? `You received $${parseFloat(amount).toFixed(2)} in credits`
+          : type === "item"
+            ? `You received ${itemName.trim()}`
+            : "A special reward is waiting for you";
+        await sendPush({
+          title: "You just got a gift",
+          body: pushBody,
+          tag: `gift-${Date.now()}`,
+          userIds: recipients,
+        });
+      } catch {}
+      setShowCreate(false);
+      resetForm();
+      loadGifts();
+    } catch (err) {
+      console.error("Create gift failed", err);
+      alert("Failed to create gift: " + (err?.message || err));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const markRedeemed = async (g) => {
+    if (!confirm(`Mark "${g.title}" as redeemed for ${users[g.recipient_id]?.name || "this player"}?`)) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      await supabase.from("gifts").update({
+        redeemed: true,
+        redeemed_at: new Date().toISOString(),
+        redeemed_by: authUser?.id || null,
+      }).eq("id", g.id);
+    } catch (err) {
+      console.error(err);
+      alert("Failed");
+    }
+  };
+
+  const deleteGift = async (g) => {
+    if (!confirm("Delete this gift permanently?")) return;
+    await supabase.from("gifts").delete().eq("id", g.id);
+  };
+
+  const activeGifts  = allGifts.filter(g => !g.redeemed);
+  const historyGifts = allGifts.filter(g => g.redeemed);
+  const list = tab === "active" ? activeGifts : historyGifts;
+
+  const totalCreditsGiven = allGifts.filter(g => g.type === "credits").reduce((s,g)=>s+(+g.amount||0),0);
+  const totalItems        = allGifts.filter(g => g.type === "item").length;
+  const totalRedeemed     = historyGifts.length;
+
+  return (
+    <div className="admin-gifts-wrap">
+      <div className="section-banner">
+        <div className="sb-label">GIFTS</div>
+        <div className="sb-sub">Send credits and free items · Track redemptions</div>
+      </div>
+
+      <div className="admin-gifts-header">
+        <div>
+          <div className="admin-gifts-title">ALL GIFTS</div>
+          <div className="admin-gifts-subtitle">{allGifts.length} total · {activeGifts.length} active · {totalRedeemed} redeemed</div>
+        </div>
+        <button className="admin-gifts-new-btn" onClick={() => setShowCreate(true)}>+ NEW GIFT</button>
+      </div>
+
+      <div className="admin-gifts-stats">
+        <div className="admin-gifts-stat">
+          <div className="admin-gifts-stat-val">${totalCreditsGiven.toFixed(0)}</div>
+          <div className="admin-gifts-stat-lbl">CREDITS GIVEN</div>
+        </div>
+        <div className="admin-gifts-stat">
+          <div className="admin-gifts-stat-val">{totalItems}</div>
+          <div className="admin-gifts-stat-lbl">ITEM GIFTS</div>
+        </div>
+        <div className="admin-gifts-stat">
+          <div className="admin-gifts-stat-val">{totalRedeemed}</div>
+          <div className="admin-gifts-stat-lbl">REDEEMED</div>
+        </div>
+        <div className="admin-gifts-stat">
+          <div className="admin-gifts-stat-val">{activeGifts.length}</div>
+          <div className="admin-gifts-stat-lbl">PENDING</div>
+        </div>
+      </div>
+
+      <div className="admin-gifts-tabs">
+        <button className={`admin-gifts-tab ${tab==="active"?"admin-gifts-tab-on":""}`} onClick={() => setTab("active")}>
+          ACTIVE {activeGifts.length > 0 && `(${activeGifts.length})`}
+        </button>
+        <button className={`admin-gifts-tab ${tab==="history"?"admin-gifts-tab-on":""}`} onClick={() => setTab("history")}>
+          HISTORY {historyGifts.length > 0 && `(${historyGifts.length})`}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="admin-gifts-empty">Loading…</div>
+      ) : list.length === 0 ? (
+        <div className="admin-gifts-empty">
+          {tab === "active" ? "No active gifts — click + NEW GIFT to send one" : "No redeemed gifts yet"}
+        </div>
+      ) : list.map(g => {
+        const u = users[g.recipient_id];
+        return (
+          <div key={g.id} className="admin-gifts-row">
+            <div className="admin-gifts-row-type">
+              {g.type === "credits"
+                ? <span style={{fontSize:20}}>💳</span>
+                : g.type === "item"
+                  ? <span style={{fontSize:20}}>🥃</span>
+                  : <span style={{fontSize:20}}>🏆</span>}
+            </div>
+            <div className="admin-gifts-row-info">
+              <div className="admin-gifts-row-title">{g.title}</div>
+              <div className="admin-gifts-row-meta">
+                To · <strong style={{color:"#fff"}}>{u?.name || "(deleted)"}</strong>
+                {u?.player_number ? ` · #${u.player_number}` : ""}
+                {" · "}{new Date(g.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                {g.redeemed && ` · Redeemed ${new Date(g.redeemed_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}`}
+              </div>
+            </div>
+            <div className="admin-gifts-row-actions">
+              {!g.redeemed && g.type === "item" && (
+                <button className="admin-gifts-btn admin-gifts-btn-primary" onClick={() => markRedeemed(g)}>
+                  MARK REDEEMED
+                </button>
+              )}
+              <button className="admin-gifts-btn admin-gifts-btn-danger" onClick={() => deleteGift(g)}>DEL</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {showCreate && (
+        <div className="admin-gift-modal-overlay" onClick={e=>{if(e.target===e.currentTarget){setShowCreate(false);resetForm();}}}>
+          <div className="admin-gift-modal">
+            <h3>NEW GIFT</h3>
+            <div className="admin-gift-modal-sub">Send credits or a free item to one or all players</div>
+
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button className={`sg-type-btn ${!bulkMode?"sg-type-on":""}`} onClick={()=>setBulkMode(false)}>
+                <span className="sg-type-ico">👤</span><span className="sg-type-lbl">ONE PLAYER</span>
+              </button>
+              <button className={`sg-type-btn ${bulkMode?"sg-type-on":""}`} onClick={()=>{setBulkMode(true);setRecipient(null);}}>
+                <span className="sg-type-ico">👥</span><span className="sg-type-lbl">ALL PLAYERS</span>
+              </button>
+            </div>
+
+            {!bulkMode && (
+              <>
+                <div className="sg-field-lbl">RECIPIENT</div>
+                {recipient ? (
+                  <div className="sg-row" style={{background:"rgba(255,255,255,.05)",borderColor:"rgba(255,255,255,.2)",marginBottom:14}}>
+                    <Av u={recipient} size={40} fontSize={16}/>
+                    <div className="sg-row-info">
+                      <div className="sg-row-name">{recipient.name}</div>
+                      {recipient.player_number && <div className="sg-row-num">#{recipient.player_number}</div>}
+                    </div>
+                    <button className="admin-gifts-btn" onClick={()=>setRecipient(null)}>CHANGE</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="sg-search-wrap" style={{margin:"0 0 10px"}}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      <input className="sg-search-inp" placeholder="Search players…" value={recipientQ} onChange={e=>setRecipientQ(e.target.value)}/>
+                    </div>
+                    <div style={{maxHeight:180,overflowY:"auto",marginBottom:14,display:"flex",flexDirection:"column",gap:4}}>
+                      {recipientResults.map(u => (
+                        <div key={u.id} className="sg-row" onClick={()=>setRecipient(u)}>
+                          <Av u={u} size={36} fontSize={14}/>
+                          <div className="sg-row-info">
+                            <div className="sg-row-name">{u.name}</div>
+                            {u.player_number && <div className="sg-row-num">#{u.player_number}</div>}
+                          </div>
+                          <span className="sg-row-arr">›</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="sg-field-lbl">GIFT TYPE</div>
+            <div className="sg-type-row">
+              <button className={`sg-type-btn ${type==="credits"?"sg-type-on":""}`} onClick={()=>setType("credits")}>
+                <span className="sg-type-ico">💳</span>
+                <span className="sg-type-lbl">CREDITS</span>
+              </button>
+              <button className={`sg-type-btn ${type==="item"?"sg-type-on":""}`} onClick={()=>setType("item")}>
+                <span className="sg-type-ico">🥃</span>
+                <span className="sg-type-lbl">FREE ITEM</span>
+              </button>
+            </div>
+
+            {type === "credits" ? (
+              <>
+                <div className="sg-field-lbl">AMOUNT (USD)</div>
+                <div className="sg-amount-row">
+                  {[5, 10, 25, 50].map(v => (
+                    <button key={v} className={`sg-amt-btn ${+amount === v ? "sg-amt-on" : ""}`} onClick={()=>setAmount(String(v))}>${v}</button>
+                  ))}
+                </div>
+                <div className="sg-amount-custom-wrap" style={{marginBottom:12}}>
+                  <span className="sg-amount-prefix">$</span>
+                  <input className="sg-amount-inp" type="number" min="1" step="1" value={amount} onChange={e=>setAmount(e.target.value)}/>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="sg-field-lbl">ITEM NAME</div>
+                <input className="sg-text-inp" placeholder="e.g. Corona, House Wine…" value={itemName} onChange={e=>setItemName(e.target.value)} style={{marginBottom:12}}/>
+              </>
+            )}
+
+            <div className="sg-field-lbl">CUSTOM TITLE (OPTIONAL)</div>
+            <input className="sg-text-inp" placeholder="Override the default title…" value={title} onChange={e=>setTitle(e.target.value)} style={{marginBottom:12}}/>
+
+            <div className="sg-field-lbl">DESCRIPTION (OPTIONAL)</div>
+            <textarea className="sg-msg-inp" placeholder="Why this gift? Shown to the recipient." value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{marginBottom:16}}/>
+
+            <div style={{display:"flex",gap:10}}>
+              <button className="admin-cancel-btn" style={{flex:1}} onClick={()=>{setShowCreate(false);resetForm();}}>CANCEL</button>
+              <button className="admin-save-btn" style={{flex:2}} onClick={createGift} disabled={creating}>
+                {creating ? "SENDING…" : (bulkMode ? `SEND TO ${userList.length} PLAYERS` : "SEND GIFT")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
