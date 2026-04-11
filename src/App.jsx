@@ -7821,6 +7821,14 @@ function GroupOrderView({
     setScreen("lobby");
   }, [activeGroup?.status]);
 
+  // Auto-dismiss the placed screen after 5 seconds if the user doesn't press a button.
+  // This clears activeGroup so the Menu tab stops showing the "GROUP ORDER ACTIVE" banner.
+  useEffect(() => {
+    if (activeGroup?.status !== "placed") return;
+    const t = setTimeout(() => { leaveGroupOrder(); }, 5000);
+    return () => clearTimeout(t);
+  }, [activeGroup?.id, activeGroup?.status]);
+
   const handleCreate = async () => {
     if (!tableInput.trim() || isNaN(+tableInput) || +tableInput < 1 || +tableInput > 26) {
       setTableErr("Enter a valid table number (1–26)"); return;
@@ -8622,7 +8630,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       <div className="admin-subtabs">
         {[
           {id:"menu",   label:`🍽 ${t('menuTab')}`},
-          {id:"group",  label:`👥 ${t('groupTab')}${activeGroup?" ·":""}`},
+          {id:"group",  label:`👥 ${t('groupTab')}${(activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled")?" ·":""}`},
           {id:"cart",   label:`🛒 ${t('cartTab')}${cartCount>0?` · ${cartCount}`:""}`},
           {id:"orders", label:`📦 ${t('ordersTab')}`},
           {id:"wallet", label:`💳 ${t('walletTab')}`},
@@ -8652,8 +8660,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
             ))}
           </div>
 
-          {/* ── Group order banner ── */}
-          {activeGroup && (
+          {/* ── Group order banner (only when the group is still assembling/paying) ── */}
+          {activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled" && (
             <div style={{padding:"13px 18px",background:"rgba(255,255,255,.03)",borderTop:"1px solid rgba(255,255,255,.08)",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",flexShrink:0}}/>
               <div style={{flex:1}}>
@@ -8703,8 +8711,10 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                     const isGlass  = st === "glass"  || (!st && /glass/i.test(item.name  + (item.description||"")));
                     const isBottle = st === "bottle" || (!st && /bottle/i.test(item.name + (item.description||"")));
                     const isDraft  = st === "draft"  || (!st && /draft/i.test(item.name  + (item.description||"")));
-                    // When in a group order, route to group cart instead of individual cart
-                    const inGroup = !!activeGroup;
+                    // When in a group order, route to group cart instead of individual cart.
+                    // Exclude placed/cancelled groups so leftover UI doesn't try to add items
+                    // to a finished order.
+                    const inGroup = !!activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled";
                     const myGrpItem = inGroup ? groupItems.find(gi => gi.added_by_user_id === user.id && gi.item_id === item.id) : null;
                     const displayQty = inGroup ? (myGrpItem?.qty || 0) : (cart[item.id] || 0);
                     const handleAdd = () => inGroup ? addGroupItem(item) : addToCart(item.id);
