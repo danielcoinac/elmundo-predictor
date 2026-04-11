@@ -2163,6 +2163,35 @@
     font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.4)
   }
 
+  /* ── Pending passport gift card (admin must prepare) ── */
+  .gift-card-pending{
+    border:1px solid rgba(245,200,90,.32);
+    background:linear-gradient(160deg, rgba(245,200,90,.07) 0%, rgba(245,200,90,.015) 100%);
+    box-shadow:0 6px 22px rgba(245,200,90,.12), inset 0 1px 0 rgba(245,200,90,.12)
+  }
+  .gift-card-badge-pending{
+    border-color:rgba(245,200,90,.4);
+    background:radial-gradient(circle at 50% 0%, rgba(245,200,90,.18), rgba(245,200,90,.025));
+    animation:gpend-pulse 2.6s ease-in-out infinite
+  }
+  @keyframes gpend-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(245,200,90,.18)}
+    50%{box-shadow:0 0 0 8px rgba(245,200,90,0)}
+  }
+  .gift-card-badge-pending .gift-card-trophy{color:#f5c85a;filter:drop-shadow(0 0 10px rgba(245,200,90,.5))}
+  .gift-card-badge-pending .gift-card-passport-lbl{color:#f5c85a}
+  .gift-pending-status{
+    display:flex;align-items:center;justify-content:center;gap:9px;
+    padding:11px 12px;border-radius:100px;
+    background:rgba(245,200,90,.08);border:1px solid rgba(245,200,90,.22);
+    font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2px;color:#f5c85a
+  }
+  .gift-pending-dot{
+    width:7px;height:7px;border-radius:50%;background:#f5c85a;
+    box-shadow:0 0 8px #f5c85a;animation:gpend-dot 1.4s ease-in-out infinite
+  }
+  @keyframes gpend-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.85)}}
+
   /* ═══════════════════════════════════════════════════════════════════════
      GIFT REVEAL (full-screen first-time reveal)
      ═══════════════════════════════════════════════════════════════════════ */
@@ -2418,6 +2447,40 @@
   .admin-dev-reset:hover{background:rgba(255,255,255,.1);color:#fff}
   .admin-dev-reset:active{transform:scale(.97)}
   .admin-dev-reset:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* ── Passport completions panel (admin-side pending list) ── */
+  .admin-pcomp-panel{
+    position:relative;margin-bottom:18px;padding:0;
+    background:linear-gradient(160deg, rgba(245,200,90,.08) 0%, rgba(245,200,90,.015) 100%);
+    border:1px solid rgba(245,200,90,.32);border-radius:8px;overflow:hidden;
+    box-shadow:0 6px 22px rgba(245,200,90,.1)
+  }
+  .admin-pcomp-panel::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg, #f5c85a, #ffe7a0, #f5c85a);opacity:.95;
+  }
+  .admin-pcomp-head{padding:13px 16px 11px;border-bottom:1px solid rgba(245,200,90,.18)}
+  .admin-pcomp-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#f5c85a}
+  .admin-pcomp-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.55);font-weight:500;margin-top:3px}
+  .admin-pcomp-list{padding:10px 12px 14px;display:flex;flex-direction:column;gap:8px}
+  .admin-pcomp-row{
+    display:flex;align-items:center;gap:12px;padding:11px 12px;
+    background:rgba(255,255,255,.025);border:1px solid rgba(245,200,90,.16);
+    border-radius:6px
+  }
+  .admin-pcomp-row-info{flex:1;min-width:0}
+  .admin-pcomp-row-name{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:.4px;color:#fff;line-height:1.2}
+  .admin-pcomp-row-num{color:rgba(255,255,255,.45);font-size:11px;letter-spacing:1px}
+  .admin-pcomp-row-meta{font-family:'Outfit',sans-serif;font-size:10.5px;color:rgba(255,255,255,.4);font-weight:500;margin-top:3px}
+  .admin-pcomp-prep-btn{
+    flex-shrink:0;padding:9px 14px;border-radius:100px;border:none;
+    background:#f5c85a;color:#000;
+    font-family:'Anton',sans-serif;font-size:10.5px;letter-spacing:1.6px;cursor:pointer;
+    transition:all .18s
+  }
+  .admin-pcomp-prep-btn:hover{background:#ffe7a0}
+  .admin-pcomp-prep-btn:active{transform:scale(.97)}
+  .admin-pcomp-prep-btn:disabled{opacity:.4;cursor:not-allowed}
 
   .admin-gifts-tabs{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:14px}
   .admin-gifts-tab{

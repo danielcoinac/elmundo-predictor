@@ -56,6 +56,7 @@ export default function App() {
   const [showPassport,   setShowPassport]   = useState(false);
   const [gifts,          setGifts]          = useState([]);
   const [showGifts,      setShowGifts]      = useState(false);
+  const [passportCompletion, setPassportCompletion] = useState(null);
   const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
@@ -174,6 +175,10 @@ export default function App() {
           // Load gifts
           const { data: giftRows } = await supabase.from("gifts").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false });
           if (giftRows) setGifts(giftRows);
+
+          // Load passport completion (pending gift signal)
+          const { data: pcRow } = await supabase.from("passport_completions").select("*").eq("user_id", session.user.id).maybeSingle();
+          if (pcRow) setPassportCompletion(pcRow);
 
           // Restore active group order if user is still a member
           const { data: memRow } = await supabase
@@ -398,6 +403,19 @@ export default function App() {
         }
       }).subscribe();
 
+    // ── 9c. MY PASSPORT COMPLETION — Realtime (pending gift signal) ──────────
+    const passportCompletionSub = supabase.channel("rt-passport-completion-me")
+      .on("postgres_changes", {
+        event:"*", schema:"public", table:"passport_completions",
+        filter:`user_id=eq.${uid}`
+      }, payload => {
+        if (payload.eventType === "DELETE") {
+          setPassportCompletion(null);
+        } else if (payload.new) {
+          setPassportCompletion(payload.new);
+        }
+      }).subscribe();
+
     // ── 10. LIGHTWEIGHT FALLBACK POLL every 60s ───────────────────────────────
     // Only fetches the user's own lightweight data — failsafe if Realtime misses anything
     // 500 users × 1 query / 60s = ~8 queries/sec total. Very manageable.
@@ -422,6 +440,7 @@ export default function App() {
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
       supabase.removeChannel(globalSub);
       supabase.removeChannel(giftSub);
+      supabase.removeChannel(passportCompletionSub);
       clearInterval(fallback);
     };
   }, [page, user?.id]);
@@ -882,44 +901,27 @@ export default function App() {
         }
       } catch (e) { /* duplicate = ignore */ }
     }
-    // ── PASSPORT COMPLETION GIFT ──
-    // If user just earned their final stamp (reached matches.length total), auto-create
-    // a passport-type gift. Guard with localStorage so it's never duplicated.
+    // ── PASSPORT COMPLETION SIGNAL ──
+    // If user just earned their final stamp (reached matches.length total), insert a
+    // passport_completions row. This is a SIGNAL only — no gift, no push. The admin
+    // sees this in their panel and manually prepares + sends the gift.
     if (stampsAdded > 0 && matches.length > 0) {
       const newTotal = passportStamps.length + stampsAdded;
-      const completionKey = `em_passport_done_${user.id}`;
-      const alreadyGifted = localStorage.getItem(completionKey) === "1";
-      if (newTotal >= matches.length && !alreadyGifted) {
+      if (newTotal >= matches.length) {
         try {
-          // Double-check the DB doesn't already have a passport completion gift
-          const { data: existing } = await supabase.from("gifts")
+          // Avoid duplicate inserts (table has a UNIQUE constraint on user_id anyway)
+          const { data: existing } = await supabase.from("passport_completions")
             .select("id")
-            .eq("recipient_id", user.id)
-            .eq("type", "passport")
-            .limit(1)
+            .eq("user_id", user.id)
             .maybeSingle();
           if (!existing) {
-            await supabase.from("gifts").insert({
-              recipient_id: user.id,
-              sender_id: null,
-              sender_name: "El Mundo",
-              type: "passport",
-              title: "PASSPORT COMPLETE",
-              description: "You collected all stamps! Visit the bar to claim your exclusive El Mundo reward.",
-              message: "Congratulations, Champion! You watched every match and earned your reward. Show this gift to the staff to collect.",
-            });
-            // Push notification to celebrate the milestone
-            try {
-              await sendPush({
-                title: "You got a gift",
-                body: "Check it out",
-                tag: "passport-complete",
-                userIds: [user.id],
-              });
-            } catch {}
+            const { data: pcRow } = await supabase.from("passport_completions").insert({
+              user_id: user.id,
+            }).select().maybeSingle();
+            if (pcRow) setPassportCompletion(pcRow);
+            toast$("🏆 Passport complete! Your gift is being prepared by El Mundo");
             try { navigator.vibrate?.([100, 50, 100, 50, 200]); } catch {}
           }
-          localStorage.setItem(completionKey, "1");
         } catch (e) { /* ignore */ }
       }
     }
@@ -2348,6 +2350,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <MyGiftsView
               user={user}
               gifts={gifts}
+              passportCompletion={passportCompletion}
               onClose={() => setShowGifts(false)}
               onToast={onToast}
             />
@@ -5182,7 +5185,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
                   <div className="gifts-v2-bar-fill" style={{ width: `${Math.round(passportStamps.length / matches.length * 100)}%` }}/>
                 </div>
                 {passportStamps.length >= matches.length
-                  ? <div className="gifts-v2-passport-hint gifts-v2-passport-done">COMPLETE — reward unlocked in your gifts</div>
+                  ? <div className="gifts-v2-passport-hint gifts-v2-passport-done">COMPLETE — your gift is being prepared by El Mundo</div>
                   : <div className="gifts-v2-passport-hint">Collect all stamps by ordering anything during each match — complete it and get a guaranteed gift!</div>}
               </div>
             )}
@@ -5202,7 +5205,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 }
 
 /* ═══ MY GIFTS ═════════════════════════════════════════════════════════════ */
-function MyGiftsView({ user, gifts = [], onClose, onToast = ()=>{} }) {
+function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onToast = ()=>{} }) {
   const [tab, setTab] = useState("active"); // "active" | "history"
   const [redeeming, setRedeeming] = useState(null);
   const [openedGift, setOpenedGift] = useState(null); // full-screen gift reveal
@@ -5350,7 +5353,36 @@ function MyGiftsView({ user, gifts = [], onClose, onToast = ()=>{} }) {
           </div>
 
           <div className="gv-list">
-            {list.length === 0 ? (
+            {/* ── PENDING PASSPORT GIFT CARD ── */}
+            {tab === "active" && passportCompletion && !passportCompletion.gift_sent && (
+              <div className="gift-card gift-card-pending">
+                <div className="gift-card-shine"/>
+                <div className="gift-card-main">
+                  <div className="gift-card-badge gift-card-badge-pending">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="gift-card-trophy">
+                      <path d="M8 21h8M12 17v4M17 4h3a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5M7 4H4a1 1 0 0 0-1 1v2a5 5 0 0 0 5 5"/>
+                      <path d="M17 4H7v7a5 5 0 0 0 10 0V4z"/>
+                    </svg>
+                    <div className="gift-card-passport-lbl">PENDING</div>
+                  </div>
+                  <div className="gift-card-info">
+                    <div className="gift-card-type-lbl">PASSPORT REWARD</div>
+                    <div className="gift-card-title">YOUR GIFT IS BEING PREPARED</div>
+                    <div className="gift-card-desc">You collected every passport stamp! El Mundo is preparing your reward. You'll get a notification when it's ready.</div>
+                    <div className="gift-card-date">
+                      Passport completed {new Date(passportCompletion.completed_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                    </div>
+                  </div>
+                </div>
+                <div className="gift-card-actions">
+                  <div className="gift-pending-status">
+                    <span className="gift-pending-dot"/>
+                    AWAITING ADMIN APPROVAL
+                  </div>
+                </div>
+              </div>
+            )}
+            {list.length === 0 && !(tab === "active" && passportCompletion && !passportCompletion.gift_sent) ? (
               <div className="gv-empty">
                 <div className="gv-empty-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -5363,7 +5395,7 @@ function MyGiftsView({ user, gifts = [], onClose, onToast = ()=>{} }) {
                 </div>
                 <div className="gv-empty-title">{tab === "active" ? "NO ACTIVE GIFTS" : "NO HISTORY YET"}</div>
                 <div className="gv-empty-hint">{tab === "active"
-                  ? "Order during matches, complete your passport, or receive a gift from another player"
+                  ? "Order during matches and complete your passport to earn a guaranteed gift from El Mundo"
                   : "Redeemed gifts will appear here"}</div>
               </div>
             ) : list.map((g, i) => (
@@ -5721,6 +5753,7 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
 /* ── Admin: Gifts (create, history, redeem item gifts) ── */
 function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
   const [allGifts, setAllGifts] = useState([]);
+  const [completions, setCompletions] = useState([]); // passport_completions rows
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("active"); // "active" | "history"
   const [showCreate, setShowCreate] = useState(false);
@@ -5733,6 +5766,7 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
+  const [linkingCompletion, setLinkingCompletion] = useState(null); // pending completion being fulfilled
 
   const loadGifts = async () => {
     setLoading(true);
@@ -5741,12 +5775,21 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
     setLoading(false);
   };
 
+  const loadCompletions = async () => {
+    const { data } = await supabase.from("passport_completions").select("*").order("completed_at", { ascending: false });
+    setCompletions(data || []);
+  };
+
   useEffect(() => {
     loadGifts();
+    loadCompletions();
     const ch = supabase.channel("rt-admin-gifts")
       .on("postgres_changes", { event:"*", schema:"public", table:"gifts" }, () => loadGifts())
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    const ch2 = supabase.channel("rt-admin-passport-completions")
+      .on("postgres_changes", { event:"*", schema:"public", table:"passport_completions" }, () => loadCompletions())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); supabase.removeChannel(ch2); };
   }, []);
 
   const userList = Object.values(users).filter(u => !u.is_banned);
@@ -5765,6 +5808,22 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
     setItemName("");
     setDescription("");
     setBulkMode(false);
+    setLinkingCompletion(null);
+  };
+
+  // Open the create-gift modal pre-filled to fulfill a passport completion
+  const prepareGiftForCompletion = (completion) => {
+    const u = users[completion.user_id];
+    if (!u) { alert("Player profile not loaded"); return; }
+    setLinkingCompletion(completion);
+    setRecipient(u);
+    setRecipientQ("");
+    setBulkMode(false);
+    setType("item");
+    setItemName("");
+    setTitle("PASSPORT REWARD");
+    setDescription("You collected every passport stamp! Show this to the staff to claim your exclusive El Mundo reward.");
+    setShowCreate(true);
   };
 
   const createGift = async () => {
@@ -5789,8 +5848,19 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
         amount: type === "credits" ? parseFloat(amount) : 0,
         item_name: type === "item" ? itemName.trim() : null,
       }));
-      const { error } = await supabase.from("gifts").insert(payloads);
+      const { data: insertedGifts, error } = await supabase.from("gifts").insert(payloads).select();
       if (error) throw error;
+      // If we are fulfilling a passport completion, link the new gift back
+      if (linkingCompletion && insertedGifts && insertedGifts.length === 1) {
+        const newGift = insertedGifts[0];
+        const { error: pcErr } = await supabase.from("passport_completions").update({
+          gift_sent: true,
+          gift_id: newGift.id,
+          fulfilled_at: new Date().toISOString(),
+          fulfilled_by: authUser?.id || null,
+        }).eq("id", linkingCompletion.id);
+        if (pcErr) console.error("Failed to link passport completion", pcErr);
+      }
       // Push notification to recipient(s) — keep it a surprise, no details revealed
       try {
         await sendPush({
@@ -5803,6 +5873,7 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
       setShowCreate(false);
       resetForm();
       loadGifts();
+      loadCompletions();
     } catch (err) {
       console.error("Create gift failed", err);
       alert("Failed to create gift: " + (err?.message || err));
@@ -5836,13 +5907,14 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
   const fillMyPassport = async () => {
     if (passportBusy) return;
     if (!matches.length) { alert("No matches loaded — can't fill stamps"); return; }
-    if (!confirm(`Give yourself ${matches.length} passport stamps and trigger the completion gift? You can reset after.`)) return;
+    if (!confirm(`Give yourself ${matches.length} passport stamps and trigger a "pending" completion in the admin queue? You can reset after.`)) return;
     setPassportBusy(true);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) { alert("Not logged in"); setPassportBusy(false); return; }
-      // 1. Clear any existing stamps + passport gift first (idempotent)
+      // 1. Clear any existing stamps, completions, and passport gifts (idempotent)
       await supabase.from("passport_stamps").delete().eq("user_id", authUser.id);
+      await supabase.from("passport_completions").delete().eq("user_id", authUser.id);
       await supabase.from("gifts").delete().eq("recipient_id", authUser.id).eq("type", "passport");
       localStorage.removeItem(`em_passport_done_${authUser.id}`);
       // 2. Insert one stamp per match
@@ -5853,30 +5925,15 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
       }));
       const { error: stampErr } = await supabase.from("passport_stamps").insert(stampRows);
       if (stampErr) throw stampErr;
-      // 3. Insert the passport completion gift
-      const { error: giftErr } = await supabase.from("gifts").insert({
-        recipient_id: authUser.id,
-        sender_id: null,
-        sender_name: "El Mundo",
-        type: "passport",
-        title: "PASSPORT COMPLETE",
-        description: "You collected all stamps! Visit the bar to claim your exclusive El Mundo reward.",
-        message: "Congratulations, Champion! You watched every match and earned your reward. Show this gift to the staff to collect.",
+      // 3. Insert a pending passport_completions row (signals admin to prepare a gift)
+      const { error: pcErr } = await supabase.from("passport_completions").insert({
+        user_id: authUser.id,
       });
-      if (giftErr) throw giftErr;
-      // 4. Push notification
-      try {
-        await sendPush({
-          title: "You got a gift",
-          body: "Check it out",
-          tag: "passport-complete-test",
-          userIds: [authUser.id],
-        });
-      } catch {}
+      if (pcErr) throw pcErr;
       try { navigator.vibrate?.([100, 50, 100, 50, 200]); } catch {}
-      localStorage.setItem(`em_passport_done_${authUser.id}`, "1");
-      alert("✅ Passport filled and completion gift created!\n\nOpen PROFILE → MY GIFTS to see the reward.\n\nYou'll also get a push notification.");
+      alert("✅ Passport filled — a pending completion was added to the admin queue.\n\nScroll up to see the new entry under PASSPORT COMPLETIONS, then click PREPARE GIFT to send the player their reward.");
       loadGifts();
+      loadCompletions();
     } catch (err) {
       console.error("fillMyPassport failed", err);
       alert("Failed: " + (err?.message || err));
@@ -5887,18 +5944,21 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
 
   const resetMyPassport = async () => {
     if (passportBusy) return;
-    if (!confirm("Reset your passport? This deletes ALL your stamps AND any passport completion gift.")) return;
+    if (!confirm("Reset your passport? This deletes ALL your stamps, the pending completion, and any passport gift.")) return;
     setPassportBusy(true);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) { alert("Not logged in"); setPassportBusy(false); return; }
       const { error: s } = await supabase.from("passport_stamps").delete().eq("user_id", authUser.id);
       if (s) throw s;
+      const { error: c } = await supabase.from("passport_completions").delete().eq("user_id", authUser.id);
+      if (c) throw c;
       const { error: g } = await supabase.from("gifts").delete().eq("recipient_id", authUser.id).eq("type", "passport");
       if (g) throw g;
       localStorage.removeItem(`em_passport_done_${authUser.id}`);
-      alert("✅ Your passport and completion gift have been reset.\n\nYou're back to 0 stamps. Reload the app to refresh the UI.");
+      alert("✅ Your passport, completion, and gift have been reset.\n\nYou're back to 0 stamps. Reload the app to refresh the UI.");
       loadGifts();
+      loadCompletions();
     } catch (err) {
       console.error("resetMyPassport failed", err);
       alert("Failed: " + (err?.message || err));
@@ -5949,6 +6009,41 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
         </div>
       </div>
 
+      {/* ─── Passport completions awaiting a gift ─── */}
+      {(() => {
+        const pending = completions.filter(c => !c.gift_sent);
+        if (pending.length === 0) return null;
+        return (
+          <div className="admin-pcomp-panel">
+            <div className="admin-pcomp-head">
+              <div className="admin-pcomp-title">🏆 PASSPORT COMPLETIONS</div>
+              <div className="admin-pcomp-sub">{pending.length} player{pending.length===1?"":"s"} finished — pick a gift to send</div>
+            </div>
+            <div className="admin-pcomp-list">
+              {pending.map(c => {
+                const u = users[c.user_id];
+                return (
+                  <div key={c.id} className="admin-pcomp-row">
+                    <div className="admin-pcomp-row-info">
+                      <div className="admin-pcomp-row-name">
+                        {u?.name || "(deleted player)"}
+                        {u?.player_number ? <span className="admin-pcomp-row-num"> · #{u.player_number}</span> : null}
+                      </div>
+                      <div className="admin-pcomp-row-meta">
+                        Completed {new Date(c.completed_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    </div>
+                    <button className="admin-pcomp-prep-btn" disabled={!u} onClick={() => prepareGiftForCompletion(c)}>
+                      PREPARE GIFT
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ─── Passport test panel (admin-only dev tools) ─── */}
       <div className="admin-dev-panel">
         <div className="admin-dev-head">
@@ -5957,8 +6052,8 @@ function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
         </div>
         <div className="admin-dev-body">
           <div className="admin-dev-info">
-            This fills all <strong>{matches.length}</strong> stamps for YOUR account and auto-creates
-            the "Passport Complete" gift + push notification. Use Reset to go back to 0 stamps.
+            This fills all <strong>{matches.length}</strong> stamps for YOUR account and adds a
+            <strong> pending completion</strong> to the admin queue above. Use Reset to clear stamps, completion, and any gift.
           </div>
           <div className="admin-dev-actions">
             <button className="admin-dev-btn admin-dev-fill" disabled={passportBusy || !matches.length} onClick={fillMyPassport}>
