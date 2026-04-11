@@ -1466,6 +1466,7 @@ export default function App() {
           passportStamps={passportStamps}
           gifts={gifts}
           showGifts={showGifts} setShowGifts={setShowGifts}
+          passportCompletion={passportCompletion}
           sendNotif={sendNotif}
           sendPush={sendPush}
         />
@@ -2181,6 +2182,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 showPassport = false, setShowPassport, passportStamps = [],
                 gifts = [], showGifts = false, setShowGifts = () => {},
+                passportCompletion = null,
                 qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
