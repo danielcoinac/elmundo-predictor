@@ -101,7 +101,7 @@
   .lang-toggle{padding:5px 10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Anton',sans-serif;font-size:9px;letter-spacing:1.5px;transition:all .15s;border-radius:6px}
   .lang-toggle:hover{background:rgba(255,255,255,.08);color:#fff}
   .hdr-out:hover{border-color:rgba(255,255,255,.4);color:#fff}
-  .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
+  .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:none;padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
   .body-inner{max-width:900px;margin:0 auto}
   /* Install Banner */
   .install-banner{position:fixed;bottom:calc(60px + env(safe-area-inset-bottom, 0px));left:0;right:0;z-index:250;padding:0 12px 8px;animation:installSlide .3s ease-out}
@@ -1970,6 +1970,33 @@
   @keyframes ptr4-rotate{
     from{transform:rotate(-90deg)}
     to  {transform:rotate(270deg)}
+  }
+
+  /* Swipe-down tutorial hint — subtle auto-playing bounce */
+  .ptr-hint{
+    position:relative;display:flex;flex-direction:column;align-items:center;
+    gap:5px;padding:8px 0 4px;pointer-events:none;
+    animation:ptrHintFade 6s ease-in-out 1s both;
+  }
+  .ptr-hint-chev{
+    width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.5);
+    animation:ptrHintBounce 2.4s cubic-bezier(.22,.61,.36,1) infinite;
+  }
+  .ptr-hint-label{
+    font-family:'Anton',sans-serif;font-size:8.5px;letter-spacing:2.8px;
+    color:rgba(255,255,255,.32);font-weight:400;
+  }
+  @keyframes ptrHintBounce{
+    0%,100%{transform:translateY(0);opacity:.55}
+    40%    {transform:translateY(5px);opacity:1}
+    60%    {transform:translateY(5px);opacity:1}
+  }
+  @keyframes ptrHintFade{
+    0%   {opacity:0;transform:translateY(-4px)}
+    10%  {opacity:1;transform:translateY(0)}
+    85%  {opacity:1;transform:translateY(0)}
+    100% {opacity:0;transform:translateY(-2px);visibility:hidden}
   }
 
   /* ═══════════════════════════════════════════════════════════════════════

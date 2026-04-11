@@ -95,7 +95,14 @@ export default function App() {
     const n = { ...appSettings, ...updates };
     setAppSettings(n);
     try { localStorage.setItem("em_app_settings", JSON.stringify(n)); } catch {}
-    await supabase.from("app_settings").upsert({ key: "global", value: n }, { onConflict: "key" });
+    const { error } = await supabase.from("app_settings")
+      .upsert({ key: "global", value: n, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (error) {
+      console.error("saveAppSettings failed:", error);
+      toast$("Couldn't sync settings: " + (error.message || "check RLS"), false);
+    } else {
+      toast$("Settings updated for all players", true);
+    }
   };
 
   useEffect(() => {
@@ -3019,34 +3026,27 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
     setNotifs(notifList);
   };
 
-  // ── Pull-to-refresh touch handling (non-passive, targets actual scroller) ──
+  // ── Pull-to-refresh touch handling ──
+  // Attaches non-passive touch listeners on main.body (the real scroller in this SPA).
+  // Uses a delayed rAF to ensure the DOM has the feed rendered before binding.
   useEffect(() => {
     if (feedTab !== "feed") return;
-    // The real scroll container is <main class="body"> — find it by walking up.
-    const anchor = feedScrollRef.current;
-    if (!anchor) return;
-    let scroller = anchor.parentElement;
-    while (scroller) {
-      const cs = getComputedStyle(scroller);
-      if (cs.overflowY === "auto" || cs.overflowY === "scroll") break;
-      scroller = scroller.parentElement;
-    }
-    if (!scroller) scroller = document.querySelector("main.body") || window;
+    let scroller = document.querySelector("main.body");
+    if (!scroller) return;
     ptrScrollerRef.current = scroller;
 
-    const getScrollTop = () => scroller === window
-      ? window.scrollY || document.documentElement.scrollTop
-      : scroller.scrollTop;
+    const getScrollTop = () => scroller.scrollTop || 0;
 
     const onTouchStart = (e) => {
       if (ptrRefreshingRef.current) return;
-      if (getScrollTop() > 0) return;
+      if (getScrollTop() > 2) return; // must be at the very top
       const t = e.touches[0];
       ptrStartYRef.current = t.clientY;
       ptrStartXRef.current = t.clientX;
       ptrActiveRef.current = true;
       ptrDragRef.current = false;
       ptrLastDistRef.current = 0;
+      ptrActiveRef.hapticFired = false;
     };
 
     const onTouchMove = (e) => {
@@ -3056,8 +3056,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       const dx = t.clientX - ptrStartXRef.current;
       // Ignore horizontal swipes
       if (!ptrDragRef.current) {
-        if (Math.abs(dx) > Math.abs(dy)) { ptrActiveRef.current = false; return; }
-        if (dy > 6) ptrDragRef.current = true;
+        if (Math.abs(dx) > Math.abs(dy) + 4) { ptrActiveRef.current = false; return; }
+        if (dy > 4) ptrDragRef.current = true;
         else return;
       }
       // Only pulling down counts
@@ -3066,13 +3066,15 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
         return;
       }
       // If user scrolled the content away from top mid-drag, abort
-      if (getScrollTop() > 0) {
+      if (getScrollTop() > 2) {
         ptrActiveRef.current = false;
         if (ptrLastDistRef.current > 0) { setPtrDist(0); ptrLastDistRef.current = 0; }
         return;
       }
+      // CRITICAL: block native scroll/overscroll while pulling (must be first)
+      try { e.preventDefault(); } catch {}
       // Rubber-band curve: asymptotic approach to PTR_MAX
-      const raw = dy * 0.55;
+      const raw = dy * 0.58;
       const eased = raw < PTR_MAX ? raw : PTR_MAX - Math.pow(PTR_MAX, 2) / (PTR_MAX + (raw - PTR_MAX));
       const clamped = Math.max(0, Math.min(PTR_MAX, eased));
       ptrLastDistRef.current = clamped;
@@ -3080,28 +3082,26 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       // Haptic tick when crossing trigger threshold
       if (clamped >= PTR_TRIGGER && !ptrActiveRef.hapticFired) {
         ptrActiveRef.hapticFired = true;
-        try { navigator.vibrate?.(18); } catch {}
+        try { navigator.vibrate?.(22); } catch {}
       }
       if (clamped < PTR_TRIGGER && ptrActiveRef.hapticFired) {
         ptrActiveRef.hapticFired = false;
       }
-      // CRITICAL: block native scroll/overscroll while pulling
-      try { e.preventDefault(); } catch {}
     };
 
     const onTouchEnd = async () => {
       if (!ptrActiveRef.current && ptrLastDistRef.current === 0) return;
       const wasActive = ptrActiveRef.current;
+      const wasDist = ptrLastDistRef.current;
       ptrActiveRef.current = false;
       ptrDragRef.current = false;
       ptrActiveRef.hapticFired = false;
       if (!wasActive) return;
-      if (ptrLastDistRef.current >= PTR_TRIGGER && !ptrRefreshingRef.current) {
+      if (wasDist >= PTR_TRIGGER && !ptrRefreshingRef.current) {
         setPtrRefreshing(true);
         setPtrDist(PTR_TRIGGER);
         try { navigator.vibrate?.([12, 40, 12]); } catch {}
         try { await load(); } catch {}
-        // Hold briefly so animation reads as premium
         await new Promise(r => setTimeout(r, 700));
         setPtrRefreshing(false);
         setPtrDist(0);
@@ -3112,7 +3112,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       }
     };
 
-    // Must be non-passive so preventDefault works
+    // Non-passive touchmove so preventDefault() actually blocks native scroll
     scroller.addEventListener("touchstart", onTouchStart, { passive: true });
     scroller.addEventListener("touchmove",  onTouchMove,  { passive: false });
     scroller.addEventListener("touchend",   onTouchEnd,   { passive: true });
@@ -3534,6 +3534,18 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
               </div>
             );
           })()}
+
+          {/* ── Swipe down hint (only when idle and at top) ── */}
+          {ptrDist === 0 && !ptrRefreshing && (
+            <div className="ptr-hint" aria-hidden="true">
+              <div className="ptr-hint-chev">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+              <div className="ptr-hint-label">SWIPE DOWN TO REFRESH</div>
+            </div>
+          )}
 
           {/* Cinematic World Cup hero banner */}
           <div className="mom-hero">
