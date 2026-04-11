@@ -2384,6 +2384,41 @@
   }
   .admin-gifts-stat-val{font-family:'Anton',sans-serif;font-size:24px;color:#fff;line-height:1}
   .admin-gifts-stat-lbl{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:1.5px;color:rgba(255,255,255,.35);font-weight:700;margin-top:6px}
+
+  /* Passport test dev panel */
+  .admin-dev-panel{
+    position:relative;margin-bottom:18px;padding:0;
+    background:linear-gradient(160deg, rgba(255,200,80,.05) 0%, rgba(255,255,255,.02) 100%);
+    border:1px solid rgba(255,200,80,.18);border-radius:8px;overflow:hidden;
+  }
+  .admin-dev-panel::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg, #f5c25a, #ffe7a0, #f5c25a);opacity:.8;
+  }
+  .admin-dev-head{padding:13px 16px 9px;border-bottom:1px solid rgba(255,200,80,.1)}
+  .admin-dev-title{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:2px;color:#f5c25a}
+  .admin-dev-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);font-weight:500;margin-top:3px}
+  .admin-dev-body{padding:14px 16px 16px}
+  .admin-dev-info{
+    font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.6);
+    line-height:1.55;margin-bottom:12px;font-weight:500
+  }
+  .admin-dev-info strong{color:#fff;font-weight:700}
+  .admin-dev-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .admin-dev-btn{
+    flex:1;min-width:140px;padding:12px 14px;border-radius:4px;border:none;
+    font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;
+    cursor:pointer;transition:all .18s;text-align:center
+  }
+  .admin-dev-fill{background:#f5c25a;color:#000}
+  .admin-dev-fill:hover{background:#ffe7a0}
+  .admin-dev-fill:active{transform:scale(.97)}
+  .admin-dev-fill:disabled{background:rgba(245,194,90,.3);color:rgba(0,0,0,.5);cursor:not-allowed;transform:none}
+  .admin-dev-reset{background:rgba(255,255,255,.06);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.12)}
+  .admin-dev-reset:hover{background:rgba(255,255,255,.1);color:#fff}
+  .admin-dev-reset:active{transform:scale(.97)}
+  .admin-dev-reset:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
   .admin-gifts-tabs{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:14px}
   .admin-gifts-tab{
     flex:1;padding:11px 0;background:none;border:none;border-bottom:2px solid transparent;

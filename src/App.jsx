@@ -5635,7 +5635,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "tables"     && <AdminTables />}
       {section === "tableqr"    && <AdminTableQR />}
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
-      {section === "gifts"      && <AdminGifts users={users} sendPush={sendPush} />}
+      {section === "gifts"      && <AdminGifts users={users} matches={matches} sendPush={sendPush} />}
       {section === "passGifts" && <AdminPassportGifts users={users} matches={matches} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
       {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
@@ -5719,7 +5719,7 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
 }
 
 /* ── Admin: Gifts (create, history, redeem item gifts) ── */
-function AdminGifts({ users, sendPush = ()=>{} }) {
+function AdminGifts({ users, matches = [], sendPush = ()=>{} }) {
   const [allGifts, setAllGifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("active"); // "active" | "history"
@@ -5831,6 +5831,82 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
     await supabase.from("gifts").delete().eq("id", g.id);
   };
 
+  // ─────────── PASSPORT TESTING (dev tools) ───────────
+  const [passportBusy, setPassportBusy] = useState(false);
+  const fillMyPassport = async () => {
+    if (passportBusy) return;
+    if (!matches.length) { alert("No matches loaded — can't fill stamps"); return; }
+    if (!confirm(`Give yourself ${matches.length} passport stamps and trigger the completion gift? You can reset after.`)) return;
+    setPassportBusy(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) { alert("Not logged in"); setPassportBusy(false); return; }
+      // 1. Clear any existing stamps + passport gift first (idempotent)
+      await supabase.from("passport_stamps").delete().eq("user_id", authUser.id);
+      await supabase.from("gifts").delete().eq("recipient_id", authUser.id).eq("type", "passport");
+      localStorage.removeItem(`em_passport_done_${authUser.id}`);
+      // 2. Insert one stamp per match
+      const stampRows = matches.map(m => ({
+        user_id: authUser.id,
+        stamp_type: "match_day",
+        match_id: m.id,
+      }));
+      const { error: stampErr } = await supabase.from("passport_stamps").insert(stampRows);
+      if (stampErr) throw stampErr;
+      // 3. Insert the passport completion gift
+      const { error: giftErr } = await supabase.from("gifts").insert({
+        recipient_id: authUser.id,
+        sender_id: null,
+        sender_name: "El Mundo",
+        type: "passport",
+        title: "PASSPORT COMPLETE",
+        description: "You collected all stamps! Visit the bar to claim your exclusive El Mundo reward.",
+        message: "Congratulations, Champion! You watched every match and earned your reward. Show this gift to the staff to collect.",
+      });
+      if (giftErr) throw giftErr;
+      // 4. Push notification
+      try {
+        await sendPush({
+          title: "You got a gift",
+          body: "Check it out",
+          tag: "passport-complete-test",
+          userIds: [authUser.id],
+        });
+      } catch {}
+      try { navigator.vibrate?.([100, 50, 100, 50, 200]); } catch {}
+      localStorage.setItem(`em_passport_done_${authUser.id}`, "1");
+      alert("✅ Passport filled and completion gift created!\n\nOpen PROFILE → MY GIFTS to see the reward.\n\nYou'll also get a push notification.");
+      loadGifts();
+    } catch (err) {
+      console.error("fillMyPassport failed", err);
+      alert("Failed: " + (err?.message || err));
+    } finally {
+      setPassportBusy(false);
+    }
+  };
+
+  const resetMyPassport = async () => {
+    if (passportBusy) return;
+    if (!confirm("Reset your passport? This deletes ALL your stamps AND any passport completion gift.")) return;
+    setPassportBusy(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) { alert("Not logged in"); setPassportBusy(false); return; }
+      const { error: s } = await supabase.from("passport_stamps").delete().eq("user_id", authUser.id);
+      if (s) throw s;
+      const { error: g } = await supabase.from("gifts").delete().eq("recipient_id", authUser.id).eq("type", "passport");
+      if (g) throw g;
+      localStorage.removeItem(`em_passport_done_${authUser.id}`);
+      alert("✅ Your passport and completion gift have been reset.\n\nYou're back to 0 stamps. Reload the app to refresh the UI.");
+      loadGifts();
+    } catch (err) {
+      console.error("resetMyPassport failed", err);
+      alert("Failed: " + (err?.message || err));
+    } finally {
+      setPassportBusy(false);
+    }
+  };
+
   const activeGifts  = allGifts.filter(g => !g.redeemed);
   const historyGifts = allGifts.filter(g => g.redeemed);
   const list = tab === "active" ? activeGifts : historyGifts;
@@ -5870,6 +5946,28 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
         <div className="admin-gifts-stat">
           <div className="admin-gifts-stat-val">{activeGifts.length}</div>
           <div className="admin-gifts-stat-lbl">PENDING</div>
+        </div>
+      </div>
+
+      {/* ─── Passport test panel (admin-only dev tools) ─── */}
+      <div className="admin-dev-panel">
+        <div className="admin-dev-head">
+          <div className="admin-dev-title">🧪 PASSPORT TEST</div>
+          <div className="admin-dev-sub">Simulate completion on your own account — safe to revert</div>
+        </div>
+        <div className="admin-dev-body">
+          <div className="admin-dev-info">
+            This fills all <strong>{matches.length}</strong> stamps for YOUR account and auto-creates
+            the "Passport Complete" gift + push notification. Use Reset to go back to 0 stamps.
+          </div>
+          <div className="admin-dev-actions">
+            <button className="admin-dev-btn admin-dev-fill" disabled={passportBusy || !matches.length} onClick={fillMyPassport}>
+              {passportBusy ? "WORKING…" : "✓ FILL MY PASSPORT"}
+            </button>
+            <button className="admin-dev-btn admin-dev-reset" disabled={passportBusy} onClick={resetMyPassport}>
+              {passportBusy ? "WORKING…" : "↺ RESET MY PASSPORT"}
+            </button>
+          </div>
         </div>
       </div>
 
