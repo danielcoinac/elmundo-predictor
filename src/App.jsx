@@ -2974,8 +2974,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
 
   // ── Premium pull-to-refresh ──
   // Hardcoded distances (px)
-  const PTR_MAX = 110;
-  const PTR_TRIGGER = 78;
+  const PTR_MAX = 82;
+  const PTR_TRIGGER = 58;
   const [ptrDist, setPtrDist] = useState(0);
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
   const ptrActiveRef = useRef(false);
@@ -3499,50 +3499,37 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       {/* ── FEED TAB ── */}
       {feedTab === "feed" && (
         <div ref={feedScrollRef}>
-          {/* ── Premium El Mundo pull-to-refresh indicator ── */}
+          {/* ── Minimal premium pull-to-refresh ── */}
           {(() => {
             const p = Math.min(1, ptrDist / PTR_TRIGGER);
             const ready = ptrDist >= PTR_TRIGGER;
+            // Circle: r=11, circumference ≈ 69.1
+            const C = 69.1;
             return (
-              <div className="ptr3-wrap"
+              <div className="ptr4-wrap"
                    style={{
                      height: `${ptrDist}px`,
-                     opacity: ptrDist > 2 ? 1 : 0,
-                     transition: ptrActiveRef.current ? "none" : "height .45s cubic-bezier(.22,.61,.36,1), opacity .3s",
+                     transition: ptrActiveRef.current ? "none" : "height .55s cubic-bezier(.22,.61,.36,1)",
                    }}>
-                <div className="ptr3-stage" style={{ transform: `translateY(${(ptrDist - 60) / 2}px)` }}>
-                  {/* soft glow halo that intensifies as you pull */}
-                  <div className="ptr3-halo" style={{ opacity: p * 0.9, transform: `scale(${0.6 + p * 0.5})` }}/>
-                  {/* outer ring — sweeping progress arc */}
-                  <svg className={`ptr3-ring ${ptrRefreshing ? "ptr3-ring-spin" : ""} ${ready ? "ptr3-ring-ready" : ""}`} width="62" height="62" viewBox="0 0 62 62">
-                    <defs>
-                      <linearGradient id="ptr3-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95"/>
-                        <stop offset="60%" stopColor="#ffffff" stopOpacity="0.7"/>
-                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0.35"/>
-                      </linearGradient>
-                    </defs>
-                    <circle cx="31" cy="31" r="27" className="ptr3-ring-bg"/>
-                    <circle cx="31" cy="31" r="27" className="ptr3-ring-fg"
-                            stroke="url(#ptr3-grad)"
-                            style={{
-                              strokeDashoffset: ptrRefreshing ? 0 : 169.6 - (p * 169.6),
-                            }}/>
+                <div className="ptr4-stage"
+                     style={{
+                       opacity: Math.min(1, p * 1.2),
+                       transform: `scale(${0.75 + p * 0.25})`,
+                     }}>
+                  <svg
+                    className={`ptr4-svg ${ptrRefreshing ? "ptr4-spin" : ""}`}
+                    width="26" height="26" viewBox="0 0 26 26"
+                  >
+                    <circle cx="13" cy="13" r="11" className="ptr4-track"/>
+                    <circle
+                      cx="13" cy="13" r="11"
+                      className={`ptr4-progress ${ready ? "ptr4-ready" : ""}`}
+                      style={{
+                        strokeDasharray: C,
+                        strokeDashoffset: ptrRefreshing ? C * 0.25 : C - (p * C),
+                      }}
+                    />
                   </svg>
-                  {/* center logo — scales & subtly rotates */}
-                  <div className="ptr3-logo"
-                       style={{
-                         transform: `scale(${0.55 + p * 0.45}) rotate(${ptrRefreshing ? 0 : p * 20}deg)`,
-                         opacity: 0.2 + p * 0.8,
-                       }}>
-                    <img src="/elmundo-logo.png" alt="El Mundo" draggable="false"/>
-                  </div>
-                  {/* accent dot that lights up when ready */}
-                  <div className={`ptr3-tick ${ready ? "ptr3-tick-on" : ""}`} style={{ opacity: p }}/>
-                </div>
-                <div className={`ptr3-label ${ready ? "ptr3-label-ready" : ""} ${ptrRefreshing ? "ptr3-label-refresh" : ""}`}
-                     style={{ opacity: Math.max(0, (ptrDist - 20) / 40) }}>
-                  {ptrRefreshing ? "UPDATING" : ready ? "RELEASE" : "PULL TO REFRESH"}
                 </div>
               </div>
             );
