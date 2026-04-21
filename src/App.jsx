@@ -1081,7 +1081,7 @@ export default function App() {
       <div class="divider"></div>
       <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
       <div style="height:20mm"></div>
-      </div><script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}</body></html>`);
+      </div>${EPOS_CUT_SCRIPT}</body></html>`);
       win.document.close();
       win.focus();
       setTimeout(() => { win.print(); }, 400);
@@ -1125,20 +1125,16 @@ export default function App() {
     if (data) setAllOrders(data);
   };
 
-  // ── QZ Tray cut snippet — injected into every receipt popup ──────────────
-  const QZ_CUT_SCRIPT = `
-<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"><\/script>
+  // ── Epson ePOS direct cut — sends ESC/POS cut via printer's built-in API ──
+  const EPOS_CUT_SCRIPT = `
 <script>
-(async()=>{
-  try{
-    if(typeof qz==='undefined')return;
-    qz.security.setCertificatePromise(function(resolve){resolve('');});
-    qz.security.setSignaturePromise(function(){return function(resolve){resolve('');};});
-    await qz.websocket.connect();
-    const cfg=qz.configs.create('192.168.1.82');
-    await qz.print(cfg,[{type:'raw',format:'command',data:'\\x1d\\x56\\x00'}]);
-  }catch(e){console.warn('QZ cut:',e);}
-})();
+window.onafterprint=()=>{
+  fetch('http://192.168.1.82:8008/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000',{
+    method:'POST',
+    headers:{'Content-Type':'text/xml; charset=utf-8','SOAPAction':'""'},
+    body:'<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"><feed unit="mm" amount="15"/><cut type="feed"/></epos-print></s:Body></s:Envelope>'
+  }).catch(e=>console.warn('ePOS cut:',e)).finally(()=>window.close());
+};
 <\/script>`;
 
   // ── Order receipt printer ─────────────────────────────────────────────────
@@ -1199,7 +1195,7 @@ export default function App() {
       <div class="url">www.elmundobonaire.com</div>
     </div>
     <div style="height:20mm"></div>
-    </div><script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}</body></html>`);
+    </div>${EPOS_CUT_SCRIPT}</body></html>`);
     win.document.close(); win.focus();
     setTimeout(() => { win.print(); }, 400);
   };
@@ -9861,7 +9857,7 @@ td:last-child{white-space:nowrap}
 <div class="total">TOTAL: $${total.toFixed(2)}</div>
 <div class="footer">www.elmundobonaire.com</div>
 <div style="height:20mm"></div>
-<script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}
+${EPOS_CUT_SCRIPT}
 </body></html>`);
     w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
   };
