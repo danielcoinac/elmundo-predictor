@@ -2149,18 +2149,18 @@
   .gift-card-food-ico{width:44px;height:44px;color:#f59e0b;filter:drop-shadow(0 0 10px rgba(245,158,11,.45))}
   .gift-card-food-name{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.4px;color:#f59e0b;text-align:center;padding:0 6px;line-height:1.2;max-width:100px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
-  /* ── special prize badge — silver ── */
+  /* ── special prize badge — sky blue ── */
   .gift-card-badge-special{
-    border-color:rgba(148,163,184,.35);
-    background:radial-gradient(circle at 50% 0%, rgba(203,213,225,.18), rgba(148,163,184,.03))
+    border-color:rgba(14,165,233,.35);
+    background:radial-gradient(circle at 50% 0%, rgba(14,165,233,.18), rgba(14,165,233,.03))
   }
-  .gift-card-special-ico{width:44px;height:44px;color:#94a3b8;filter:drop-shadow(0 0 10px rgba(148,163,184,.5))}
-  .gift-card-special-name{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.4px;color:#94a3b8;text-align:center;padding:0 6px;line-height:1.2;max-width:100px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .gift-card-special-ico{width:44px;height:44px;color:#0ea5e9;filter:drop-shadow(0 0 10px rgba(14,165,233,.45))}
+  .gift-card-special-name{font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.4px;color:#0ea5e9;text-align:center;padding:0 6px;line-height:1.2;max-width:100px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
   /* ── card type accents ── */
   .gift-card-food-type{border-color:rgba(245,158,11,.22)!important;background:linear-gradient(160deg, rgba(245,158,11,.05) 0%, rgba(0,0,0,0) 60%)!important}
   .gift-card-credits-type{border-color:rgba(16,185,129,.18)!important}
-  .gift-card-special-type{border-color:rgba(148,163,184,.22)!important;background:linear-gradient(160deg, rgba(148,163,184,.05) 0%, rgba(0,0,0,0) 60%)!important}
+  .gift-card-special-type{border-color:rgba(14,165,233,.22)!important;background:linear-gradient(160deg, rgba(14,165,233,.05) 0%, rgba(0,0,0,0) 60%)!important}
 
   /* ── CTA buttons per type ── */
   .gift-redeem-food{
@@ -2168,13 +2168,13 @@
     color:#000 !important;box-shadow:0 4px 18px rgba(245,158,11,.35)
   }
   .gift-redeem-special{
-    background:linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%) !important;
-    color:#1e293b !important;box-shadow:0 4px 18px rgba(148,163,184,.3)
+    background:linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
+    color:#0a0a0a !important;box-shadow:0 4px 18px rgba(14,165,233,.35)
   }
 
   /* ── Special instructions icon override ── */
-  .gift-instr-icon-special{background:rgba(148,163,184,.12)!important;border-color:rgba(148,163,184,.35)!important}
-  .gift-instr-icon-special svg{color:#94a3b8!important}
+  .gift-instr-icon-special{background:rgba(14,165,233,.12)!important;border-color:rgba(14,165,233,.35)!important}
+  .gift-instr-icon-special svg{color:#0ea5e9!important}
   .gift-card-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
   .gift-card-type-lbl{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2.5px;color:rgba(255,255,255,.4)}
   .gift-card-title{font-family:'Anton',sans-serif;font-size:17px;color:#fff;letter-spacing:.5px;line-height:1.2;margin-top:2px}

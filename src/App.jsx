@@ -6276,7 +6276,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
   };
 
   /* type → display helpers */
-  const typeColor   = (t) => t === "credits" ? "#10b981" : t === "drink_food" || t === "item" ? "#f59e0b" : "#94a3b8";
+  const typeColor   = (t) => t === "credits" ? "#10b981" : t === "drink_food" || t === "item" ? "#f59e0b" : "#0ea5e9";
   const typeIcon    = (t) => t === "credits" ? (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M14.31 8a4 4 0 0 0-6.31 4.87M9.69 16a4 4 0 0 0 6.31-4.87"/></svg>
   ) : t === "drink_food" || t === "item" ? (
@@ -6408,8 +6408,8 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
           <div className="admin-gifts-stat-val" style={{color:"#f59e0b"}}>{totalFoodDrink}</div>
           <div className="admin-gifts-stat-lbl">DRINKS/FOOD</div>
         </div>
-        <div className="admin-gifts-stat" style={{borderTop:"2px solid #94a3b8"}}>
-          <div className="admin-gifts-stat-val" style={{color:"#94a3b8"}}>{totalSpecial}</div>
+        <div className="admin-gifts-stat" style={{borderTop:"2px solid #0ea5e9"}}>
+          <div className="admin-gifts-stat-val" style={{color:"#0ea5e9"}}>{totalSpecial}</div>
           <div className="admin-gifts-stat-lbl">SPECIAL</div>
         </div>
         <div className="admin-gifts-stat">
@@ -6557,7 +6557,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
               {[
                 { id:"credits",    label:"CREDITS",      sub:"Added to balance",   col:"#10b981" },
                 { id:"drink_food", label:"DRINK / FOOD", sub:"Player orders in-app", col:"#f59e0b" },
-                { id:"special",    label:"SPECIAL PRIZE",sub:"Go to restaurant",   col:"#94a3b8" },
+                { id:"special",    label:"SPECIAL PRIZE",sub:"Go to restaurant",   col:"#0ea5e9" },
               ].map(opt => (
                 <button key={opt.id} onClick={()=>setType(opt.id)} style={{
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
