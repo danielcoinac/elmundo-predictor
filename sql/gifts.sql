@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS gifts (
   recipient_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   sender_id    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   sender_name  text,
-  type         text NOT NULL CHECK (type IN ('credits','item','passport')),
+  type         text NOT NULL CHECK (type IN ('credits','item','drink_food','special','passport')),
   title        text NOT NULL,
   description  text,
   amount       numeric(10,2) DEFAULT 0,
