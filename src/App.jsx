@@ -1081,7 +1081,7 @@ export default function App() {
       <div class="divider"></div>
       <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
       <div style="height:20mm"></div>
-      </div><script>window.onafterprint=()=>window.close();</script></body></html>`);
+      </div><script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}</body></html>`);
       win.document.close();
       win.focus();
       setTimeout(() => { win.print(); }, 400);
@@ -1124,6 +1124,20 @@ export default function App() {
       .order("created_at", { ascending: false });
     if (data) setAllOrders(data);
   };
+
+  // ── QZ Tray cut snippet — injected into every receipt popup ──────────────
+  const QZ_CUT_SCRIPT = `
+<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"><\/script>
+<script>
+(async()=>{
+  try{
+    if(typeof qz==='undefined')return;
+    await qz.websocket.connect();
+    const cfg=qz.configs.create('EPSON TM-m30');
+    await qz.print(cfg,[{type:'raw',format:'command',data:'\\x1d\\x56\\x00'}]);
+  }catch(e){}
+})();
+<\/script>`;
 
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
@@ -1183,7 +1197,7 @@ export default function App() {
       <div class="url">www.elmundobonaire.com</div>
     </div>
     <div style="height:20mm"></div>
-    </div><script>window.onafterprint=()=>window.close();</script></body></html>`);
+    </div><script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}</body></html>`);
     win.document.close(); win.focus();
     setTimeout(() => { win.print(); }, 400);
   };
@@ -9845,7 +9859,7 @@ td:last-child{white-space:nowrap}
 <div class="total">TOTAL: $${total.toFixed(2)}</div>
 <div class="footer">www.elmundobonaire.com</div>
 <div style="height:20mm"></div>
-<script>window.onafterprint=()=>window.close();</script>
+<script>window.onafterprint=()=>window.close();<\/script>${QZ_CUT_SCRIPT}
 </body></html>`);
     w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
   };
