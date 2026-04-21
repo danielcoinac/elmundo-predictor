@@ -1000,6 +1000,14 @@ export default function App() {
     toast$(grant ? "Floor plan access granted ✓" : "Floor plan access removed ✓");
   };
 
+  const adminSetKeepupsAccess = async (userId, grant) => {
+    const { error } = await supabase.from("profiles").update({ keepups_access: grant }).eq("id", userId);
+    if (error) { toast$("DB error — run: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS keepups_access BOOLEAN DEFAULT FALSE", false); return; }
+    setUsers(u => ({ ...u, [userId]: { ...u[userId], keepups_access: grant } }));
+    if (user?.id === userId) setUser(u => ({ ...u, keepups_access: grant }));
+    toast$(grant ? "Keep-Ups access granted ✓" : "Keep-Ups access removed ✓");
+  };
+
   const adminSaveSponsorGifts = async (gifts) => {
     const { data: existing } = await supabase.from("sponsor_gifts").select("id");
     if (existing?.length) {
@@ -1457,6 +1465,7 @@ export default function App() {
           adminSaveSponsorGifts={adminSaveSponsorGifts}
           adminBanUsers={adminBanUsers}
           adminSetFloorplanAccess={adminSetFloorplanAccess}
+          adminSetKeepupsAccess={adminSetKeepupsAccess}
           appSettings={appSettings}
           onSaveAppSettings={saveAppSettings}
           newOrderAlert={newOrderAlert} setNewOrderAlert={setNewOrderAlert}
@@ -2176,7 +2185,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 payGroupShareCredits, hostPayAllCredits,
                 calcMyGroupShare,
                 resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast,
-                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetFloorplanAccess = () => {},
+                sponsorGifts, adminSetSponsorTier, adminSaveSponsorGifts, adminBanUsers = () => {}, adminSetFloorplanAccess = () => {}, adminSetKeepupsAccess = () => {},
                 appSettings = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false }, onSaveAppSettings = () => {},
                 newOrderAlert = false, setNewOrderAlert,
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
@@ -2231,6 +2240,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     { id:"profile", label:t('profile'), ico:<PersonIco /> },
     ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
     ...(user?.floorplan_access ? [{ id:"floorplan", label:"FLOOR", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
+    ...(user?.keepups_access ? [{ id:"keepups", label:"KEEP-UPS", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2c0 0-4 4-4 10s4 10 4 10"/><path d="M12 2c0 0 4 4 4 10s-4 10-4 10"/><path d="M2 12h20"/><path d="M4.93 7h14.14M4.93 17h14.14"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
 
@@ -2302,6 +2312,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
           {appTab === "floorplan" && user?.floorplan_access && (
             <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
           )}
+          {appTab === "keepups" && user?.keepups_access && (
+            <ErrorBoundary name="keepups"><KeepupsView user={user} /></ErrorBoundary>
+          )}
           {appTab === "admin" && isAdmin && (
             <ErrorBoundary name="admin"><AdminView
               matches={matches} rules={rules} sponsors={sponsors}
@@ -2318,6 +2331,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               onSaveSponsorGifts={adminSaveSponsorGifts}
               onBanUsers={adminBanUsers}
               onSetFloorplanAccess={adminSetFloorplanAccess}
+              onSetKeepupsAccess={adminSetKeepupsAccess}
               appSettings={appSettings}
               onSaveAppSettings={onSaveAppSettings}
               sendPush={sendPush}
@@ -5555,7 +5569,7 @@ function AdminDashboard({ allOrders, users, board }) {
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{}, sendPush = ()=>{} }) {
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, onSetKeepupsAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{}, sendPush = ()=>{} }) {
   const [section, setSection] = useState("dashboard");
 
   const GROUPS = [
@@ -5577,6 +5591,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
         { id:"tableqr",     label:"Table QR"    },
         { id:"credits",     label:"Credits"     },
         { id:"fpAccess",    label:"Floor Plan"  },
+        { id:"keepupsAccess", label:"Keep-Ups" },
         { id:"appSettings", label:"App Settings"},
       ]
     },
@@ -5672,8 +5687,9 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "gifts"      && <AdminGifts users={users} sendPush={sendPush} />}
       {section === "passGifts" && <AdminPassportGifts users={users} matches={matches} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
-      {section === "fpAccess"    && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
-      {section === "appSettings" && <AdminAppSettings appSettings={appSettings} onSave={onSaveAppSettings} />}
+      {section === "fpAccess"      && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
+      {section === "keepupsAccess" && <AdminKeepupsAccess  users={users} onSetAccess={onSetKeepupsAccess} />}
+      {section === "appSettings"   && <AdminAppSettings appSettings={appSettings} onSave={onSaveAppSettings} />}
     </div>
   );
 }
@@ -5748,6 +5764,282 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Admin: Keep-Ups Access ── */
+function AdminKeepupsAccess({ users, onSetAccess }) {
+  const [search, setSearch] = useState("");
+  const userList = Object.values(users).filter(u => !u.is_admin);
+  const filtered = search.trim()
+    ? userList.filter(u => (u.name||"").toLowerCase().includes(search.toLowerCase()))
+    : userList;
+  return (
+    <div className="vpad">
+      <div className="section-banner">
+        <div className="sb-label">KEEP-UPS ACCESS</div>
+        <div className="sb-sub">Grant the wine factory operator access to the Keep-Ups tab</div>
+      </div>
+      <div style={{padding:"0 14px 12px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(245,200,90,.07)",border:"1px solid rgba(245,200,90,.25)",borderRadius:8,marginBottom:14}}>
+          <span style={{fontSize:18}}>🍷</span>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.65)",fontWeight:500,lineHeight:1.45}}>
+            Operators with access see a <strong style={{color:"#f5c85a"}}>KEEP-UPS</strong> tab in their app. They can log player names and scores in real time. Players must spend <strong style={{color:"#fff"}}>$50+</strong> to qualify.
+          </div>
+        </div>
+        <input className="afield-inp" placeholder="Search by name…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",marginBottom:12}} />
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(u => (
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,.03)",border:`1px solid ${u.keepups_access?"rgba(245,200,90,.3)":"rgba(255,255,255,.07)"}`,borderRadius:8}}>
+              {u.avatar_url ? (
+                <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
+              ) : (
+                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                {u.keepups_access && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#f5c85a",padding:"3px 8px",background:"rgba(245,200,90,.1)",border:"1px solid rgba(245,200,90,.3)"}}>KEEP-UPS ✓</span>}
+                <button onClick={()=>onSetAccess(u.id,!u.keepups_access)} style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,padding:"7px 14px",border:"1px solid",cursor:"pointer",borderRadius:4,background:u.keepups_access?"rgba(239,68,68,.1)":"rgba(245,200,90,.1)",borderColor:u.keepups_access?"rgba(239,68,68,.4)":"rgba(245,200,90,.4)",color:u.keepups_access?"#f87171":"#f5c85a",whiteSpace:"nowrap"}}>
+                  {u.keepups_access ? "REVOKE" : "GRANT"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ KEEP-UPS CHALLENGE VIEW ════════════════════════════════════════════════
+   Operator-only tab for logging keep-up scores during the Wine Factory game.
+   Players must spend $50+ to qualify. Operator enters name + score, can edit.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function KeepupsView({ user }) {
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [scoreVal, setScoreVal] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editScore, setEditScore] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
+
+  const load = async () => {
+    const { data } = await supabase.from("keepups_scores").select("*").order("score", { ascending: false });
+    setScores(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("rt-keepups")
+      .on("postgres_changes", { event:"*", schema:"public", table:"keepups_scores" }, () => load())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  const addScore = async () => {
+    const n = name.trim();
+    const s = parseInt(scoreVal, 10);
+    if (!n) return;
+    if (isNaN(s) || s < 0) return;
+    setAdding(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data, error } = await supabase.from("keepups_scores").insert({
+        player_name: n, score: s, entered_by: authUser?.id || null,
+      }).select().maybeSingle();
+      if (error) throw error;
+      if (data) setScores(prev => [...prev, data].sort((a,b) => b.score - a.score));
+      setName(""); setScoreVal("");
+      try { navigator.vibrate?.([40, 20, 80]); } catch {}
+    } catch (err) { alert("Error: " + err.message); }
+    setAdding(false);
+  };
+
+  const startEdit = (row) => {
+    setEditId(row.id); setEditName(row.player_name); setEditScore(String(row.score));
+  };
+
+  const saveEdit = async () => {
+    const n = editName.trim();
+    const s = parseInt(editScore, 10);
+    if (!n || isNaN(s) || s < 0) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.from("keepups_scores")
+        .update({ player_name: n, score: s, updated_at: new Date().toISOString() })
+        .eq("id", editId).select().maybeSingle();
+      if (error) throw error;
+      if (data) setScores(prev => prev.map(x => x.id === data.id ? data : x).sort((a,b) => b.score - a.score));
+      setEditId(null);
+    } catch (err) { alert("Error: " + err.message); }
+    setSaving(false);
+  };
+
+  const deleteScore = async (row) => {
+    if (!confirm(`Delete ${row.player_name}'s score (${row.score})?`)) return;
+    await supabase.from("keepups_scores").delete().eq("id", row.id);
+    setScores(prev => prev.filter(x => x.id !== row.id));
+  };
+
+  const medalColor = (rank) => {
+    if (rank === 1) return "#FFD700";
+    if (rank === 2) return "#C0C0C0";
+    if (rank === 3) return "#CD7F32";
+    return "rgba(255,255,255,.25)";
+  };
+
+  return (
+    <div style={{paddingBottom:60}}>
+      {/* ── Header ── */}
+      <div style={{position:"relative",padding:"28px 20px 20px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
+        {/* Wine Factory Logo */}
+        <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+          <div style={{width:80,height:80,borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)",boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>
+            <img src="/logos/winefactory.jpg" alt="The Wine Factory" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          </div>
+        </div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"#f5c85a",marginBottom:4}}>THE WINE FACTORY</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:3,color:"#fff",lineHeight:1}}>KEEP-UPS</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.35)",marginTop:6}}>CHALLENGE</div>
+        {/* Leaderboard button */}
+        <button
+          onClick={() => setShowBoard(true)}
+          style={{position:"absolute",top:24,right:16,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",background:"rgba(245,200,90,.1)",border:"1px solid rgba(245,200,90,.3)",borderRadius:100,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2,color:"#f5c85a",cursor:"pointer"}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/></svg>
+          TOP
+        </button>
+      </div>
+
+      {/* ── Add player form ── */}
+      <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10}}>ADD PLAYER</div>
+        <div style={{display:"flex",gap:8,marginBottom:8}}>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && scoreVal && addScore()}
+            placeholder="Player name"
+            style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"11px 13px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,outline:"none"}}
+          />
+          <input
+            value={scoreVal}
+            onChange={e => setScoreVal(e.target.value.replace(/\D/g,""))}
+            onKeyDown={e => e.key === "Enter" && name.trim() && addScore()}
+            placeholder="Score"
+            inputMode="numeric"
+            style={{width:90,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"11px 13px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:18,textAlign:"center",outline:"none"}}
+          />
+        </div>
+        <button
+          onClick={addScore}
+          disabled={adding || !name.trim() || scoreVal === ""}
+          style={{width:"100%",padding:"13px",background: (name.trim() && scoreVal !== "") ? "#f5c85a" : "rgba(245,200,90,.15)",color: (name.trim() && scoreVal !== "") ? "#000" : "rgba(255,255,255,.25)",border:"none",borderRadius:8,fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2.5,cursor: (name.trim() && scoreVal !== "") ? "pointer" : "not-allowed",transition:"all .18s"}}>
+          {adding ? "ADDING…" : "+ ADD SCORE"}
+        </button>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.25)",marginTop:8,textAlign:"center",fontWeight:500}}>
+          🍷 Minimum $50 spend to qualify · Highest score wins
+        </div>
+      </div>
+
+      {/* ── Score list ── */}
+      <div style={{padding:"14px 16px 0"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:12}}>
+          RANKINGS · {scores.length} PLAYER{scores.length !== 1 ? "S" : ""}
+        </div>
+        {loading ? (
+          <div style={{textAlign:"center",padding:40,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)"}}>Loading…</div>
+        ) : scores.length === 0 ? (
+          <div style={{textAlign:"center",padding:"40px 20px"}}>
+            <div style={{fontSize:40,marginBottom:10}}>⚽</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>NO SCORES YET</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",marginTop:6}}>Add the first player above</div>
+          </div>
+        ) : scores.map((row, idx) => {
+          const rank = idx + 1;
+          const mc = medalColor(rank);
+          const isEditing = editId === row.id;
+          return (
+            <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",marginBottom:8,background: rank <= 3 ? `rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.05)` : "rgba(255,255,255,.025)",border:`1px solid ${rank <= 3 ? `rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.2)` : "rgba(255,255,255,.07)"}`,borderRadius:10,transition:"all .2s"}}>
+              {/* Rank */}
+              <div style={{flexShrink:0,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":rank===3?"205,127,50":"255,255,255"},.1)`,border:`1.5px solid ${mc}`,fontFamily:"'Anton',sans-serif",fontSize:rank<=3?14:12,color:mc}}>
+                {rank <= 3 ? (rank===1?"🥇":rank===2?"🥈":"🥉") : rank}
+              </div>
+
+              {isEditing ? (
+                /* Edit mode */
+                <>
+                  <input value={editName} onChange={e=>setEditName(e.target.value)} style={{flex:1,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,outline:"none"}}/>
+                  <input value={editScore} onChange={e=>setEditScore(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={{width:72,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:18,textAlign:"center",outline:"none"}}/>
+                  <button onClick={saveEdit} disabled={saving} style={{padding:"7px 12px",background:"#fff",color:"#000",border:"none",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:1.5,cursor:"pointer"}}>{saving?"…":"SAVE"}</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:"7px 10px",background:"transparent",color:"rgba(255,255,255,.4)",border:"1px solid rgba(255,255,255,.12)",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,cursor:"pointer"}}>✕</button>
+                </>
+              ) : (
+                /* View mode */
+                <>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:.5,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.3)",marginTop:2,fontWeight:500}}>
+                      {new Date(row.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                    </div>
+                  </div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:mc,letterSpacing:0,lineHeight:1,flexShrink:0}}>{row.score}</div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button onClick={()=>startEdit(row)} style={{width:34,height:34,borderRadius:"50%",border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button onClick={()=>deleteScore(row)} style={{width:34,height:34,borderRadius:"50%",border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Leaderboard Modal ── */}
+      {showBoard && (
+        <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,.9)",backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setShowBoard(false)}}>
+          <div style={{width:"100%",maxWidth:400,maxHeight:"85vh",overflowY:"auto",background:"linear-gradient(160deg,#141414,#050505)",border:"1px solid rgba(255,255,255,.14)",borderRadius:18,padding:"28px 24px 24px",position:"relative"}}>
+            <button onClick={()=>setShowBoard(false)} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            {/* Logo */}
+            <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+              <div style={{width:56,height:56,borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
+                <img src="/logos/winefactory.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              </div>
+            </div>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"#f5c85a",marginBottom:3}}>THE WINE FACTORY</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:3,color:"#fff"}}>LEADERBOARD</div>
+            </div>
+            {scores.length === 0 ? (
+              <div style={{textAlign:"center",padding:"20px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>No scores yet</div>
+            ) : scores.slice(0,20).map((row, idx) => {
+              const rank = idx + 1;
+              const mc = medalColor(rank);
+              return (
+                <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":rank===3?"205,127,50":"255,255,255"},.03)`,border:`1px solid ${rank<=3?`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.18)`:"rgba(255,255,255,.06)"}`,borderRadius:10}}>
+                  <div style={{width:30,textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:rank<=3?16:12,color:mc,flexShrink:0}}>
+                    {rank<=3?(rank===1?"🥇":rank===2?"🥈":"🥉"):rank}
+                  </div>
+                  <div style={{flex:1,fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:mc,flexShrink:0}}>{row.score}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
