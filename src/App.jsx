@@ -927,7 +927,7 @@ export default function App() {
     }
   };
 
-  const VALID_PAYMENT_METHODS = ["credits", "cash", "card_pending", "sponsor_gift"];
+  const VALID_PAYMENT_METHODS = ["credits", "cash", "card_pending", "sponsor_gift", "gift"];
   const placeOrder = async ({ tableNumber, items, total, paymentMethod }) => {
     if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
       toast$("Invalid payment method", false); return false;
@@ -2369,6 +2369,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               passportCompletion={passportCompletion}
               onClose={() => setShowGifts(false)}
               onToast={onToast}
+              onPlaceOrder={placeOrder}
+              qrTable={qrTable}
             />
           )}
         </div>
@@ -5221,25 +5223,30 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 }
 
 /* ═══ MY GIFTS ═════════════════════════════════════════════════════════════ */
-function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onToast = ()=>{} }) {
+function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onToast = ()=>{}, onPlaceOrder = null, qrTable = "" }) {
   const [tab, setTab] = useState("active"); // "active" | "history"
   const [redeeming, setRedeeming] = useState(null);
+  const [ordering,  setOrdering]  = useState(null); // gift id currently being ordered
   const [openedGift, setOpenedGift] = useState(null); // full-screen gift reveal
-  const [showInstructions, setShowInstructions] = useState(null); // for item gifts after redeem
+  const [showInstructions, setShowInstructions] = useState(null); // special gift claim modal
 
   const active  = gifts.filter(g => !g.redeemed);
   const history = gifts.filter(g => g.redeemed);
   const list = tab === "active" ? active : history;
 
+  /* ── Type helpers ── */
+  const isFoodType    = (g) => g.type === "drink_food" || g.type === "item";
+  const isSpecialType = (g) => g.type === "special" || g.type === "passport";
+  const isCreditsType = (g) => g.type === "credits";
+
+  /* ── Credits: player redeems directly ── */
   const redeemCredits = async (g) => {
     if (redeeming) return;
     setRedeeming(g.id);
     try {
-      // Add amount to user's credit balance
       const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", user.id).maybeSingle();
       const newBal = (+(cur?.balance || 0)) + (+g.amount || 0);
       await supabase.from("user_credits").upsert({ user_id: user.id, balance: newBal });
-      // Mark gift as redeemed
       await supabase.from("gifts").update({ redeemed: true, redeemed_at: new Date().toISOString(), redeemed_by: user.id }).eq("id", g.id);
       onToast(`+$${(+g.amount).toFixed(2)} credits added to your account`);
       try { navigator.vibrate?.([60, 40, 120]); } catch {}
@@ -5251,11 +5258,27 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
     }
   };
 
-  const redeemItem = async (g) => {
-    // Item gifts: do NOT mark as redeemed from the player side.
-    // Staff must mark them as redeemed in the admin panel after physical pickup.
-    // Here we just show the instructions popup.
-    setShowInstructions(g);
+  /* ── Drinks/Food: player orders in-app for free ── */
+  const redeemDrinkFood = async (g) => {
+    if (!onPlaceOrder || ordering) return;
+    setOrdering(g.id);
+    try {
+      const ok = await onPlaceOrder({
+        tableNumber: qrTable || "Gift Redemption",
+        items: [{ id: `gift_${g.id}`, name: g.item_name || g.title, price: 0, qty: 1, note: "🎁 Gift redemption" }],
+        total: 0,
+        paymentMethod: "gift",
+      });
+      if (ok) {
+        await supabase.from("gifts").update({ redeemed: true, redeemed_at: new Date().toISOString(), redeemed_by: user.id }).eq("id", g.id);
+        try { navigator.vibrate?.([60, 40, 120]); } catch {}
+      }
+    } catch (err) {
+      console.error("Redeem drink/food failed", err);
+      onToast("Could not place order — please try again", false);
+    } finally {
+      setOrdering(null);
+    }
   };
 
   const dismissOpenedGift = () => setOpenedGift(null);
@@ -5270,8 +5293,9 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
     try { localStorage.setItem(seenKey, "1"); } catch {}
   }, []); // eslint-disable-line
 
+  /* ── Badge icons — distinct per type ── */
   const giftIcon = (g) => {
-    if (g.type === "credits") {
+    if (isCreditsType(g)) {
       return (
         <div className="gift-card-badge gift-card-badge-credits">
           <img src="/elmundo-logo.png" alt="" className="gift-card-logo"/>
@@ -5280,29 +5304,35 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
         </div>
       );
     }
-    if (g.type === "item") {
+    if (isFoodType(g)) {
       return (
-        <div className="gift-card-badge gift-card-badge-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="gift-card-item-ico">
-            <polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/>
-            <line x1="12" y1="22" x2="12" y2="7"/>
-            <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
-            <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+        <div className="gift-card-badge gift-card-badge-food">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="gift-card-food-ico">
+            <path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
           </svg>
-          <div className="gift-card-item-name">{g.item_name || "FREE ITEM"}</div>
+          <div className="gift-card-food-name">{g.item_name || "FREE ITEM"}</div>
         </div>
       );
     }
-    // passport type
+    // special / passport
     return (
-      <div className="gift-card-badge gift-card-badge-passport">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="gift-card-trophy">
-          <path d="M8 21h8M12 17v4M17 4h3a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5M7 4H4a1 1 0 0 0-1 1v2a5 5 0 0 0 5 5"/>
-          <path d="M17 4H7v7a5 5 0 0 0 10 0V4z"/>
+      <div className="gift-card-badge gift-card-badge-special">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="gift-card-special-ico">
+          <polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/>
+          <line x1="12" y1="22" x2="12" y2="7"/>
+          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
         </svg>
-        <div className="gift-card-passport-lbl">PASSPORT</div>
+        <div className="gift-card-special-name">{isSpecialType(g) && g.type !== "passport" ? (g.item_name || "SPECIAL PRIZE") : "PASSPORT"}</div>
       </div>
     );
+  };
+
+  const typeLabel = (g) => {
+    if (isCreditsType(g)) return "CREDITS TOP-UP";
+    if (isFoodType(g)) return "FREE DRINK OR FOOD";
+    if (g.type === "passport") return "PASSPORT REWARD";
+    return "SPECIAL PRIZE";
   };
 
   return (
@@ -5324,24 +5354,25 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
         </div>
       )}
 
-      {/* ── Redeem instructions popup (item gifts) ── */}
+      {/* ── Special gift claim instructions popup ── */}
       {showInstructions && (
         <div className="gift-instr-overlay" onClick={e => { if (e.target === e.currentTarget) setShowInstructions(null); }}>
           <div className="gift-instr-card">
             <button className="gift-instr-close" onClick={() => setShowInstructions(null)}>✕</button>
-            <div className="gift-instr-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div className="gift-instr-icon gift-instr-icon-special">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/>
+                <line x1="12" y1="22" x2="12" y2="7"/>
+                <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+              </svg>
             </div>
-            <div className="gift-instr-title">HOW TO REDEEM</div>
+            <div className="gift-instr-title">HOW TO CLAIM</div>
             <div className="gift-instr-item">{showInstructions.item_name || showInstructions.title}</div>
             <div className="gift-instr-steps">
-              <div className="gift-instr-step"><span className="gift-instr-num">1</span>Walk up to the El Mundo bar</div>
-              <div className="gift-instr-step"><span className="gift-instr-num">2</span>Show this screen to the staff</div>
-              <div className="gift-instr-step"><span className="gift-instr-num">3</span>Staff will mark it redeemed and prepare your item</div>
-            </div>
-            <div className="gift-instr-code">
-              <div className="gift-instr-code-lbl">GIFT CODE</div>
-              <div className="gift-instr-code-val">#{showInstructions.id.slice(0,8).toUpperCase()}</div>
+              <div className="gift-instr-step"><span className="gift-instr-num">1</span>Head to the El Mundo restaurant</div>
+              <div className="gift-instr-step"><span className="gift-instr-num">2</span>Show this screen to a staff member</div>
+              <div className="gift-instr-step"><span className="gift-instr-num">3</span>Staff will verify your profile and hand you your prize</div>
             </div>
             <div className="gift-instr-player">
               <div className="gift-instr-player-lbl">PLAYER</div>
@@ -5415,14 +5446,12 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
                   : "Redeemed gifts will appear here"}</div>
               </div>
             ) : list.map((g, i) => (
-              <div key={g.id} className={`gift-card ${g.redeemed ? "gift-card-done" : ""}`} style={{animationDelay:`${i*.05}s`}}>
+              <div key={g.id} className={`gift-card ${isFoodType(g) ? "gift-card-food-type" : isSpecialType(g) ? "gift-card-special-type" : "gift-card-credits-type"} ${g.redeemed ? "gift-card-done" : ""}`} style={{animationDelay:`${i*.05}s`}}>
                 <div className="gift-card-shine"/>
                 <div className="gift-card-main">
                   {giftIcon(g)}
                   <div className="gift-card-info">
-                    <div className="gift-card-type-lbl">
-                      {g.type === "credits" ? "CREDITS TOP-UP" : g.type === "passport" ? "PASSPORT REWARD" : "FREE ITEM"}
-                    </div>
+                    <div className="gift-card-type-lbl">{typeLabel(g)}</div>
                     <div className="gift-card-title">{g.title}</div>
                     {g.description && <div className="gift-card-desc">{g.description}</div>}
                     {g.sender_name && <div className="gift-card-from">from {g.sender_name}</div>}
@@ -5436,13 +5465,19 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
                 </div>
                 {!g.redeemed && (
                   <div className="gift-card-actions">
-                    {g.type === "credits" ? (
+                    {isCreditsType(g) ? (
                       <button className="gift-redeem-btn gift-redeem-credits" onClick={() => redeemCredits(g)} disabled={redeeming === g.id}>
                         {redeeming === g.id ? "REDEEMING…" : "REDEEM TO BALANCE"}
                       </button>
+                    ) : isFoodType(g) ? (
+                      <button className="gift-redeem-btn gift-redeem-food" onClick={() => redeemDrinkFood(g)} disabled={ordering === g.id || !onPlaceOrder}>
+                        {ordering === g.id
+                          ? <><span style={{display:"inline-block",animation:"spin .8s linear infinite",marginRight:6}}>⏳</span>ORDERING…</>
+                          : <>🍺 ORDER FREE</>}
+                      </button>
                     ) : (
-                      <button className="gift-redeem-btn" onClick={() => redeemItem(g)}>
-                        HOW TO REDEEM
+                      <button className="gift-redeem-btn gift-redeem-special" onClick={() => setShowInstructions(g)}>
+                        🎁 HOW TO CLAIM
                       </button>
                     )}
                   </div>
@@ -6245,6 +6280,16 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
     setLinkingCompletion(null);
   };
 
+  /* type → display helpers */
+  const typeColor   = (t) => t === "credits" ? "#10b981" : t === "drink_food" || t === "item" ? "#f59e0b" : "#a855f7";
+  const typeIcon    = (t) => t === "credits" ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M14.31 8a4 4 0 0 0-6.31 4.87M9.69 16a4 4 0 0 0 6.31-4.87"/></svg>
+  ) : t === "drink_food" || t === "item" ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+  );
+
   // Open the create-gift modal pre-filled to fulfill a passport completion
   const prepareGiftForCompletion = (completion) => {
     const u = users[completion.user_id];
@@ -6253,10 +6298,10 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
     setRecipient(u);
     setRecipientQ("");
     setBulkMode(false);
-    setType("item");
+    setType("special");
     setItemName("");
     setTitle("PASSPORT REWARD");
-    setDescription("You collected every passport stamp! Show this to the staff to claim your exclusive El Mundo reward.");
+    setDescription("You collected every passport stamp! Head to the El Mundo restaurant and show this screen to claim your exclusive reward.");
     setShowCreate(true);
   };
 
@@ -6264,7 +6309,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
     if (creating) return;
     if (!bulkMode && !recipient) { alert("Pick a recipient first"); return; }
     if (type === "credits" && (!amount || parseFloat(amount) <= 0)) { alert("Enter a valid amount"); return; }
-    if (type === "item" && !itemName.trim()) { alert("Enter an item name"); return; }
+    if ((type === "drink_food" || type === "special") && !itemName.trim()) { alert("Enter an item/prize name"); return; }
     setCreating(true);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -6276,11 +6321,10 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
         type,
         title: title.trim()
           || (type === "credits" ? `$${parseFloat(amount).toFixed(2)} in credits`
-            : type === "item" ? itemName.trim()
-            : "Special reward"),
+            : itemName.trim() || "Special reward"),
         description: description.trim() || null,
         amount: type === "credits" ? parseFloat(amount) : 0,
-        item_name: type === "item" ? itemName.trim() : null,
+        item_name: (type === "drink_food" || type === "special") ? itemName.trim() : null,
       }));
       const { data: insertedGifts, error } = await supabase.from("gifts").insert(payloads).select();
       if (error) throw error;
@@ -6341,7 +6385,8 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
   const list = tab === "active" ? activeGifts : historyGifts;
 
   const totalCreditsGiven = allGifts.filter(g => g.type === "credits").reduce((s,g)=>s+(+g.amount||0),0);
-  const totalItems        = allGifts.filter(g => g.type === "item").length;
+  const totalFoodDrink    = allGifts.filter(g => g.type === "drink_food" || g.type === "item").length;
+  const totalSpecial      = allGifts.filter(g => g.type === "special").length;
   const totalRedeemed     = historyGifts.length;
 
   return (
@@ -6360,21 +6405,21 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
       </div>
 
       <div className="admin-gifts-stats">
-        <div className="admin-gifts-stat">
-          <div className="admin-gifts-stat-val">${totalCreditsGiven.toFixed(0)}</div>
-          <div className="admin-gifts-stat-lbl">CREDITS GIVEN</div>
+        <div className="admin-gifts-stat" style={{borderTop:"2px solid #10b981"}}>
+          <div className="admin-gifts-stat-val" style={{color:"#10b981"}}>${totalCreditsGiven.toFixed(0)}</div>
+          <div className="admin-gifts-stat-lbl">CREDITS</div>
         </div>
-        <div className="admin-gifts-stat">
-          <div className="admin-gifts-stat-val">{totalItems}</div>
-          <div className="admin-gifts-stat-lbl">ITEM GIFTS</div>
+        <div className="admin-gifts-stat" style={{borderTop:"2px solid #f59e0b"}}>
+          <div className="admin-gifts-stat-val" style={{color:"#f59e0b"}}>{totalFoodDrink}</div>
+          <div className="admin-gifts-stat-lbl">DRINKS/FOOD</div>
+        </div>
+        <div className="admin-gifts-stat" style={{borderTop:"2px solid #a855f7"}}>
+          <div className="admin-gifts-stat-val" style={{color:"#a855f7"}}>{totalSpecial}</div>
+          <div className="admin-gifts-stat-lbl">SPECIAL</div>
         </div>
         <div className="admin-gifts-stat">
           <div className="admin-gifts-stat-val">{totalRedeemed}</div>
           <div className="admin-gifts-stat-lbl">REDEEMED</div>
-        </div>
-        <div className="admin-gifts-stat">
-          <div className="admin-gifts-stat-val">{activeGifts.length}</div>
-          <div className="admin-gifts-stat-lbl">PENDING</div>
         </div>
       </div>
 
@@ -6430,17 +6475,19 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
         </div>
       ) : list.map(g => {
         const u = users[g.recipient_id];
+        const tc = typeColor(g.type);
         return (
-          <div key={g.id} className="admin-gifts-row">
-            <div className="admin-gifts-row-type">
-              {g.type === "credits"
-                ? <span style={{fontSize:20}}>💳</span>
-                : g.type === "item"
-                  ? <span style={{fontSize:20}}>🥃</span>
-                  : <span style={{fontSize:20}}>🏆</span>}
+          <div key={g.id} className="admin-gifts-row" style={{borderLeft:`3px solid ${tc}33`}}>
+            <div className="admin-gifts-row-type" style={{color:tc}}>
+              {typeIcon(g.type)}
             </div>
             <div className="admin-gifts-row-info">
-              <div className="admin-gifts-row-title">{g.title}</div>
+              <div className="admin-gifts-row-title">
+                {g.title}
+                <span style={{marginLeft:8,padding:"1px 7px",background:`${tc}18`,border:`1px solid ${tc}40`,borderRadius:99,fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,color:tc,verticalAlign:"middle"}}>
+                  {g.type === "credits" ? "CREDITS" : g.type === "drink_food" || g.type === "item" ? "DRINK/FOOD" : g.type === "special" ? "SPECIAL" : "PASSPORT"}
+                </span>
+              </div>
               <div className="admin-gifts-row-meta">
                 To · <strong style={{color:"#fff"}}>{u?.name || "(deleted)"}</strong>
                 {u?.player_number ? ` · #${u.player_number}` : ""}
@@ -6449,7 +6496,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
               </div>
             </div>
             <div className="admin-gifts-row-actions">
-              {!g.redeemed && g.type === "item" && (
+              {!g.redeemed && (g.type === "item" || g.type === "drink_food" || g.type === "special") && (
                 <button className="admin-gifts-btn admin-gifts-btn-primary" onClick={() => markRedeemed(g)}>
                   MARK REDEEMED
                 </button>
@@ -6511,15 +6558,27 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
             )}
 
             <div className="sg-field-lbl">GIFT TYPE</div>
-            <div className="sg-type-row">
-              <button className={`sg-type-btn ${type==="credits"?"sg-type-on":""}`} onClick={()=>setType("credits")}>
-                <span className="sg-type-ico">💳</span>
-                <span className="sg-type-lbl">CREDITS</span>
-              </button>
-              <button className={`sg-type-btn ${type==="item"?"sg-type-on":""}`} onClick={()=>setType("item")}>
-                <span className="sg-type-ico">🥃</span>
-                <span className="sg-type-lbl">FREE ITEM</span>
-              </button>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+              {[
+                { id:"credits",    label:"CREDITS",      sub:"Added to balance",   col:"#10b981" },
+                { id:"drink_food", label:"DRINK / FOOD", sub:"Player orders in-app", col:"#f59e0b" },
+                { id:"special",    label:"SPECIAL PRIZE",sub:"Go to restaurant",   col:"#a855f7" },
+              ].map(opt => (
+                <button key={opt.id} onClick={()=>setType(opt.id)} style={{
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                  gap:6,padding:"14px 8px",
+                  background: type === opt.id ? `${opt.col}18` : "rgba(255,255,255,.025)",
+                  border: type === opt.id ? `1.5px solid ${opt.col}` : "1.5px solid rgba(255,255,255,.07)",
+                  borderRadius:12,cursor:"pointer",transition:"all .18s",
+                  boxShadow: type === opt.id ? `0 0 18px ${opt.col}22` : "none",
+                }}>
+                  <div style={{color: type === opt.id ? opt.col : "rgba(255,255,255,.4)", transition:"color .18s"}}>
+                    {typeIcon(opt.id)}
+                  </div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:1.5,color: type === opt.id ? "#fff" : "rgba(255,255,255,.5)",lineHeight:1.3,textAlign:"center"}}>{opt.label}</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color: type === opt.id ? opt.col : "rgba(255,255,255,.25)",fontWeight:500,lineHeight:1.3,textAlign:"center"}}>{opt.sub}</div>
+                </button>
+              ))}
             </div>
 
             {type === "credits" ? (
@@ -6537,8 +6596,20 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
               </>
             ) : (
               <>
-                <div className="sg-field-lbl">ITEM NAME</div>
-                <input className="sg-text-inp" placeholder="e.g. Corona, House Wine…" value={itemName} onChange={e=>setItemName(e.target.value)} style={{marginBottom:12}}/>
+                <div className="sg-field-lbl">{type === "drink_food" ? "DRINK OR FOOD NAME" : "PRIZE NAME"}</div>
+                <input className="sg-text-inp"
+                  placeholder={type === "drink_food" ? "e.g. Amstel Bright Bucket, House Wine…" : "e.g. Official World Cup Ball, El Mundo Jersey…"}
+                  value={itemName} onChange={e=>setItemName(e.target.value)} style={{marginBottom:12}}/>
+                {type === "drink_food" && (
+                  <div style={{padding:"8px 10px",background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.2)",borderRadius:7,marginBottom:12,fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(245,158,11,.8)",fontWeight:500,lineHeight:1.5}}>
+                    🍺 Player will tap "ORDER FREE" and the item goes straight to the bar — no visit to staff needed
+                  </div>
+                )}
+                {type === "special" && (
+                  <div style={{padding:"8px 10px",background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.2)",borderRadius:7,marginBottom:12,fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(168,85,247,.8)",fontWeight:500,lineHeight:1.5}}>
+                    🎁 Player will be instructed to come to the restaurant — staff marks it redeemed manually
+                  </div>
+                )}
               </>
             )}
 
