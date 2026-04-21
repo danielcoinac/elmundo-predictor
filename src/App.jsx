@@ -1406,7 +1406,7 @@ export default function App() {
 
   return (
     <LangContext.Provider value={{ lang, t, toggleLang }}>
-    <div style={{ fontFamily:"'Outfit',sans-serif", background:"#f4f5f7", minHeight:"100vh", color:"#0a0a0a" }}>
+    <div style={{ fontFamily:"'Outfit',sans-serif", background:"#000", minHeight:"100vh", color:"#fff" }}>
       <link href="https://fonts.googleapis.com/css2?family=Anton&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
       {/* styles loaded via import "./styles.css" */}
       {showOnboarding && <OnboardingTutorial onDone={() => { localStorage.setItem(ONBOARDING_KEY, "1"); setShowOnboarding(false); }} />}
@@ -1419,7 +1419,7 @@ export default function App() {
           <span className="notif-msg">{toast.msg}</span>
         </div>
       )}
-      {page === "loading" && <div style={{position:"fixed",inset:0,background:"#f4f5f7",zIndex:999}} />}
+      {page === "loading" && <div style={{position:"fixed",inset:0,background:"#000",zIndex:999}} />}
       {page === "auth"   && (
         <Auth tab={authTab} setTab={setAuthTab} form={form} setForm={setForm}
               err={formErr} setErr={setFormErr} onLogin={doLogin} onRegister={doRegister}
@@ -1883,7 +1883,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
           style={{
             position:"fixed", inset:0, zIndex:80,
             display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-            background:"#f4f5f7",
+            background:"#000",
             opacity: phase >= 3 ? 0 : 1,
             transition: phase >= 3 ? "opacity 1.6s ease" : "none",
             pointerEvents: phase >= 3 ? "none" : "auto",
@@ -1921,7 +1921,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
           <div style={{
             position:"absolute", bottom:44,
             fontFamily:"'Anton',sans-serif", fontSize:10, letterSpacing:5,
-            color:"rgba(0,0,0,.28)", border:"1px solid rgba(0,0,0,.09)",
+            color:"rgba(255,255,255,.28)", border:"1px solid rgba(255,255,255,.1)",
             padding:"7px 18px", whiteSpace:"nowrap",
             opacity: phase >= 1 ? 1 : 0,
             transition:"opacity 0.6s ease 0.6s",
@@ -1957,7 +1957,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
                 <FField label="LAST NAME"   val={form.lastName||""}  on={set("lastName")}  ph="Doe"  />
               </div>
               <FField label={t('phone')} val={form.phone} on={set("phone")} ph="+599 700 0000" />
-              <div style={{fontSize:10,color:"rgba(0,0,0,.3)",letterSpacing:1,marginTop:-6,paddingLeft:2}}>Country code required · e.g. +599, +31, +1, +34</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.3)",letterSpacing:1,marginTop:-6,paddingLeft:2}}>Country code required · e.g. +599, +31, +1, +34</div>
             </>}
             <FField label={t('email')}     val={form.email}    on={set("email")}    ph="your@email.com"     type="email"    />
             <FField label={t('password')}  val={form.password} on={set("password")} ph="Min. 8 characters" type="password" />
@@ -2453,7 +2453,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
       <span style={{fontSize:16}}>🔒</span>
       <div>
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#f87171"}}>PREDICTIONS CLOSED</div>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.35)",marginTop:1}}>The tournament has started · no more entries</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:1}}>The tournament has started · no more entries</div>
       </div>
     </div>
   );
@@ -2467,7 +2467,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
 
   return (
     <div style={{margin:"10px 16px 4px",borderRadius:12,overflow:"hidden",
-      background:"#0a0a0a",border:`1px solid ${border}`,transition:"border-color 1s"}}>
+      background:"#111",border:`1px solid ${border}`,transition:"border-color 1s"}}>
 
       {/* Top label row */}
       <div style={{padding:"8px 14px 7px",display:"flex",alignItems:"center",
@@ -2479,7 +2479,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
         </span>
         {firstMatch && (
           <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,
-            color:"rgba(0,0,0,.35)"}}>
+            color:"rgba(255,255,255,.35)"}}>
             Deadline · {firstMatch.date} {firstMatch.time}
           </span>
         )}
@@ -2492,7 +2492,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
           <React.Fragment key={label}>
             <div style={{textAlign:"center"}}>
               <div className={digitCl} style={{
-                background:"#f0f1f3",border:`1px solid rgba(0,0,0,.08)`,
+                background:"#1a1a1a",border:`1px solid rgba(255,255,255,.09)`,
                 borderRadius:8,padding:"7px 0",width:52,
                 fontFamily:"'Anton',sans-serif",fontSize:26,lineHeight:1,
                 color:accent,letterSpacing:1,
@@ -2500,7 +2500,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
                 {val}
               </div>
               <div style={{fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:9,
-                letterSpacing:2,color:"rgba(0,0,0,.3)",marginTop:5}}>{label}</div>
+                letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:5}}>{label}</div>
             </div>
             {i < units.length - 1 && (
               <div style={{display:"flex",flexDirection:"column",gap:5,
@@ -2722,7 +2722,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1.5,color:"rgba(239,68,68,.95)",marginBottom:4}}>
               PREDICTION ACCESS REVOKED
             </div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.55)",lineHeight:1.5}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",lineHeight:1.5}}>
               Suspicious activity was detected on your account. You have been permanently banned from submitting or changing predictions. You can still use the app and follow the tournament.
             </div>
           </div>
@@ -2863,7 +2863,7 @@ function MatchCard({ m, pred, onSave, globalLockTime, isBanned, allPreds, user }
         <span className="mcard-group-pill">{m.group}</span>
         <span className="mcard-dt">{m.date} · {m.time} BON</span>
         {!fin && isActuallyLocked && !isBanned && (
-          <span className="countdown-chip" style={{color:"rgba(0,0,0,.45)",borderColor:"rgba(0,0,0,.1)",background:"transparent",fontSize:10}}>🔒 LOCKED</span>
+          <span className="countdown-chip" style={{color:"rgba(255,255,255,.45)",borderColor:"rgba(255,255,255,.12)",background:"transparent",fontSize:10}}>🔒 LOCKED</span>
         )}
       </div>
       <div className="mcard-scoreboard">
@@ -3441,7 +3441,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           <div className="psearch-popup" style={{height:"auto",maxHeight:"90vh"}}>
             <button className="psearch-close" onClick={()=>{setShowPost(false);setPreview(null);setPreviewFile(null);}}>✕</button>
             <div className="psearch-title" style={{paddingBottom:8}}>{isAdmin?"NEW POST":"SUBMIT A MOMENT"}</div>
-            {!isAdmin && <div style={{fontSize:11,color:"rgba(0,0,0,.3)",letterSpacing:1,padding:"0 24px 12px"}}>Your photo will be reviewed before appearing publicly</div>}
+            {!isAdmin && <div style={{fontSize:11,color:"rgba(255,255,255,.3)",letterSpacing:1,padding:"0 24px 12px"}}>Your photo will be reviewed before appearing publicly</div>}
             <div style={{padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:12}}>
               {preview ? (
                 <div className="mom-preview-wrap">
@@ -3451,8 +3451,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
               ) : (
                 <label className="mom-pick-area">
                   <div style={{fontSize:48,marginBottom:10}}>📷</div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,color:"rgba(0,0,0,.5)"}}>TAP TO SELECT PHOTO</div>
-                  <div style={{fontSize:11,color:"rgba(0,0,0,.2)",marginTop:6}}>JPG, PNG up to 10MB</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,color:"rgba(255,255,255,.5)"}}>TAP TO SELECT PHOTO</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.2)",marginTop:6}}>JPG, PNG up to 10MB</div>
                   <input type="file" accept="image/*" style={{display:"none"}} onChange={handlePickPhoto}/>
                 </label>
               )}
@@ -3614,8 +3614,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
             if (totalPosts === 0) return (
               <div className="mom-empty">
                 <div style={{fontSize:64,marginBottom:16}}>📸</div>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:4,color:"rgba(0,0,0,.3)"}}>NO POSTS YET</div>
-                <div style={{fontSize:13,color:"rgba(0,0,0,.2)",marginTop:8,letterSpacing:1,lineHeight:1.6}}>Share a moment or your match prediction — be the first!</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:4,color:"rgba(255,255,255,.3)"}}>NO POSTS YET</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,.2)",marginTop:8,letterSpacing:1,lineHeight:1.6}}>Share a moment or your match prediction — be the first!</div>
                 <button className="mom-empty-cta" onClick={()=>setShowPost(true)}>+ POST A PHOTO</button>
               </div>
             );
@@ -3756,7 +3756,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                     <div className="mom-actions">
                       <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
                         <button className={`mom-like-btn ${myLike?"mom-liked":""}`} onClick={()=>toggleLike(mom.id)}>
-                          <svg className={`mom-heart-svg ${myLike?"mom-heart-svg-on":""}`} width="24" height="24" viewBox="0 0 24 24" fill={myLike?"#e63946":"none"} stroke={myLike?"#e63946":"rgba(0,0,0,.55)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                          <svg className={`mom-heart-svg ${myLike?"mom-heart-svg-on":""}`} width="24" height="24" viewBox="0 0 24 24" fill={myLike?"#e63946":"none"} stroke={myLike?"#e63946":"rgba(255,255,255,.55)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                           {likeCount > 0 && <span className="mom-like-count">{likeCount}</span>}
                         </button>
                         {anims.map(p=>(
@@ -3764,7 +3764,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
                         ))}
                       </div>
                       <button className="mom-comment-toggle" onClick={()=>setOpenComments(showingComments?null:mom.id)}>
-                        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         {momComments.length > 0 && <span className="mom-like-count">{momComments.length}</span>}
                       </button>
                     </div>
@@ -3823,8 +3823,8 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           {notifs.length === 0 ? (
             <div className="mom-empty">
               <div style={{fontSize:52,marginBottom:16}}>🔔</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"rgba(0,0,0,.25)"}}>NO NOTIFICATIONS YET</div>
-              <div style={{fontSize:12,color:"rgba(0,0,0,.2)",marginTop:8,lineHeight:1.6}}>Likes and comments on your posts will appear here</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"rgba(255,255,255,.25)"}}>NO NOTIFICATIONS YET</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,.2)",marginTop:8,lineHeight:1.6}}>Likes and comments on your posts will appear here</div>
             </div>
           ) : notifs.map(n => (
             <div key={n.id} className={`mom-notif-row ${!notifSeen.includes(n.id)?"mom-notif-new":""}`}>
@@ -3978,7 +3978,7 @@ function Av({ u, size = 44, fontSize = 20 }) {
   return (
     <div style={{width:size,height:size,borderRadius:"50%",background:avatarColor(u?.name||""),
       display:"flex",alignItems:"center",justifyContent:"center",
-      fontFamily:"'Anton',sans-serif",fontSize,color:"#0a0a0a",flexShrink:0,letterSpacing:0}}>
+      fontFamily:"'Anton',sans-serif",fontSize,color:"#fff",flexShrink:0,letterSpacing:0}}>
       {(u?.name||"?")[0].toUpperCase()}
     </div>
   );
@@ -4077,7 +4077,7 @@ function PlayerSearchView({ allUsers, currentUser, matches }) {
           <div className="ps-bk-legend">
             <span><span className="ps-bk-dot" style={{background:"#4ade80"}}/>Exact score ({stats.exact})</span>
             <span><span className="ps-bk-dot" style={{background:"#fbbf24"}}/>Correct winner ({stats.winner})</span>
-            <span><span className="ps-bk-dot" style={{background:"rgba(0,0,0,.18)"}}/>Wrong ({stats.wrong})</span>
+            <span><span className="ps-bk-dot" style={{background:"rgba(255,255,255,.18)"}}/>Wrong ({stats.wrong})</span>
           </div>
         </div>
       )}
@@ -4200,8 +4200,8 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
       {filtered.length === 0 && (
         <div className="lb-empty">
           <div style={{fontSize:48,marginBottom:16}}>🏆</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"rgba(0,0,0,.4)"}}>NO PLAYERS YET</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.25)",marginTop:8}}>Be the first to register and predict!</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"rgba(255,255,255,.4)"}}>NO PLAYERS YET</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
         </div>
       )}
     </div>
@@ -4277,7 +4277,7 @@ function SponsorShowcase({ onClose }) {
   const s = SPONSORS_LIST[idx];
 
   return createPortal(
-    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#f8f9fa",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#050505",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
 
       {/* Stadium light beam from top */}
       <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",
@@ -4287,7 +4287,7 @@ function SponsorShowcase({ onClose }) {
 
       {/* Subtle grid lines background */}
       <div style={{position:"absolute",inset:0,
-        backgroundImage:"linear-gradient(rgba(0,0,0,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.015) 1px,transparent 1px)",
+        backgroundImage:"linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px)",
         backgroundSize:"40px 40px",pointerEvents:"none"}}/>
 
       {/* Floating gold particles */}
@@ -4297,7 +4297,7 @@ function SponsorShowcase({ onClose }) {
           width: i%4===0 ? 3 : i%3===0 ? 2 : 1.5,
           height: i%4===0 ? 3 : i%3===0 ? 2 : 1.5,
           borderRadius:"50%",
-          background: i%3===0 ? "rgba(212,175,55,.7)" : "rgba(0,0,0,.25)",
+          background: i%3===0 ? "rgba(212,175,55,.7)" : "rgba(255,255,255,.25)",
           left:`${5+(i*6.1)%90}%`,
           top:`${8+(i*11.3)%84}%`,
           animation:`scPart ${2.5+i*0.22}s ease-in-out ${i*0.12}s infinite alternate`,
@@ -4326,7 +4326,7 @@ function SponsorShowcase({ onClose }) {
         {/* LOGO CARD — full width, tall */}
         <div key={`logo-${animKey}`} style={{
           width:"100%",maxWidth:340,height:200,
-          background:"#0a0a0a",borderRadius:24,
+          background:"#fff",borderRadius:24,
           display:"flex",alignItems:"center",justifyContent:"center",
           padding:"20px 28px",position:"relative",overflow:"hidden",
           boxShadow:"0 0 0 1px rgba(212,175,55,.2), 0 30px 80px rgba(0,0,0,.8), 0 0 80px rgba(212,175,55,.08)",
@@ -4346,7 +4346,7 @@ function SponsorShowcase({ onClose }) {
           {/* Shimmer */}
           <div style={{
             position:"absolute",inset:0,
-            background:"linear-gradient(105deg,transparent 35%,rgba(0,0,0,.55) 50%,transparent 65%)",
+            background:"linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%)",
             animation:"scShimmer 1s .3s ease forwards",transform:"translateX(-100%)",
             pointerEvents:"none",
           }}/>
@@ -4363,10 +4363,10 @@ function SponsorShowcase({ onClose }) {
         <div key={`name-${animKey}`} style={{
           fontFamily:"'Anton',sans-serif",
           fontSize: s.name.length > 14 ? 34 : s.name.length > 10 ? 42 : 52,
-          letterSpacing:1,color:"#0a0a0a",textAlign:"center",lineHeight:1,
+          letterSpacing:1,color:"#fff",textAlign:"center",lineHeight:1,
           marginTop:20,padding:"0 8px",
           animation:"scFadeUp .6s .55s both",
-          textShadow:"0 0 40px rgba(0,0,0,.15)",
+          textShadow:"0 0 40px rgba(255,255,255,.15)",
         }}>
           {s.name}
         </div>
@@ -4375,7 +4375,7 @@ function SponsorShowcase({ onClose }) {
         {s.sub && (
           <div key={`sub-${animKey}`} style={{
             fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,
-            color:"rgba(0,0,0,.5)",marginTop:8,textAlign:"center",
+            color:"rgba(255,255,255,.5)",marginTop:8,textAlign:"center",
             animation:"scFadeUp .6s .7s both",letterSpacing:.5,
           }}>
             {s.sub}
@@ -4385,7 +4385,7 @@ function SponsorShowcase({ onClose }) {
         {/* COUNTER */}
         <div key={`cnt-${animKey}`} style={{
           fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:5,
-          color:"rgba(0,0,0,.2)",marginTop:24,
+          color:"rgba(255,255,255,.2)",marginTop:24,
           animation:"scFadeUp .5s .8s both",
         }}>
           {String(idx+1).padStart(2,"0")} — {String(SPONSORS_LIST.length).padStart(2,"0")}
@@ -4398,14 +4398,14 @@ function SponsorShowcase({ onClose }) {
         {SPONSORS_LIST.map((_,i) => (
           <div key={i} onClick={()=>advance(i)} style={{
             width: i===idx ? 22 : 6, height:6, borderRadius:3,
-            background: i===idx ? "#d4af37" : "rgba(0,0,0,.18)",
+            background: i===idx ? "#d4af37" : "rgba(255,255,255,.18)",
             transition:"all .35s cubic-bezier(.34,1.56,.64,1)",cursor:"pointer",
           }}/>
         ))}
       </div>
 
       {/* Gold progress bar */}
-      <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,.04)"}}>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(255,255,255,.04)"}}>
         <div key={`bar-${animKey}`} style={{
           height:"100%",
           background:"linear-gradient(90deg,#b8962e,#f5e27d,#b8962e)",
@@ -4416,15 +4416,15 @@ function SponsorShowcase({ onClose }) {
       {/* Close */}
       <button onClick={onClose} style={{
         position:"absolute",top:48,right:16,zIndex:20,
-        background:"rgba(0,0,0,.6)",border:"1px solid rgba(0,0,0,.15)",
-        color:"rgba(0,0,0,.6)",borderRadius:20,padding:"7px 18px",
+        background:"rgba(0,0,0,.6)",border:"1px solid rgba(255,255,255,.15)",
+        color:"rgba(255,255,255,.6)",borderRadius:20,padding:"7px 18px",
         fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,cursor:"pointer",
         backdropFilter:"blur(8px)",
       }}>✕ CLOSE</button>
 
       {/* Top left label */}
       <div style={{position:"absolute",top:52,left:18,
-        fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"rgba(0,0,0,.18)"}}>
+        fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"rgba(255,255,255,.18)"}}>
         OUR SPONSORS
       </div>
 
@@ -4432,8 +4432,8 @@ function SponsorShowcase({ onClose }) {
       {[{dir:-1,side:"left",pos:16},{dir:1,side:"right",pos:16}].map(({dir,side,pos})=>(
         <button key={side} onClick={()=>advance((idx+dir+SPONSORS_LIST.length)%SPONSORS_LIST.length)} style={{
           position:"absolute",[side]:pos,top:"50%",transform:"translateY(-50%)",
-          background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.09)",
-          color:"rgba(0,0,0,.5)",borderRadius:12,width:36,height:52,
+          background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",
+          color:"rgba(255,255,255,.5)",borderRadius:12,width:36,height:52,
           fontFamily:"'Anton',sans-serif",fontSize:18,cursor:"pointer",
           display:"flex",alignItems:"center",justifyContent:"center",
           backdropFilter:"blur(4px)",transition:"all .2s",zIndex:5,
@@ -4478,14 +4478,14 @@ function SponsorsSection() {
       {showShowcase && <SponsorShowcase onClose={()=>setShowShowcase(false)}/>}
       {/* Header */}
       <div style={{padding:"24px 16px 0",textAlign:"center"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:5,color:"rgba(0,0,0,.3)",marginBottom:10}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:5,color:"rgba(255,255,255,.3)",marginBottom:10}}>
           WORLD CUP 2026 · EL MUNDO BONAIRE
         </div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:2,color:"#0a0a0a",marginBottom:6}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:2,color:"#fff",marginBottom:6}}>
           OUR SPONSORS
         </div>
         <div style={{width:40,height:1.5,background:"linear-gradient(90deg,transparent,#d4af37,transparent)",margin:"0 auto 12px"}}/>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.4)",lineHeight:1.5}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",lineHeight:1.5}}>
           Thank you to all our amazing partners who made this event possible
         </div>
       </div>
@@ -4504,7 +4504,7 @@ function SponsorsSection() {
         }}>
           ▶ WATCH SPONSOR SHOWCASE
         </button>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.25)",marginTop:6}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)",marginTop:6}}>
           Cinematic tribute to our partners
         </div>
       </div>
@@ -4515,8 +4515,8 @@ function SponsorsSection() {
           <div key={s.id} style={{
             borderRadius:14,
             overflow:"hidden",
-            border:"1px solid rgba(0,0,0,.05)",
-            background:"rgba(0,0,0,.03)",
+            border:"1px solid rgba(255,255,255,.06)",
+            background:"rgba(255,255,255,.03)",
             display:"flex",flexDirection:"column",
           }}>
             {/* Logo area */}
@@ -4533,12 +4533,12 @@ function SponsorsSection() {
               />
             </div>
             {/* Name area */}
-            <div style={{padding:"10px 12px 12px",background:"rgba(0,0,0,.03)"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.5,color:"#0a0a0a",marginBottom:s.sub?3:0}}>
+            <div style={{padding:"10px 12px 12px",background:"rgba(255,255,255,.02)"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.5,color:"#fff",marginBottom:s.sub?3:0}}>
                 {s.name}
               </div>
               {s.sub && (
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.35)",lineHeight:1.3}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",lineHeight:1.3}}>
                   {s.sub}
                 </div>
               )}
@@ -4552,9 +4552,9 @@ function SponsorsSection() {
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"#d4af37",marginBottom:6}}>
           ⚽ PROUD PARTNERS OF EL MUNDO
         </div>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.35)",lineHeight:1.5}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",lineHeight:1.5}}>
           Interested in sponsoring? Contact us at<br/>
-          <span style={{color:"rgba(0,0,0,.6)"}}>www.elmundobonaire.com</span>
+          <span style={{color:"rgba(255,255,255,.6)"}}>www.elmundobonaire.com</span>
         </div>
       </div>
     </div>
@@ -4928,7 +4928,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
       // ── Accent lines helper ──
       const goldLine = (y2) => {
         const g = ctx.createLinearGradient(60,0,W-60,0);
-        g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(0.25,ACCENT2); g.addColorStop(0.75,ACCENT2); g.addColorStop(1,'rgba(0,0,0,0)');
+        g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(0.25,ACCENT2); g.addColorStop(0.75,ACCENT2); g.addColorStop(1,'rgba(255,255,255,0)');
         ctx.fillStyle = g; ctx.fillRect(60, y2, W-120, 1.5);
       };
 
@@ -5523,17 +5523,17 @@ function AdminDashboard({ allOrders, users, board }) {
   const topProductEntry = Object.entries(todayProducts).sort((a,b)=>b[1]-a[1])[0];
 
   const DCard = ({ icon, label, value, sub, accent }) => (
-    <div style={{background:"rgba(0,0,0,.04)",border:`1px solid ${accent||"rgba(0,0,0,.09)"}`,borderRadius:2,padding:"16px 14px",flex:1,minWidth:140,position:"relative",overflow:"hidden"}}>
+    <div style={{background:"rgba(255,255,255,.04)",border:`1px solid ${accent||"rgba(255,255,255,.1)"}`,borderRadius:2,padding:"16px 14px",flex:1,minWidth:140,position:"relative",overflow:"hidden"}}>
       <div style={{fontSize:22,marginBottom:8,lineHeight:1}}>{icon}</div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.4)",letterSpacing:2,fontWeight:700,marginBottom:4}}>{label}</div>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#0a0a0a",lineHeight:1}}>{value}</div>
-      {sub && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.3)",marginTop:5}}>{sub}</div>}
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.4)",letterSpacing:2,fontWeight:700,marginBottom:4}}>{label}</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",lineHeight:1}}>{value}</div>
+      {sub && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",marginTop:5}}>{sub}</div>}
     </div>
   );
 
   const SRow = ({ label, value, accent }) => (
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:"1px solid rgba(0,0,0,.04)"}}>
-      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.55)",fontWeight:600}}>{label}</span>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.55)",fontWeight:600}}>{label}</span>
       <span style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:accent||"#fff"}}>{value}</span>
     </div>
   );
@@ -5543,8 +5543,8 @@ function AdminDashboard({ allOrders, users, board }) {
       {/* ── Date header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(0,0,0,.3)"}}>QUICK DASHBOARD</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#0a0a0a",marginTop:2}}>{new Date().toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)"}}>QUICK DASHBOARD</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"#fff",marginTop:2}}>{new Date().toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</div>
         </div>
         <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 8px #22c55e"}} title="Live" />
       </div>
@@ -5552,17 +5552,17 @@ function AdminDashboard({ allOrders, users, board }) {
       {/* ── Top KPI cards ── */}
       <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
         <DCard icon="💵" label="TODAY'S REVENUE" value={`$${todayRevenue.toFixed(2)}`} sub={`${todayOrders.length} order${todayOrders.length!==1?"s":""}`} accent="rgba(34,197,94,.25)" />
-        <DCard icon="⏳" label="PENDING ORDERS" value={pendingOrders.length} sub="Waiting / in progress" accent={pendingOrders.length>0?"rgba(245,158,11,.3)":"rgba(0,0,0,.09)"} />
+        <DCard icon="⏳" label="PENDING ORDERS" value={pendingOrders.length} sub="Waiting / in progress" accent={pendingOrders.length>0?"rgba(245,158,11,.3)":"rgba(255,255,255,.1)"} />
       </div>
       <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
         <DCard icon="👥" label="TOTAL PLAYERS" value={totalUsers} sub="Registered accounts" />
-        <DCard icon="🏆" label="TOP PLAYER" value={topPlayer ? topPlayer.name.split(" ")[0] : "—"} sub={topPlayer ? `${topPlayer.pts} pts · Rank #1` : "No predictions yet"} accent="rgba(0,0,0,.09)" />
+        <DCard icon="🏆" label="TOP PLAYER" value={topPlayer ? topPlayer.name.split(" ")[0] : "—"} sub={topPlayer ? `${topPlayer.pts} pts · Rank #1` : "No predictions yet"} accent="rgba(255,255,255,.1)" />
       </div>
 
       {/* ── Today breakdown ── */}
       <div style={{marginBottom:24}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(0,0,0,.3)",marginBottom:12}}>TODAY'S BREAKDOWN</div>
-        <div style={{background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.07)",padding:"4px 14px"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:12}}>TODAY'S BREAKDOWN</div>
+        <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",padding:"4px 14px"}}>
           <SRow label="💳 Credit Orders" value={`${todayCreditOrders.length} · $${creditRevenue.toFixed(2)}`} accent="#a3e635" />
           <SRow label="💵 Cash / Card" value={`${todayCardOrders.length} · $${cardRevenue.toFixed(2)}`} accent="#60a5fa" />
           <SRow label="📦 Total Orders Today" value={todayOrders.length} />
@@ -5573,26 +5573,26 @@ function AdminDashboard({ allOrders, users, board }) {
       {/* ── Active pending list ── */}
       {pendingOrders.length > 0 && (
         <div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(0,0,0,.3)",marginBottom:10}}>ACTIVE ORDERS</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:10}}>ACTIVE ORDERS</div>
           {pendingOrders.slice(0,8).map(o => (
-            <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:"1px solid rgba(0,0,0,.04)",background:"rgba(0,0,0,.03)"}}>
+            <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:"1px solid rgba(255,255,255,.05)",background:"rgba(255,255,255,.02)"}}>
               <div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#0a0a0a",fontWeight:700}}>Table {o.table_number||"?"}</div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.35)",marginTop:2}}>{(o.items||[]).map(i=>i.name).join(", ")}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:700}}>Table {o.table_number||"?"}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>{(o.items||[]).map(i=>i.name).join(", ")}</div>
               </div>
               <div style={{textAlign:"right"}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#0a0a0a"}}>${(+o.total).toFixed(2)}</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff"}}>${(+o.total).toFixed(2)}</div>
                 <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:o.status==="pending"?"#f59e0b":"#a3e635",marginTop:2,textTransform:"uppercase",letterSpacing:1}}>{o.status}</div>
               </div>
             </div>
           ))}
           {pendingOrders.length > 8 && (
-            <div style={{textAlign:"center",padding:"10px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.3)"}}>+{pendingOrders.length-8} more</div>
+            <div style={{textAlign:"center",padding:"10px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>+{pendingOrders.length-8} more</div>
           )}
         </div>
       )}
       {pendingOrders.length === 0 && (
-        <div style={{textAlign:"center",padding:"30px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.2)"}}>All orders fulfilled 🎉</div>
+        <div style={{textAlign:"center",padding:"30px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.2)"}}>All orders fulfilled 🎉</div>
       )}
     </div>
   );
@@ -5649,18 +5649,18 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
   return (
     <div className="vpad">
       {/* ── Level 1: Group nav ── */}
-      <div style={{display:"flex",alignItems:"center",borderBottom:"1px solid rgba(0,0,0,.06)",gap:0}}>
+      <div style={{display:"flex",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.07)",gap:0}}>
         {GROUPS.map(g => {
           const on = g.id === activeGroup.id;
           return (
             <button key={g.id} onClick={()=>goGroup(g)} style={{
               display:"flex",alignItems:"center",gap:6,
               padding:"13px 20px",
-              background: on ? "rgba(0,0,0,.05)" : "transparent",
+              background: on ? "rgba(255,255,255,.06)" : "transparent",
               border:"none",
               borderBottom: on ? "2px solid #fff" : "2px solid transparent",
               fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,
-              color: on ? "#fff" : "rgba(0,0,0,.35)",
+              color: on ? "#fff" : "rgba(255,255,255,.35)",
               cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",
               marginBottom:-1,
             }}>
@@ -5674,9 +5674,9 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
           <button onClick={onAnnounceWinner} style={{
             marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
             padding:"8px 14px",margin:"6px 12px 6px auto",
-            background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.25)",
+            background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",
             fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-            color:"rgba(0,0,0,.85)",cursor:"pointer",whiteSpace:"nowrap",
+            color:"rgba(255,255,255,.85)",cursor:"pointer",whiteSpace:"nowrap",
           }}>
             🏆 WINNER
           </button>
@@ -5684,16 +5684,16 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       </div>
 
       {/* ── Level 2: Sub-tab nav ── */}
-      <div style={{display:"flex",borderBottom:"1px solid rgba(0,0,0,.04)",background:"rgba(0,0,0,.03)"}}>
+      <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,.05)",background:"rgba(255,255,255,.02)"}}>
         {subTabs.map(t => {
           const on = section === t.id;
           return (
             <button key={t.id} onClick={()=>setSection(t.id)} style={{
               padding:"9px 16px",
               background:"transparent",border:"none",
-              borderBottom: on ? "2px solid rgba(0,0,0,.5)" : "2px solid transparent",
+              borderBottom: on ? "2px solid rgba(255,255,255,.5)" : "2px solid transparent",
               fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight: on ? 700 : 500,
-              color: on ? "#fff" : "rgba(0,0,0,.3)",
+              color: on ? "#fff" : "rgba(255,255,255,.3)",
               cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",
               marginBottom:-1,letterSpacing:.5,
             }}>
@@ -5728,13 +5728,13 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 function AdminAppSettings({ appSettings = {}, onSave }) {
   const s = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, ...appSettings };
   const Toggle = ({ label, desc, val, onToggle }) => (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"rgba(0,0,0,.03)",border:`1px solid ${val?"rgba(0,0,0,.1)":"rgba(0,0,0,.05)"}`,marginBottom:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"rgba(255,255,255,.03)",border:`1px solid ${val?"rgba(255,255,255,.12)":"rgba(255,255,255,.06)"}`,marginBottom:8}}>
       <div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,color:val?"#fff":"rgba(0,0,0,.45)"}}>{label}</div>
-        {desc && <div style={{fontSize:11,color:"rgba(0,0,0,.3)",marginTop:3,fontFamily:"'Outfit',sans-serif"}}>{desc}</div>}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,color:val?"#fff":"rgba(255,255,255,.45)"}}>{label}</div>
+        {desc && <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:3,fontFamily:"'Outfit',sans-serif"}}>{desc}</div>}
       </div>
-      <div onClick={onToggle} style={{width:44,height:24,borderRadius:12,background:val?"#fff":"rgba(0,0,0,.1)",border:`1px solid ${val?"#fff":"rgba(0,0,0,.2)"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
-        <div style={{position:"absolute",top:3,left:val?22:3,width:16,height:16,borderRadius:"50%",background:val?"#000":"rgba(0,0,0,.5)",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+      <div onClick={onToggle} style={{width:44,height:24,borderRadius:12,background:val?"#fff":"rgba(255,255,255,.12)",border:`1px solid ${val?"#fff":"rgba(255,255,255,.2)"}`,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
+        <div style={{position:"absolute",top:3,left:val?22:3,width:16,height:16,borderRadius:"50%",background:val?"#000":"rgba(255,255,255,.5)",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
       </div>
     </div>
   );
@@ -5746,7 +5746,7 @@ function AdminAppSettings({ appSettings = {}, onSave }) {
       </div>
       <div style={{padding:"0 14px 24px"}}>
         <div style={{marginBottom:20}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(0,0,0,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(0,0,0,.05)"}}>TAB VISIBILITY</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10,paddingBottom:6,borderBottom:"1px solid rgba(255,255,255,.06)"}}>TAB VISIBILITY</div>
           <Toggle label="MATCHES" desc="World Cup match predictions tab" val={s.showMatches} onToggle={()=>onSave({showMatches:!s.showMatches})} />
           <Toggle label="LEADERBOARD" desc="Player rankings and points tab" val={s.showLeaderboard} onToggle={()=>onSave({showLeaderboard:!s.showLeaderboard})} />
           <Toggle label="MUNDOGRAM" desc="Social photo feed tab" val={s.showMundogram} onToggle={()=>onSave({showMundogram:!s.showMundogram})} />
@@ -5774,15 +5774,15 @@ function AdminFloorplanAccess({ users, onSetAccess }) {
         <input className="afield-inp" placeholder="Search by name…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",marginBottom:12}} />
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filtered.map(u => (
-            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(0,0,0,.03)",border:`1px solid ${u.floorplan_access?"rgba(96,165,250,.2)":"rgba(0,0,0,.06)"}`}}>
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,.03)",border:`1px solid ${u.floorplan_access?"rgba(96,165,250,.2)":"rgba(255,255,255,.07)"}`}}>
               {u.avatar_url ? (
                 <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
               ) : (
-                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.07)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
+                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
               )}
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                <div style={{fontSize:11,color:"rgba(0,0,0,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                 {u.floorplan_access && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#60a5fa",padding:"3px 8px",background:"rgba(96,165,250,.1)",border:"1px solid rgba(96,165,250,.3)"}}>FLOOR ✓</span>}
@@ -5814,22 +5814,22 @@ function AdminKeepupsAccess({ users, onSetAccess }) {
       <div style={{padding:"0 14px 12px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(245,200,90,.07)",border:"1px solid rgba(245,200,90,.25)",borderRadius:8,marginBottom:14}}>
           <span style={{fontSize:18}}>🍷</span>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.65)",fontWeight:500,lineHeight:1.45}}>
-            Operators with access see a <strong style={{color:"#f5c85a"}}>KEEP-UPS</strong> tab in their app. They can log player names and scores in real time. Players must spend <strong style={{color:"#0a0a0a"}}>$50+</strong> to qualify.
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.65)",fontWeight:500,lineHeight:1.45}}>
+            Operators with access see a <strong style={{color:"#f5c85a"}}>KEEP-UPS</strong> tab in their app. They can log player names and scores in real time. Players must spend <strong style={{color:"#fff"}}>$50+</strong> to qualify.
           </div>
         </div>
         <input className="afield-inp" placeholder="Search by name…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",marginBottom:12}} />
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filtered.map(u => (
-            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(0,0,0,.03)",border:`1px solid ${u.keepups_access?"rgba(245,200,90,.3)":"rgba(0,0,0,.06)"}`,borderRadius:8}}>
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,.03)",border:`1px solid ${u.keepups_access?"rgba(245,200,90,.3)":"rgba(255,255,255,.07)"}`,borderRadius:8}}>
               {u.avatar_url ? (
                 <img src={u.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}} />
               ) : (
-                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.07)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
+                <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:14,flexShrink:0}}>{(u.name||"?")[0].toUpperCase()}</div>
               )}
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                <div style={{fontSize:11,color:"rgba(0,0,0,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                 {u.keepups_access && <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"#f5c85a",padding:"3px 8px",background:"rgba(245,200,90,.1)",border:"1px solid rgba(245,200,90,.3)"}}>KEEP-UPS ✓</span>}
@@ -5954,7 +5954,7 @@ function KeepupsView({ user, users = {} }) {
     if (rank === 1) return "#FFD700";
     if (rank === 2) return "#C0C0C0";
     if (rank === 3) return "#CD7F32";
-    return "rgba(0,0,0,.25)";
+    return "rgba(255,255,255,.25)";
   };
 
   const rankBg = (rank) => {
@@ -5972,15 +5972,15 @@ function KeepupsView({ user, users = {} }) {
   return (
     <div style={{paddingBottom:80}}>
       {/* ── Header ── */}
-      <div style={{position:"relative",padding:"28px 20px 20px",textAlign:"center",borderBottom:"1px solid rgba(0,0,0,.06)"}}>
+      <div style={{position:"relative",padding:"28px 20px 20px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
         <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-          <div style={{width:80,height:80,borderRadius:16,overflow:"hidden",border:"1px solid rgba(0,0,0,.1)",boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>
+          <div style={{width:80,height:80,borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)",boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>
             <img src="/logos/winefactory.jpg" alt="The Wine Factory" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           </div>
         </div>
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"#f5c85a",marginBottom:4}}>THE WINE FACTORY</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:3,color:"#0a0a0a",lineHeight:1}}>KEEP-UPS</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(0,0,0,.35)",marginTop:6}}>CHALLENGE</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,letterSpacing:3,color:"#fff",lineHeight:1}}>KEEP-UPS</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.35)",marginTop:6}}>CHALLENGE</div>
         {/* Leaderboard button */}
         <button
           onClick={openBoard}
@@ -5991,13 +5991,13 @@ function KeepupsView({ user, users = {} }) {
       </div>
 
       {/* ── Add player form ── */}
-      <div style={{padding:"18px 16px 16px",borderBottom:"1px solid rgba(0,0,0,.05)"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(0,0,0,.35)",marginBottom:10}}>ADD PLAYER</div>
+      <div style={{padding:"18px 16px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10}}>ADD PLAYER</div>
 
         {/* Account requirement notice */}
         <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 12px",background:"rgba(245,200,90,.06)",border:"1px solid rgba(245,200,90,.18)",borderRadius:8,marginBottom:12}}>
           <span style={{fontSize:13,flexShrink:0,marginTop:1}}>ℹ️</span>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11.5,color:"rgba(0,0,0,.5)",fontWeight:500,lineHeight:1.45}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11.5,color:"rgba(255,255,255,.5)",fontWeight:500,lineHeight:1.45}}>
             Players must have an <strong style={{color:"rgba(245,200,90,.8)"}}>active app account</strong> and a minimum <strong style={{color:"rgba(245,200,90,.8)"}}>$50 spend</strong> at The Wine Factory to qualify.
           </div>
         </div>
@@ -6009,10 +6009,10 @@ function KeepupsView({ user, users = {} }) {
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"rgba(245,200,90,.08)",border:"1px solid rgba(245,200,90,.3)",borderRadius:8}}>
               <Av u={selectedPlayer} size={32} fontSize={13}/>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#0a0a0a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedPlayer.name}</div>
-                {selectedPlayer.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(0,0,0,.35)",fontWeight:500}}>#{selectedPlayer.player_number}</div>}
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedPlayer.name}</div>
+                {selectedPlayer.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.35)",fontWeight:500}}>#{selectedPlayer.player_number}</div>}
               </div>
-              <button onClick={()=>{setSelectedPlayer(null);setSearchQ("");}} style={{width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",color:"rgba(0,0,0,.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>✕</button>
+              <button onClick={()=>{setSelectedPlayer(null);setSearchQ("");}} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>✕</button>
             </div>
           ) : (
             /* Search input */
@@ -6025,26 +6025,26 @@ function KeepupsView({ user, users = {} }) {
                   onFocus={() => setSearchOpen(true)}
                   onBlur={() => setTimeout(() => setSearchOpen(false), 160)}
                   placeholder="Search by name or player #"
-                  style={{width:"100%",boxSizing:"border-box",background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.1)",borderRadius:8,padding:"12px 13px 12px 36px",color:"#0a0a0a",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,outline:"none"}}
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:8,padding:"12px 13px 12px 36px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,outline:"none"}}
                 />
               </div>
               {/* Dropdown */}
               {searchOpen && filteredUsers.length > 0 && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#f5f5f7",border:"1px solid rgba(0,0,0,.1)",borderRadius:10,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#161616",border:"1px solid rgba(255,255,255,.12)",borderRadius:10,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
                   {filteredUsers.map(u => (
                     <button key={u.id} onMouseDown={()=>{ setSelectedPlayer(u); setSearchQ(""); setSearchOpen(false); }}
-                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"transparent",border:"none",borderBottom:"1px solid rgba(0,0,0,.04)",cursor:"pointer",textAlign:"left"}}>
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",cursor:"pointer",textAlign:"left"}}>
                       <Av u={u} size={30} fontSize={12}/>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.3,color:"#0a0a0a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                        {u.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.35)",fontWeight:500}}>#{u.player_number}</div>}
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.3,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                        {u.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",fontWeight:500}}>#{u.player_number}</div>}
                       </div>
                     </button>
                   ))}
                 </div>
               )}
               {searchOpen && searchQ.trim().length > 0 && filteredUsers.length === 0 && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#f5f5f7",border:"1px solid rgba(0,0,0,.1)",borderRadius:10,padding:"14px 16px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.3)",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#161616",border:"1px solid rgba(255,255,255,.12)",borderRadius:10,padding:"14px 16px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
                   No players found — player must have an active account
                 </div>
               )}
@@ -6061,12 +6061,12 @@ function KeepupsView({ user, users = {} }) {
             placeholder="Score"
             inputMode="numeric"
             disabled={!selectedPlayer}
-            style={{flex:1,background: selectedPlayer ? "rgba(0,0,0,.06)" : "rgba(0,0,0,.03)",border:`1px solid ${selectedPlayer ? "rgba(0,0,0,.15)" : "rgba(0,0,0,.05)"}`,borderRadius:8,padding:"13px 16px",color: selectedPlayer ? "#fff" : "rgba(0,0,0,.2)",fontFamily:"'Anton',sans-serif",fontSize:22,textAlign:"center",outline:"none",transition:"all .2s"}}
+            style={{flex:1,background: selectedPlayer ? "rgba(255,255,255,.07)" : "rgba(255,255,255,.03)",border:`1px solid ${selectedPlayer ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.06)"}`,borderRadius:8,padding:"13px 16px",color: selectedPlayer ? "#fff" : "rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:22,textAlign:"center",outline:"none",transition:"all .2s"}}
           />
           <button
             onClick={addScore}
             disabled={!canAdd}
-            style={{padding:"13px 20px",background: canAdd ? "#f5c85a" : "rgba(245,200,90,.12)",color: canAdd ? "#000" : "rgba(0,0,0,.2)",border:"none",borderRadius:8,fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor: canAdd ? "pointer" : "not-allowed",transition:"all .18s",flexShrink:0}}>
+            style={{padding:"13px 20px",background: canAdd ? "#f5c85a" : "rgba(245,200,90,.12)",color: canAdd ? "#000" : "rgba(255,255,255,.2)",border:"none",borderRadius:8,fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor: canAdd ? "pointer" : "not-allowed",transition:"all .18s",flexShrink:0}}>
             {adding ? "…" : "+ ADD"}
           </button>
         </div>
@@ -6074,16 +6074,16 @@ function KeepupsView({ user, users = {} }) {
 
       {/* ── Score list ── */}
       <div style={{padding:"14px 16px 0"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(0,0,0,.35)",marginBottom:12}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:12}}>
           RANKINGS · {scores.length} PLAYER{scores.length !== 1 ? "S" : ""}
         </div>
         {loading ? (
-          <div style={{textAlign:"center",padding:40,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.3)"}}>Loading…</div>
+          <div style={{textAlign:"center",padding:40,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)"}}>Loading…</div>
         ) : scores.length === 0 ? (
           <div style={{textAlign:"center",padding:"40px 20px"}}>
             <div style={{fontSize:40,marginBottom:10}}>⚽</div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"rgba(0,0,0,.3)"}}>NO SCORES YET</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.2)",marginTop:6}}>Add the first player above</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"rgba(255,255,255,.3)"}}>NO SCORES YET</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)",marginTop:6}}>Add the first player above</div>
           </div>
         ) : scores.map((row, idx) => {
           const rank = idx + 1;
@@ -6092,7 +6092,7 @@ function KeepupsView({ user, users = {} }) {
           const isEditing = editId === row.id;
           const prof = profileFor(row);
           return (
-            <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.18)`:"rgba(0,0,0,.06)"}`,borderRadius:10,transition:"all .2s"}}>
+            <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.18)`:"rgba(255,255,255,.07)"}`,borderRadius:10,transition:"all .2s"}}>
               {/* Rank badge */}
               <div style={{flexShrink:0,width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:`${rb},.1)`,border:`1.5px solid ${mc}`,fontFamily:"'Anton',sans-serif",fontSize:rank<=3?13:11,color:mc}}>
                 {rank<=3?(rank===1?"🥇":rank===2?"🥈":"🥉"):rank}
@@ -6104,23 +6104,23 @@ function KeepupsView({ user, users = {} }) {
               {isEditing ? (
                 <>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#0a0a0a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
-                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>}
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>}
                   </div>
                   <input value={editScore} onChange={e=>setEditScore(e.target.value.replace(/\D/g,""))} inputMode="numeric"
-                    style={{width:72,background:"rgba(0,0,0,.07)",border:"1px solid rgba(0,0,0,.2)",borderRadius:5,padding:"7px 10px",color:"#0a0a0a",fontFamily:"'Anton',sans-serif",fontSize:20,textAlign:"center",outline:"none"}}/>
+                    style={{width:72,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:20,textAlign:"center",outline:"none"}}/>
                   <button onClick={saveEdit} disabled={saving} style={{padding:"7px 12px",background:"#f5c85a",color:"#000",border:"none",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:1.5,cursor:"pointer"}}>{saving?"…":"SAVE"}</button>
-                  <button onClick={()=>setEditId(null)} style={{padding:"7px 10px",background:"transparent",color:"rgba(0,0,0,.4)",border:"1px solid rgba(0,0,0,.1)",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,cursor:"pointer"}}>✕</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:"7px 10px",background:"transparent",color:"rgba(255,255,255,.4)",border:"1px solid rgba(255,255,255,.12)",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,cursor:"pointer"}}>✕</button>
                 </>
               ) : (
                 <>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#0a0a0a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
-                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.3)",fontWeight:500,marginTop:1}}>#{users[row.user_id].player_number}</div>}
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500,marginTop:1}}>#{users[row.user_id].player_number}</div>}
                   </div>
                   <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:mc,letterSpacing:0,lineHeight:1,flexShrink:0}}>{row.score}</div>
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <button onClick={()=>startEdit(row)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(0,0,0,.1)",background:"rgba(0,0,0,.04)",color:"rgba(0,0,0,.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <button onClick={()=>startEdit(row)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                     <button onClick={()=>deleteScore(row)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -6148,7 +6148,7 @@ function KeepupsView({ user, users = {} }) {
             height:"82vh",
             background:"linear-gradient(170deg,#181818 0%,#080808 100%)",
             borderTopLeftRadius:22,borderTopRightRadius:22,
-            border:"1px solid rgba(0,0,0,.1)",
+            border:"1px solid rgba(255,255,255,.12)",
             borderBottom:"none",
             transform:`translateY(${boardAnim?"0":"100%"})`,
             transition:"transform .42s cubic-bezier(.22,.61,.36,1)",
@@ -6157,33 +6157,33 @@ function KeepupsView({ user, users = {} }) {
           }}>
             {/* Sheet handle */}
             <div style={{display:"flex",justifyContent:"center",padding:"12px 0 6px",flexShrink:0}}>
-              <div style={{width:38,height:4,borderRadius:99,background:"rgba(0,0,0,.15)"}}/>
+              <div style={{width:38,height:4,borderRadius:99,background:"rgba(255,255,255,.15)"}}/>
             </div>
 
             {/* Sheet header */}
-            <div style={{padding:"10px 20px 16px",textAlign:"center",borderBottom:"1px solid rgba(0,0,0,.06)",flexShrink:0,position:"relative"}}>
-              <button onClick={closeBoard} style={{position:"absolute",top:8,right:16,width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.09)",color:"rgba(0,0,0,.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            <div style={{padding:"10px 20px 16px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,.07)",flexShrink:0,position:"relative"}}>
+              <button onClick={closeBoard} style={{position:"absolute",top:8,right:16,width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
               <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
-                <div style={{width:48,height:48,borderRadius:11,overflow:"hidden",border:"1px solid rgba(0,0,0,.1)"}}>
+                <div style={{width:48,height:48,borderRadius:11,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
                   <img src="/logos/winefactory.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                 </div>
               </div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"#f5c85a",marginBottom:3}}>THE WINE FACTORY</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:3,color:"#0a0a0a"}}>LEADERBOARD</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(0,0,0,.25)",marginTop:4,fontWeight:500}}>Top 10 players</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:3,color:"#fff"}}>LEADERBOARD</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.25)",marginTop:4,fontWeight:500}}>Top 10 players</div>
             </div>
 
             {/* Sheet list */}
             <div style={{flex:1,overflowY:"auto",padding:"14px 16px 32px"}}>
               {scores.length === 0 ? (
-                <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.3)"}}>No scores yet</div>
+                <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>No scores yet</div>
               ) : scores.slice(0,10).map((row, idx) => {
                 const rank = idx + 1;
                 const mc = medalColor(rank);
                 const rb = rankBg(rank);
                 const prof = profileFor(row);
                 return (
-                  <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.2)`:"rgba(0,0,0,.05)"}`,borderRadius:11,
+                  <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.2)`:"rgba(255,255,255,.06)"}`,borderRadius:11,
                     opacity: boardAnim ? 1 : 0,
                     transform: boardAnim ? "translateY(0)" : "translateY(16px)",
                     transition:`opacity .3s ${idx * 0.045}s, transform .3s ${idx * 0.045}s`,
@@ -6196,9 +6196,9 @@ function KeepupsView({ user, users = {} }) {
                     <Av u={prof} size={36} fontSize={14}/>
                     {/* Name + number */}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#0a0a0a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
                       {row.user_id && users[row.user_id]?.player_number && (
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>
                       )}
                     </div>
                     {/* Score */}
@@ -6484,7 +6484,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
                 </span>
               </div>
               <div className="admin-gifts-row-meta">
-                To · <strong style={{color:"#0a0a0a"}}>{u?.name || "(deleted)"}</strong>
+                To · <strong style={{color:"#fff"}}>{u?.name || "(deleted)"}</strong>
                 {u?.player_number ? ` · #${u.player_number}` : ""}
                 {" · "}{new Date(g.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
                 {g.redeemed && ` · Redeemed ${new Date(g.redeemed_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}`}
@@ -6521,7 +6521,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
               <>
                 <div className="sg-field-lbl">RECIPIENT</div>
                 {recipient ? (
-                  <div className="sg-row" style={{background:"rgba(0,0,0,.04)",borderColor:"rgba(0,0,0,.2)",marginBottom:14}}>
+                  <div className="sg-row" style={{background:"rgba(255,255,255,.05)",borderColor:"rgba(255,255,255,.2)",marginBottom:14}}>
                     <Av u={recipient} size={40} fontSize={16}/>
                     <div className="sg-row-info">
                       <div className="sg-row-name">{recipient.name}</div>
@@ -6562,16 +6562,16 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
                 <button key={opt.id} onClick={()=>setType(opt.id)} style={{
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                   gap:6,padding:"14px 8px",
-                  background: type === opt.id ? `${opt.col}18` : "rgba(0,0,0,.03)",
-                  border: type === opt.id ? `1.5px solid ${opt.col}` : "1.5px solid rgba(0,0,0,.06)",
+                  background: type === opt.id ? `${opt.col}18` : "rgba(255,255,255,.025)",
+                  border: type === opt.id ? `1.5px solid ${opt.col}` : "1.5px solid rgba(255,255,255,.07)",
                   borderRadius:12,cursor:"pointer",transition:"all .18s",
                   boxShadow: type === opt.id ? `0 0 18px ${opt.col}22` : "none",
                 }}>
-                  <div style={{color: type === opt.id ? opt.col : "rgba(0,0,0,.4)", transition:"color .18s"}}>
+                  <div style={{color: type === opt.id ? opt.col : "rgba(255,255,255,.4)", transition:"color .18s"}}>
                     {typeIcon(opt.id)}
                   </div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:1.5,color: type === opt.id ? "#fff" : "rgba(0,0,0,.5)",lineHeight:1.3,textAlign:"center"}}>{opt.label}</div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color: type === opt.id ? opt.col : "rgba(0,0,0,.25)",fontWeight:500,lineHeight:1.3,textAlign:"center"}}>{opt.sub}</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:1.5,color: type === opt.id ? "#fff" : "rgba(255,255,255,.5)",lineHeight:1.3,textAlign:"center"}}>{opt.label}</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color: type === opt.id ? opt.col : "rgba(255,255,255,.25)",fontWeight:500,lineHeight:1.3,textAlign:"center"}}>{opt.sub}</div>
                 </button>
               ))}
             </div>
@@ -6687,36 +6687,36 @@ function AdminPassportGifts({ users, matches }) {
     setAwarding(null);
   };
 
-  if (loading) return <div style={{padding:40,textAlign:"center",color:"rgba(0,0,0,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2}}>LOADING STAMPS...</div>;
+  if (loading) return <div style={{padding:40,textAlign:"center",color:"rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2}}>LOADING STAMPS...</div>;
 
   return (
     <div style={{padding:"16px 14px 40px"}}>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(0,0,0,.3)",marginBottom:16}}>PASSPORT GIFTS</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.3)",marginBottom:16}}>PASSPORT GIFTS</div>
 
       {/* Summary */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
-        <div style={{background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.07)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#0a0a0a"}}>{totalMatches}</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(0,0,0,.3)",marginTop:4}}>TOTAL MATCHES</div>
+        <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff"}}>{totalMatches}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:4}}>TOTAL MATCHES</div>
         </div>
         <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#4ade80"}}>{completedPlayers.length}</div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(34,197,94,.5)",marginTop:4}}>COMPLETED</div>
         </div>
-        <div style={{background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.05)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"rgba(0,0,0,.5)"}}>{gifts.length}</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(0,0,0,.25)",marginTop:4}}>GIFTS AWARDED</div>
+        <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:10,padding:"14px 10px",textAlign:"center"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"rgba(255,255,255,.5)"}}>{gifts.length}</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:2,color:"rgba(255,255,255,.25)",marginTop:4}}>GIFTS AWARDED</div>
         </div>
       </div>
 
       {/* Gift type selector */}
       <div style={{marginBottom:16}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(0,0,0,.35)",marginBottom:8}}>GIFT TYPE</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:8}}>GIFT TYPE</div>
         <div style={{display:"flex",gap:6}}>
           {[{id:"giftcard",label:"🎁 Gift Card"},{id:"menu_item",label:"🍽 Free Menu Items"}].map(t => (
             <button key={t.id} onClick={() => setGiftType(t.id)}
-              style={{padding:"8px 16px",background:giftType===t.id?"#fff":"rgba(0,0,0,.04)",
-                color:giftType===t.id?"#000":"rgba(0,0,0,.5)",border:giftType===t.id?"none":"1px solid rgba(0,0,0,.09)",
+              style={{padding:"8px 16px",background:giftType===t.id?"#fff":"rgba(255,255,255,.05)",
+                color:giftType===t.id?"#000":"rgba(255,255,255,.5)",border:giftType===t.id?"none":"1px solid rgba(255,255,255,.1)",
                 fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,cursor:"pointer",borderRadius:6,
                 fontWeight:giftType===t.id?900:400}}>{t.label}</button>
           ))}
@@ -6725,11 +6725,11 @@ function AdminPassportGifts({ users, matches }) {
 
       {/* Gift description input */}
       <div style={{marginBottom:20}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(0,0,0,.35)",marginBottom:6}}>GIFT DESCRIPTION</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:6}}>GIFT DESCRIPTION</div>
         <input value={giftDesc} onChange={e => setGiftDesc(e.target.value)}
           placeholder={giftType === "giftcard" ? "e.g. $25 Gift Card" : "e.g. 2x Free Cocktails + 1 Main Course"}
-          style={{width:"100%",background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.09)",
-            color:"#0a0a0a",padding:"12px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,borderRadius:8,
+          style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",
+            color:"#fff",padding:"12px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,borderRadius:8,
             outline:"none",boxSizing:"border-box"}} />
       </div>
 
@@ -6738,30 +6738,30 @@ function AdminPassportGifts({ users, matches }) {
         🏆 COMPLETED PASSPORT ({completedPlayers.length})
       </div>
       {completedPlayers.length === 0 && (
-        <div style={{padding:"30px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.2)"}}>
+        <div style={{padding:"30px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)"}}>
           No players have completed their passport yet
         </div>
       )}
       {completedPlayers.map(p => (
         <div key={p.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
-          background:giftedSet.has(p.uid)?"rgba(34,197,94,.04)":"rgba(0,0,0,.03)",
-          border:`1px solid ${giftedSet.has(p.uid)?"rgba(34,197,94,.15)":"rgba(0,0,0,.07)"}`,
+          background:giftedSet.has(p.uid)?"rgba(34,197,94,.04)":"rgba(255,255,255,.03)",
+          border:`1px solid ${giftedSet.has(p.uid)?"rgba(34,197,94,.15)":"rgba(255,255,255,.08)"}`,
           borderRadius:10,marginBottom:6}}>
-          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.07)",
+          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.08)",
             display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",
-            fontSize:14,color:"rgba(0,0,0,.5)",overflow:"hidden",flexShrink:0}}>
+            fontSize:14,color:"rgba(255,255,255,.5)",overflow:"hidden",flexShrink:0}}>
             {p.user.avatar_url ? <img src={p.user.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/> : (p.user.name||"?")[0].toUpperCase()}
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#0a0a0a",letterSpacing:1}}>{p.user.name}</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.35)"}}>{p.count}/{totalMatches} stamps</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff",letterSpacing:1}}>{p.user.name}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)"}}>{p.count}/{totalMatches} stamps</div>
           </div>
           {giftedSet.has(p.uid) ? (
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"#4ade80",
               background:"rgba(34,197,94,.08)",padding:"5px 12px",borderRadius:20,border:"1px solid rgba(34,197,94,.2)"}}>✓ GIFTED</div>
           ) : (
             <button onClick={() => awardGift(p.uid)} disabled={!giftDesc.trim() || awarding === p.uid}
-              style={{background:"#0a0a0a",color:"#fff",border:"none",padding:"8px 16px",
+              style={{background:"#fff",color:"#000",border:"none",padding:"8px 16px",
                 fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,cursor:"pointer",
                 borderRadius:6,fontWeight:900,opacity:(!giftDesc.trim()||awarding===p.uid)?.4:1}}>
               {awarding === p.uid ? "..." : "AWARD GIFT"}
@@ -6773,25 +6773,25 @@ function AdminPassportGifts({ users, matches }) {
       {/* ── NEAR COMPLETION ── */}
       {nearComplete.length > 0 && (
         <>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(0,0,0,.4)",marginTop:20,marginBottom:10}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.4)",marginTop:20,marginBottom:10}}>
             📊 NEAR COMPLETION ({nearComplete.length})
           </div>
           {nearComplete.map(p => (
             <div key={p.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",
-              background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.04)",borderRadius:10,marginBottom:4}}>
-              <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,.05)",
+              background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:10,marginBottom:4}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,.06)",
                 display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",
-                fontSize:12,color:"rgba(0,0,0,.4)",overflow:"hidden",flexShrink:0}}>
+                fontSize:12,color:"rgba(255,255,255,.4)",overflow:"hidden",flexShrink:0}}>
                 {p.user.avatar_url ? <img src={p.user.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/> : (p.user.name||"?")[0].toUpperCase()}
               </div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"rgba(0,0,0,.7)",letterSpacing:1}}>{p.user.name}</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",letterSpacing:1}}>{p.user.name}</div>
               </div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.35)",fontWeight:600}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",fontWeight:600}}>
                 {p.count}/{totalMatches}
               </div>
-              <div style={{width:60,height:4,background:"rgba(0,0,0,.05)",borderRadius:2,overflow:"hidden"}}>
-                <div style={{width:`${Math.round(p.count/totalMatches*100)}%`,height:"100%",background:"rgba(0,0,0,.25)",borderRadius:2}}/>
+              <div style={{width:60,height:4,background:"rgba(255,255,255,.06)",borderRadius:2,overflow:"hidden"}}>
+                <div style={{width:`${Math.round(p.count/totalMatches*100)}%`,height:"100%",background:"rgba(255,255,255,.25)",borderRadius:2}}/>
               </div>
             </div>
           ))}
@@ -6801,18 +6801,18 @@ function AdminPassportGifts({ users, matches }) {
       {/* ── GIFT HISTORY ── */}
       {gifts.length > 0 && (
         <>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(0,0,0,.3)",marginTop:24,marginBottom:10}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.3)",marginTop:24,marginBottom:10}}>
             📜 GIFT HISTORY
           </div>
           {gifts.map(g => (
             <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
-              background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.04)",borderRadius:8,marginBottom:4}}>
+              background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",borderRadius:8,marginBottom:4}}>
               <span style={{fontSize:16}}>{g.gift_type === "giftcard" ? "🎁" : "🍽"}</span>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(0,0,0,.6)",letterSpacing:1}}>{users[g.user_id]?.name || "Unknown"}</div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.25)"}}>{g.description}</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(255,255,255,.6)",letterSpacing:1}}>{users[g.user_id]?.name || "Unknown"}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)"}}>{g.description}</div>
               </div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(0,0,0,.15)"}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(255,255,255,.15)"}}>
                 {new Date(g.awarded_at).toLocaleDateString()}
               </div>
             </div>
@@ -6877,7 +6877,7 @@ function AdminIntegrity({ users, onBanUsers }) {
     <div>
       {/* Duplicate Scanner */}
       <div style={{padding:"14px 14px 0"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#0a0a0a",marginBottom:6}}>🤖 DUPLICATE ACCOUNT SCANNER</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#fff",marginBottom:6}}>🤖 DUPLICATE ACCOUNT SCANNER</div>
         <div className="admin-hint" style={{borderTop:"none",padding:"0 0 10px"}}>
           Scans all players for matching phone number or email. Duplicate accounts will be flagged — you can ban all accounts in a group instantly.
         </div>
@@ -6898,7 +6898,7 @@ function AdminIntegrity({ users, onBanUsers }) {
                 <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(239,68,68,.9)"}}>
                   ⚠ DUPLICATE {g.type.toUpperCase()}
                 </span>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.5)",marginTop:2}}>{g.value}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.5)",marginTop:2}}>{g.value}</div>
               </div>
               <button onClick={() => onBanUsers(g.members.map(m => m.id))}
                 style={{padding:"6px 14px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",
@@ -6909,10 +6909,10 @@ function AdminIntegrity({ users, onBanUsers }) {
             </div>
             {g.members.map(m => (
               <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                padding:"7px 10px",background:"rgba(0,0,0,.04)",borderRadius:6,marginBottom:5}}>
+                padding:"7px 10px",background:"rgba(255,255,255,.04)",borderRadius:6,marginBottom:5}}>
                 <div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#0a0a0a",fontWeight:600}}>{m.name}</div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)"}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:600}}>{m.name}</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)"}}>
                     {m.phone && `📞 ${m.phone}`}{m.phone && m.email && " · "}{m.email && `✉ ${m.email}`}
                   </div>
                 </div>
@@ -6926,8 +6926,8 @@ function AdminIntegrity({ users, onBanUsers }) {
       </div>
 
       {/* All players list with manual ban/unban */}
-      <div style={{padding:"14px 14px 0",borderTop:"1px solid rgba(0,0,0,.07)",marginTop:8}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#0a0a0a",marginBottom:8}}>👥 ALL PLAYERS</div>
+      <div style={{padding:"14px 14px 0",borderTop:"1px solid rgba(255,255,255,.08)",marginTop:8}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#fff",marginBottom:8}}>👥 ALL PLAYERS</div>
         <input className="afield-inp" placeholder="Search by name, phone or email…" value={search}
           onChange={e=>setSearch(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:10}} />
         {filteredUsers.map(u => (
@@ -7050,20 +7050,20 @@ function AdminTableQR() {
         font-size: 11px;
         font-weight: 900;
         letter-spacing: 4px;
-        color: rgba(0,0,0,.75);
+        color: rgba(255,255,255,.75);
         margin-top: 2px;
       }
       .logo-badge {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        border: 1px solid rgba(0,0,0,.25);
+        border: 1px solid rgba(255,255,255,.25);
         border-radius: 4px;
         padding: 3px 10px;
         margin-top: 7px;
         font-size: 8px;
         letter-spacing: 2px;
-        color: rgba(0,0,0,.5);
+        color: rgba(255,255,255,.5);
         font-weight: 700;
       }
       .badge-dot { color: #d4af37; }
@@ -7081,7 +7081,7 @@ function AdminTableQR() {
       .table-label {
         font-size: 8px;
         letter-spacing: 4px;
-        color: rgba(0,0,0,.35);
+        color: rgba(255,255,255,.35);
         font-weight: 900;
         margin-bottom: 2px;
       }
@@ -7119,18 +7119,18 @@ function AdminTableQR() {
       .scan-line {
         flex: 1;
         height: 1px;
-        background: rgba(0,0,0,.15);
+        background: rgba(255,255,255,.15);
       }
       .scan-text {
         font-size: 8px;
         letter-spacing: 3px;
-        color: rgba(0,0,0,.45);
+        color: rgba(255,255,255,.45);
         font-weight: 900;
         white-space: nowrap;
       }
 
       /* Footer */
-      .card-footer { width: 100%; border-top: 1px solid rgba(0,0,0,.07); padding-top: 10px; }
+      .card-footer { width: 100%; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
       .footer-event {
         font-size: 9px;
         letter-spacing: 3px;
@@ -7141,7 +7141,7 @@ function AdminTableQR() {
       .footer-url {
         font-size: 8px;
         letter-spacing: 1px;
-        color: rgba(0,0,0,.3);
+        color: rgba(255,255,255,.3);
         font-weight: 700;
       }
 
@@ -7164,23 +7164,23 @@ function AdminTableQR() {
         Each QR code links to the app with the table number pre-filled. Print them, laminate, and place on each table. When a customer scans, the table fills in automatically and they go straight to the menu.
       </div>
 
-      <div style={{background:"#0a0a0a",border:"1px solid #222",borderRadius:12,padding:16,marginBottom:16}}>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.5)",marginBottom:6}}>App domain</div>
+      <div style={{background:"#111",border:"1px solid #222",borderRadius:12,padding:16,marginBottom:16}}>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:6}}>App domain</div>
         <input
           type="text" value={customBase}
           onChange={e => setCustomBase(e.target.value)}
-          style={{width:"100%",padding:"10px 12px",background:"#f0f1f3",border:"1px solid #333",
-            borderRadius:8,color:"#0a0a0a",fontFamily:"'Outfit',sans-serif",fontSize:14,
+          style={{width:"100%",padding:"10px 12px",background:"#1a1a1a",border:"1px solid #333",
+            borderRadius:8,color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,
             outline:"none",marginBottom:16}} />
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.5)",marginBottom:10}}>Number of tables</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:10}}>Number of tables</div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <input
             type="number" min={1} max={50} value={count}
             onChange={e => setCount(Math.max(1, Math.min(50, +e.target.value)))}
-            style={{width:80,padding:"10px 12px",background:"#f0f1f3",border:"1px solid #333",
-              borderRadius:8,color:"#0a0a0a",fontFamily:"'Anton',sans-serif",fontSize:20,
+            style={{width:80,padding:"10px 12px",background:"#1a1a1a",border:"1px solid #333",
+              borderRadius:8,color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:20,
               textAlign:"center",outline:"none"}} />
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.4)"}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)"}}>
             Will generate QR codes for tables 1 – {count}
           </div>
         </div>
@@ -7189,22 +7189,22 @@ function AdminTableQR() {
       {/* Preview grid */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
         {Array.from({ length: Math.min(count, 6) }, (_, i) => i + 1).map(n => (
-          <div key={n} style={{background:"#0a0a0a",border:"1px solid #222",borderRadius:10,
+          <div key={n} style={{background:"#111",border:"1px solid #222",borderRadius:10,
             padding:12,textAlign:"center"}}>
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,
-              color:"#0a0a0a",marginBottom:8}}>TABLE {n}</div>
+              color:"#fff",marginBottom:8}}>TABLE {n}</div>
             <img
               src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(base + "?table=" + n)}`}
-              style={{width:80,height:80,borderRadius:6,background:"#0a0a0a",padding:4}}
+              style={{width:80,height:80,borderRadius:6,background:"#fff",padding:4}}
               alt={`Table ${n} QR`} />
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(0,0,0,.3)",
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(255,255,255,.3)",
               marginTop:6,letterSpacing:1}}>Scan to order</div>
           </div>
         ))}
       </div>
       {count > 6 && (
         <div style={{textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,
-          color:"rgba(0,0,0,.3)",marginBottom:16}}>
+          color:"rgba(255,255,255,.3)",marginBottom:16}}>
           + {count - 6} more tables · all included in print
         </div>
       )}
@@ -7272,17 +7272,17 @@ function AdminTables() {
       )}
       <div className="admin-section-lbl" style={{marginBottom:8}}>
         RESERVED TABLES
-        <button onClick={load} style={{marginLeft:12,fontSize:11,padding:"2px 10px",background:"#ebebee",color:"#aaa",border:"1px solid #333",borderRadius:6,cursor:"pointer"}}>↻ Refresh</button>
+        <button onClick={load} style={{marginLeft:12,fontSize:11,padding:"2px 10px",background:"#222",color:"#aaa",border:"1px solid #333",borderRadius:6,cursor:"pointer"}}>↻ Refresh</button>
       </div>
       {loading && <div style={{color:"#666",padding:20,textAlign:"center"}}>Loading...</div>}
       {!loading && groups.length === 0 && (
         <div style={{color:"#555",padding:24,textAlign:"center",border:"1px dashed #333",borderRadius:10}}>No tables currently reserved</div>
       )}
       {!loading && groups.map(g => (
-        <div key={g.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#0a0a0a",border:"1px solid #222",borderRadius:10,marginBottom:8}}>
+        <div key={g.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#111",border:"1px solid #222",borderRadius:10,marginBottom:8}}>
           <div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-              <span style={{fontFamily:"Anton",fontSize:22,color:"#0a0a0a"}}>TABLE {g.table_number}</span>
+              <span style={{fontFamily:"Anton",fontSize:22,color:"#fff"}}>TABLE {g.table_number}</span>
               <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:statusColor(g.status)+"22",color:statusColor(g.status),border:`1px solid ${statusColor(g.status)}44`,fontWeight:600,letterSpacing:1}}>
                 {g.status === "awaiting_payment" ? "AWAITING PAYMENT" : "OPEN"}
               </span>
@@ -7626,9 +7626,9 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
                   const active = u.sponsor_tier === tier;
                   return (
                     <button key={tier} onClick={() => onSetTier(u.id, active ? null : tier)}
-                      style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${active ? m.color : "rgba(0,0,0,.15)"}`,
+                      style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${active ? m.color : "rgba(255,255,255,.15)"}`,
                         background: active ? m.bg : "transparent",
-                        color: active ? m.color : "rgba(0,0,0,.4)",
+                        color: active ? m.color : "rgba(255,255,255,.4)",
                         fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",transition:"all .2s"}}>
                       {m.icon} {m.label}
                     </button>
@@ -7652,7 +7652,7 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
           </div>
           {/* Per-sponsor live status */}
           {Object.values(users).filter(u => u.sponsor_tier).length === 0 ? (
-            <div style={{color:"rgba(0,0,0,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,padding:20,textAlign:"center"}}>NO SPONSORS ASSIGNED YET</div>
+            <div style={{color:"rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,padding:20,textAlign:"center"}}>NO SPONSORS ASSIGNED YET</div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
               {Object.values(users).filter(u => u.sponsor_tier).sort((a,b) => (a.name||"").localeCompare(b.name||"")).map(u => {
@@ -7660,15 +7660,15 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
                 const uUsed = usedByUser[u.id] || {};
                 const m = TIER_META[u.sponsor_tier];
                 return (
-                  <div key={u.id} style={{background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.09)",borderRadius:8,padding:"12px 14px"}}>
+                  <div key={u.id} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"12px 14px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:"#0a0a0a"}}>{u.name}</div>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,color:m?.color||"#aaa",background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",padding:"2px 8px",borderRadius:4}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:1,color:"#fff"}}>{u.name}</div>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1,color:m?.color||"#aaa",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
                         {m?.label||u.sponsor_tier}
                       </div>
                     </div>
                     {uGifts.length === 0 ? (
-                      <div style={{fontSize:12,color:"rgba(0,0,0,.3)"}}>No gifts configured for this tier</div>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>No gifts configured for this tier</div>
                     ) : (
                       <div style={{display:"flex",flexDirection:"column",gap:4}}>
                         {uGifts.map(g => {
@@ -7677,8 +7677,8 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
                           const remaining = Math.max(0, total - used);
                           const allUsed = remaining === 0 && total > 0;
                           return (
-                            <div key={g.id || g._key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid rgba(0,0,0,.04)"}}>
-                              <span style={{fontSize:13,color:"rgba(0,0,0,.8)"}}>{g.item_name}</span>
+                            <div key={g.id || g._key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+                              <span style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{g.item_name}</span>
                               <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,
                                 color: allUsed ? "#f87171" : remaining < total ? "#fbbf24" : "#4ade80"}}>
                                 {allUsed ? "ALL USED" : `${remaining} LEFT`}
@@ -7713,7 +7713,7 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
                   <button className="admin-add-btn" onClick={()=>addGift(tier)}>+ Add Item</button>
                 </div>
                 {tierGifts.length === 0 && (
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.3)",padding:"8px 0"}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"8px 0"}}>
                     No gifts configured for {m.label} yet.
                   </div>
                 )}
@@ -7820,7 +7820,7 @@ function OnboardingTutorial({ onDone }) {
       onTouchEnd={onTouchEnd}
       style={{
         position:"fixed",inset:0,zIndex:9999,
-        background:"#f4f5f7",
+        background:"#000",
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
         padding:"24px 28px",
         opacity: exiting ? 0 : 1,
@@ -7832,7 +7832,7 @@ function OnboardingTutorial({ onDone }) {
         position:"absolute",top:52,right:20,
         background:"transparent",border:"none",
         fontFamily:"'Outfit',sans-serif",fontSize:13,
-        color:"rgba(0,0,0,.35)",cursor:"pointer",
+        color:"rgba(255,255,255,.35)",cursor:"pointer",
         letterSpacing:1,padding:"8px 12px",
       }}>SKIP</button>
 
@@ -7845,13 +7845,13 @@ function OnboardingTutorial({ onDone }) {
         {/* Sub label */}
         <div style={{
           fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,
-          color:"rgba(0,0,0,.3)",
+          color:"rgba(255,255,255,.3)",
         }}>{slide.sub}</div>
 
         {/* Title */}
         <div style={{
           fontFamily:"'Anton',sans-serif",fontSize:30,letterSpacing:1,
-          color:"#0a0a0a",lineHeight:1.1,
+          color:"#fff",lineHeight:1.1,
         }}>{slide.title}</div>
 
         {/* Thin gold line */}
@@ -7859,7 +7859,7 @@ function OnboardingTutorial({ onDone }) {
 
         {/* Body */}
         <div style={{
-          fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(0,0,0,.65)",
+          fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(255,255,255,.65)",
           lineHeight:1.7,whiteSpace:"pre-line",
         }}>{slide.body}</div>
       </div>
@@ -7873,7 +7873,7 @@ function OnboardingTutorial({ onDone }) {
               width: i===step ? 24 : 7,
               height:7,
               borderRadius:4,
-              background: i===step ? "#fff" : "rgba(0,0,0,.2)",
+              background: i===step ? "#fff" : "rgba(255,255,255,.2)",
               transition:"all .3s ease",
               cursor:"pointer",
             }}/>
@@ -7883,7 +7883,7 @@ function OnboardingTutorial({ onDone }) {
         {/* CTA button */}
         <button onClick={next} style={{
           width:"100%",padding:"17px 0",
-          background:"#0a0a0a",color:"#fff",
+          background:"#fff",color:"#000",
           border:"none",cursor:"pointer",
           fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,
           borderRadius:10,
@@ -7896,7 +7896,7 @@ function OnboardingTutorial({ onDone }) {
           <button onClick={prev} style={{
             background:"transparent",border:"none",
             fontFamily:"'Outfit',sans-serif",fontSize:13,
-            color:"rgba(0,0,0,.3)",cursor:"pointer",letterSpacing:1,
+            color:"rgba(255,255,255,.3)",cursor:"pointer",letterSpacing:1,
             marginTop:-10,padding:"4px 12px",
           }}>← Back</button>
         )}
@@ -7967,16 +7967,16 @@ function QRTableScanner({ onScan, onClose }) {
   }, []);
 
   return createPortal(
-    <div style={{position:"fixed",inset:0,zIndex:9999,background:"#f4f5f7",display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"#000",display:"flex",flexDirection:"column"}}>
       {/* Header */}
       <div style={{padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",
-        background:"rgba(0,0,0,.8)",borderBottom:"1px solid rgba(0,0,0,.07)"}}>
+        background:"rgba(0,0,0,.8)",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
         <div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"#0a0a0a"}}>SCAN TABLE QR CODE</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:2}}>Point at the QR code on your table</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:3,color:"#fff"}}>SCAN TABLE QR CODE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Point at the QR code on your table</div>
         </div>
-        <button onClick={onClose} style={{background:"rgba(0,0,0,.07)",border:"1px solid rgba(0,0,0,.15)",
-          color:"#0a0a0a",borderRadius:8,padding:"6px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",
+          color:"#fff",borderRadius:8,padding:"6px 14px",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
           Cancel
         </button>
       </div>
@@ -7987,7 +7987,7 @@ function QRTableScanner({ onScan, onClose }) {
           <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:12,padding:32}}>
             <span style={{fontSize:40}}>📷</span>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.6)",textAlign:"center"}}>{error}</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.6)",textAlign:"center"}}>{error}</div>
           </div>
         ) : (
           <>
@@ -8022,7 +8022,7 @@ function QRTableScanner({ onScan, onClose }) {
       {/* Hint bar */}
       <div style={{padding:"14px 16px",background:"rgba(0,0,0,.85)",textAlign:"center",
         fontFamily:"'Outfit',sans-serif",fontSize:13,
-        color: hint.startsWith("✅") ? "#4ade80" : "rgba(0,0,0,.6)"}}>
+        color: hint.startsWith("✅") ? "#4ade80" : "rgba(255,255,255,.6)"}}>
         {hint}
       </div>
 
@@ -8069,7 +8069,7 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
   }, [user?.id]);
 
   if (!tier || !m) return (
-    <div style={{padding:32,textAlign:"center",color:"rgba(0,0,0,.4)",fontFamily:"'Outfit',sans-serif"}}>
+    <div style={{padding:32,textAlign:"center",color:"rgba(255,255,255,.4)",fontFamily:"'Outfit',sans-serif"}}>
       No sponsor access configured.
     </div>
   );
@@ -8091,20 +8091,20 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
   if (done) return (
     <div style={{padding:40,textAlign:"center"}}>
       <div style={{fontSize:64,marginBottom:16}}>🎉</div>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:2,color:"#0a0a0a",marginBottom:8}}>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:2,color:"#fff",marginBottom:8}}>
         ORDER SENT!
       </div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.5)",marginBottom:32}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:32}}>
         Your complimentary gifts are on their way to Table {table}
       </div>
       <button onClick={() => { setDone(false); setCart({}); setTable(""); }}
-        style={{width:"100%",padding:"14px 0",background:"#0a0a0a",color:"#fff",border:"none",
+        style={{width:"100%",padding:"14px 0",background:"#fff",color:"#000",border:"none",
           fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,cursor:"pointer",marginBottom:10}}>
         ORDER MORE GIFTS
       </button>
       <button onClick={() => window.location.href = "/"}
-        style={{width:"100%",padding:"14px 0",background:"transparent",color:"rgba(0,0,0,.5)",
-          border:"1px solid rgba(0,0,0,.15)",fontFamily:"'Anton',sans-serif",fontSize:13,
+        style={{width:"100%",padding:"14px 0",background:"transparent",color:"rgba(255,255,255,.5)",
+          border:"1px solid rgba(255,255,255,.15)",fontFamily:"'Anton',sans-serif",fontSize:13,
           letterSpacing:3,cursor:"pointer"}}>
         BACK TO HOME
       </button>
@@ -8150,36 +8150,36 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
       </div>
 
       {myGifts.length === 0 ? (
-        <div style={{padding:32,textAlign:"center",fontFamily:"'Outfit',sans-serif",color:"rgba(0,0,0,.4)"}}>
+        <div style={{padding:32,textAlign:"center",fontFamily:"'Outfit',sans-serif",color:"rgba(255,255,255,.4)"}}>
           Your complimentary gifts will appear here soon. Check back shortly!
         </div>
       ) : allRedeemed ? (
         <div style={{padding:40,textAlign:"center"}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#0a0a0a",marginBottom:8}}>ALL GIFTS REDEEMED</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.4)"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff",marginBottom:8}}>ALL GIFTS REDEEMED</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)"}}>
             You've used all your complimentary gifts. New gifts will appear here when available.
           </div>
         </div>
       ) : (
         <div style={{padding:"16px 16px 0"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(0,0,0,.35)",marginBottom:12}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.35)",marginBottom:12}}>
             YOUR FREE GIFTS
           </div>
           {loadingUsed ? (
-            <div style={{textAlign:"center",padding:24,color:"rgba(0,0,0,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
+            <div style={{textAlign:"center",padding:24,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
           ) : myGifts.map(g => {
             const inCart    = cart[String(g.id)] || 0;
             const remaining = getRemaining(g);
             const redeemed  = remaining === 0;
             return (
-              <div key={g.id} className="menu-item-row" style={{borderColor: redeemed ? "rgba(0,0,0,.04)" : "rgba(255,215,0,.15)", opacity: redeemed ? 0.5 : 1}}>
+              <div key={g.id} className="menu-item-row" style={{borderColor: redeemed ? "rgba(255,255,255,.05)" : "rgba(255,215,0,.15)", opacity: redeemed ? 0.5 : 1}}>
                 <div className="menu-item-info">
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div className="menu-item-name" style={{textTransform:"capitalize"}}>{g.item_name}</div>
                     {redeemed ? (
                       <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
-                        color:"rgba(0,0,0,.35)",background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",padding:"2px 8px",borderRadius:4}}>
+                        color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
                         REDEEMED
                       </span>
                     ) : (
@@ -8189,7 +8189,7 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
                       </span>
                     )}
                   </div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:2}}>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>
                     {redeemed ? "Already redeemed" : `${remaining} left · $0.00`}
                   </div>
                 </div>
@@ -8209,7 +8209,7 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
           })}
 
           {/* Table + Order */}
-          <div style={{marginTop:24,borderTop:"1px solid rgba(0,0,0,.07)",paddingTop:20}}>
+          <div style={{marginTop:24,borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:20}}>
             {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
             <div className="afield">
               <label className="afield-lbl">TABLE NUMBER</label>
@@ -8219,11 +8219,11 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
                   <span style={{fontSize:18}}>📍</span>
                   <div style={{flex:1}}>
                     <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {table}</div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>Tap to change</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Tap to change</div>
                   </div>
                   <button onClick={()=>setTable("")}
-                    style={{background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",
-                      color:"rgba(0,0,0,.5)",borderRadius:6,padding:"4px 10px",
+                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                      color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
                       fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
                 </div>
               ) : (
@@ -8234,18 +8234,18 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
                   <span style={{fontSize:22}}>📷</span>
                   <div style={{textAlign:"left"}}>
                     <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
                   </div>
                 </button>
               )}
               {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:6}}>{tableErr}</div>}
             </div>
             {cartItems.length > 0 && (
-              <div style={{marginTop:12,marginBottom:12,background:"rgba(0,0,0,.04)",
-                border:"1px solid rgba(0,0,0,.07)",borderRadius:10,padding:14}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(0,0,0,.35)",marginBottom:8}}>ORDER SUMMARY</div>
+              <div style={{marginTop:12,marginBottom:12,background:"rgba(255,255,255,.04)",
+                border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:14}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.35)",marginBottom:8}}>ORDER SUMMARY</div>
                 {cartItems.map(i => (
-                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.7)",marginBottom:4}}>
+                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.7)",marginBottom:4}}>
                     <span style={{textTransform:"capitalize"}}>{i.item_name} × {i.qty}</span>
                     <span style={{color:"#4ade80"}}>FREE</span>
                   </div>
@@ -8382,7 +8382,7 @@ function GroupOrderView({
         <div style={{background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",fontFamily:"'Outfit',sans-serif"}}>
           <div>
             <div style={{fontWeight:600,color:"#f87171",fontSize:13,marginBottom:2}}>Group order was cancelled</div>
-            <div style={{fontSize:12,color:"rgba(0,0,0,.5)"}}>The host cancelled the group order.</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>The host cancelled the group order.</div>
           </div>
           <button onClick={() => setCancelNote(false)} style={{background:"none",border:"none",color:"#888",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
         </div>
@@ -8412,7 +8412,7 @@ function GroupOrderView({
             onClick={() => handleJoinByTable(qrTable)}>
             {busy ? "CONNECTING…" : `📷 JOIN / START TABLE ${qrTable} ORDER`}
           </button>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.35)",textAlign:"center",marginTop:6}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",textAlign:"center",marginTop:6}}>
             Joins existing order or starts a new one for Table {qrTable}
           </div>
           {joinErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8,textAlign:"center"}}>{joinErr}</div>}
@@ -8443,11 +8443,11 @@ function GroupOrderView({
           <span style={{fontSize:18}}>📍</span>
           <div style={{flex:1}}>
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {tableInput}</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>Scanned from table QR code</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Scanned from table QR code</div>
           </div>
           <button onClick={()=>setTableInput("")}
-            style={{background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",
-              color:"rgba(0,0,0,.5)",borderRadius:6,padding:"4px 10px",
+            style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+              color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
               fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
         </div>
       ) : (
@@ -8458,7 +8458,7 @@ function GroupOrderView({
           <span style={{fontSize:22}}>📷</span>
           <div style={{textAlign:"left"}}>
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
           </div>
         </button>
       )}
@@ -8488,15 +8488,15 @@ function GroupOrderView({
         <span style={{fontSize:26}}>📷</span>
         <div style={{textAlign:"left"}}>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:2}}>Instantly joins the group order at your table</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Instantly joins the group order at your table</div>
         </div>
       </button>
 
       {/* Divider */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <div style={{flex:1,height:1,background:"rgba(0,0,0,.07)"}} />
-        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.3)"}}>OR ENTER CODE MANUALLY</span>
-        <div style={{flex:1,height:1,background:"rgba(0,0,0,.07)"}} />
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}} />
+        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>OR ENTER CODE MANUALLY</span>
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}} />
       </div>
 
       {/* Fallback — manual code */}
@@ -8515,13 +8515,13 @@ function GroupOrderView({
     <div style={{padding:"40px 16px",textAlign:"center"}}>
       <div style={{fontSize:64,marginBottom:12}}>🎉</div>
       <div style={{fontFamily:"'Anton',sans-serif",fontSize:26,color:"#4ade80",letterSpacing:2,marginBottom:8}}>ORDER PLACED!</div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(0,0,0,.6)",lineHeight:1.6,marginBottom:8}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"rgba(255,255,255,.6)",lineHeight:1.6,marginBottom:8}}>
         Your waiter will bring everything to
       </div>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#0a0a0a",letterSpacing:2,marginBottom:8}}>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:32,color:"#fff",letterSpacing:2,marginBottom:8}}>
         TABLE {activeGroup?.table_number}
       </div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.35)",marginBottom:40}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.35)",marginBottom:40}}>
         Sit back and enjoy! ⚽
       </div>
       <button className="go-btn-primary" style={{marginBottom:12}} onClick={() => { leaveGroupOrder(); }}>
@@ -8562,7 +8562,7 @@ function GroupOrderView({
             </div>
             <div className="go-member-items">
               {mItems.length === 0 ? (
-                <span style={{color:"rgba(0,0,0,.3)",fontSize:12}}>no items yet</span>
+                <span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>no items yet</span>
               ) : (
                 mItems.map(i => (
                   <div key={i.id} className="go-item-row">
@@ -8639,7 +8639,7 @@ function GroupOrderView({
                 ))}
               </div>
               {/* Item count label */}
-              <div style={{padding:"8px 16px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.3)",letterSpacing:1.5}}>
+              <div style={{padding:"8px 16px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",letterSpacing:1.5}}>
                 {filtered.length} ITEM{filtered.length !== 1 ? "S" : ""}
               </div>
               {/* Items list */}
@@ -8666,7 +8666,7 @@ function GroupOrderView({
                       </div>
                       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0}}>
                         <button className="go-modal-add-btn" onClick={() => addGroupItem(item)}>+ ADD</button>
-                        {myQty > 0 && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.45)"}}>×{myQty} added</span>}
+                        {myQty > 0 && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.45)"}}>×{myQty} added</span>}
                       </div>
                     </div>
                   );
@@ -8697,7 +8697,7 @@ function GroupOrderView({
           </button>
         )}
         {!isHost && activeGroup.status === "open" && (
-          <div style={{textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.4)",marginTop:12,padding:"10px 0"}}>
+          <div style={{textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",marginTop:12,padding:"10px 0"}}>
             Waiting for host to start checkout…
           </div>
         )}
@@ -8713,7 +8713,7 @@ function GroupOrderView({
     <div style={{padding:"24px 16px"}}>
       <button className="go-back-btn" onClick={() => setScreen("lobby")}>← Back</button>
       <div className="go-section-title">CHOOSE PAYMENT MODE</div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.5)",marginBottom:20,lineHeight:1.6}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)",marginBottom:20,lineHeight:1.6}}>
         How does your group want to pay?
       </div>
       <div className="go-pay-mode-card" onClick={() => setGroupPaymentMode("host")}>
@@ -8804,10 +8804,10 @@ function GroupOrderView({
       return (
         <div style={{padding:"40px 16px",textAlign:"center"}}>
           <div style={{fontSize:48,marginBottom:16}}>{hostPaid ? "✅" : "⏳"}</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#0a0a0a",marginBottom:8}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff",marginBottom:8}}>
             {hostPaid ? "Payment confirmed!" : "Waiting for host to pay…"}
           </div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.5)"}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>
             {hostPaid ? "Your order is being placed." : "The host is covering the full bill."}
           </div>
         </div>
@@ -8854,7 +8854,7 @@ function GroupOrderView({
               {/* Assign to someone else — only show unpaid members who aren't already paying for someone else */}
               {otherMembers.filter(m => m.payment_status !== "paid").length > 0 && (
                 <div style={{marginBottom:16}}>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.4)",marginBottom:8,letterSpacing:1}}>ASSIGN TO SOMEONE ELSE</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:8,letterSpacing:1}}>ASSIGN TO SOMEONE ELSE</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                     {otherMembers.filter(m => m.payment_status !== "paid").map(m => (
                       <button key={m.id} className="go-assign-btn"
@@ -8892,8 +8892,8 @@ function GroupOrderView({
           )}
 
           {isAssigned && (
-            <div style={{padding:"16px",background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.09)",borderRadius:4,marginBottom:16}}>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.7)",marginBottom:8}}>
+            <div style={{padding:"16px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,marginBottom:16}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.7)",marginBottom:8}}>
                 {myPayer
                   ? <>{myPayer.display_name} is paying for you (${myShare.toFixed(2)})</>
                   : <span style={{color:"#f87171"}}>Your assigned payer has left the group — you need to pay yourself.</span>
@@ -9155,7 +9155,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
     setNoteOpen({});
   };
 
-  const statusColor = s => s==="pending"?"rgba(251,191,36,.9)":s==="confirmed"?"rgba(74,222,128,.8)":s==="ready"?"#fff":"rgba(0,0,0,.4)";
+  const statusColor = s => s==="pending"?"rgba(251,191,36,.9)":s==="confirmed"?"rgba(74,222,128,.8)":s==="ready"?"#fff":"rgba(255,255,255,.4)";
   const statusLabel = s => s==="pending"?"⏳ Pending":s==="confirmed"?"✓ Confirmed":s==="ready"?"🔔 Ready! Pick up":"—";
 
   return (
@@ -9208,11 +9208,11 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* ── Group order banner (only when the group is still assembling/paying) ── */}
           {activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled" && (
-            <div style={{padding:"13px 18px",background:"rgba(0,0,0,.03)",borderTop:"1px solid rgba(0,0,0,.07)",borderBottom:"1px solid rgba(0,0,0,.07)",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{padding:"13px 18px",background:"rgba(255,255,255,.03)",borderTop:"1px solid rgba(255,255,255,.08)",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 8px #4ade80",flexShrink:0}}/>
               <div style={{flex:1}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(0,0,0,.9)",textTransform:"uppercase"}}>Group Order Active</div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.38)",marginTop:2}}>All items go to the group cart</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2.5,color:"rgba(255,255,255,.9)",textTransform:"uppercase"}}>Group Order Active</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.38)",marginTop:2}}>All items go to the group cart</div>
               </div>
             </div>
           )}
@@ -9363,7 +9363,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                         <span style={{background:"rgba(245,158,11,.2)",border:"1px solid rgba(245,158,11,.4)",borderRadius:99,padding:"2px 7px",fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:1.5,color:"#f59e0b",flexShrink:0}}>🎁 FREE</span>
                         {item.name}
                       </div>
-                      <button onClick={() => removeGiftFromCart(item.giftId)} style={{background:"transparent",border:"none",color:"rgba(0,0,0,.3)",cursor:"pointer",padding:"4px 8px",fontSize:13}}>✕</button>
+                      <button onClick={() => removeGiftFromCart(item.giftId)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",padding:"4px 8px",fontSize:13}}>✕</button>
                       <div className="cart-row-price" style={{color:"#f59e0b",fontFamily:"'Anton',sans-serif"}}>FREE</div>
                     </div>
                   ))}
@@ -9378,7 +9378,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                     <button key={g.id} onClick={() => addGiftToCart(g)}
                       style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,cursor:"pointer",marginBottom:6,textAlign:"left"}}>
                       <span style={{fontSize:18,flexShrink:0}}>🍺</span>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:.5,color:"#0a0a0a",flex:1}}>{g.item_name || g.title}</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:.5,color:"#fff",flex:1}}>{g.item_name || g.title}</span>
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"#f59e0b",fontWeight:700,flexShrink:0}}>+ ADD FREE</span>
                     </button>
                   ))}
@@ -9406,14 +9406,14 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                       <span style={{fontSize:18}}>📍</span>
                       <div style={{flex:1}}>
                         <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",letterSpacing:1}}>TABLE {table}</div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>
                           {qrTable ? "Set automatically from QR code" : "Tap ✕ to change"}
                         </div>
                       </div>
                       {!qrTable && (
                         <button onClick={()=>setTable("")}
-                          style={{background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",
-                            color:"rgba(0,0,0,.5)",borderRadius:6,padding:"4px 10px",
+                          style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                            color:"rgba(255,255,255,.5)",borderRadius:6,padding:"4px 10px",
                             fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer"}}>✕</button>
                       )}
                     </div>
@@ -9425,7 +9425,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                       <span style={{fontSize:22}}>📷</span>
                       <div style={{textAlign:"left"}}>
                         <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#FFD700"}}>SCAN TABLE QR CODE</div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Point camera at the QR code on your table</div>
                       </div>
                     </button>
                   )}
@@ -9483,19 +9483,19 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       {showOrderTypeModal && createPortal(
         <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
           onClick={() => setShowOrderTypeModal(false)}>
-          <div style={{background:"#0a0a0a",border:"1px solid rgba(0,0,0,.09)",borderRadius:20,padding:28,width:"100%",maxWidth:340}}
+          <div style={{background:"#111",border:"1px solid rgba(255,255,255,.1)",borderRadius:20,padding:28,width:"100%",maxWidth:340}}
             onClick={e => e.stopPropagation()}>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:17,letterSpacing:2,color:"#0a0a0a",marginBottom:4,textAlign:"center"}}>HOW DO YOU WANT TO ORDER?</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.35)",textAlign:"center",marginBottom:24}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:17,letterSpacing:2,color:"#fff",marginBottom:4,textAlign:"center"}}>HOW DO YOU WANT TO ORDER?</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",textAlign:"center",marginBottom:24}}>
               Solo for yourself, or group with your table
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <button onClick={() => handleOrderTypeChoice("solo")}
-                style={{padding:"18px 20px",borderRadius:14,background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.1)",cursor:"pointer",display:"flex",alignItems:"center",gap:16,textAlign:"left",width:"100%"}}>
+                style={{padding:"18px 20px",borderRadius:14,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",cursor:"pointer",display:"flex",alignItems:"center",gap:16,textAlign:"left",width:"100%"}}>
                 <span style={{fontSize:32}}>🧍</span>
                 <div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:1,color:"#0a0a0a"}}>JUST ME</div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.4)",marginTop:3}}>Solo order · pay now</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:1,color:"#fff"}}>JUST ME</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:3}}>Solo order · pay now</div>
                 </div>
               </button>
               <button onClick={() => handleOrderTypeChoice("group")}
@@ -9503,12 +9503,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                 <span style={{fontSize:32}}>👥</span>
                 <div>
                   <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:1,color:"#FFD700"}}>ORDER AS GROUP</div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.4)",marginTop:3}}>Order together with your table</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginTop:3}}>Order together with your table</div>
                 </div>
               </button>
             </div>
             <button onClick={() => setShowOrderTypeModal(false)}
-              style={{marginTop:16,width:"100%",padding:"11px",background:"none",border:"1px solid rgba(0,0,0,.07)",borderRadius:10,color:"rgba(0,0,0,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
+              style={{marginTop:16,width:"100%",padding:"11px",background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer"}}>
               Cancel
             </button>
           </div>
@@ -9557,8 +9557,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* Top up section */}
           <div className="wallet-section-title">ADD CREDITS TO YOUR BALANCE</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(0,0,0,.55)",marginBottom:16,lineHeight:1.6}}>
-            Select an amount, then visit any <strong style={{color:"#0a0a0a"}}>Top-Up Desk</strong> in the restaurant. Pay by cash or card and staff will add the credits to your account instantly.
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.55)",marginBottom:16,lineHeight:1.6}}>
+            Select an amount, then visit any <strong style={{color:"#fff"}}>Top-Up Desk</strong> in the restaurant. Pay by cash or card and staff will add the credits to your account instantly.
           </div>
           <div className="wallet-topup-amounts">
             {[5,10,20,50].map(amt => (
@@ -9570,7 +9570,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
             ))}
           </div>
           <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(0,0,0,.5)"}}>$</span>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>$</span>
             <input className="afield-inp" type="number" min="1" placeholder="Other amount"
               value={topupAmt} onChange={e=>setTopupAmt(e.target.value)}
               style={{flex:1,fontSize:18,letterSpacing:2}} />
@@ -9698,7 +9698,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail, onToggleSoldOut
       {/* Toolbar */}
       <div style={{padding:"14px 14px 0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <select value={filterCat} onChange={e=>setFilterCat(e.target.value)}
-          style={{background:"rgba(0,0,0,.05)",border:"1px solid rgba(0,0,0,.1)",color:"rgba(0,0,0,.7)",padding:"7px 12px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}>
+          style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.7)",padding:"7px 12px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer"}}>
           <option value="all">ALL CATEGORIES</option>
           {MENU_SECTIONS.map(s=>(
             <optgroup key={s.section} label={`── ${s.section} ──`}>
@@ -9718,10 +9718,10 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail, onToggleSoldOut
         const meta = catMeta(cat);
         return (
           <div key={cat}>
-            <div style={{padding:"10px 14px 4px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(0,0,0,.05)"}}>
+            <div style={{padding:"10px 14px 4px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(255,255,255,.06)"}}>
               <span style={{fontSize:14}}>{meta.icon}</span>
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(0,0,0,.35)"}}>{meta.label.toUpperCase()}</span>
-              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.2)",fontWeight:600}}>{items.length} item{items.length!==1?"s":""}</span>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2.5,color:"rgba(255,255,255,.35)"}}>{meta.label.toUpperCase()}</span>
+              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.2)",fontWeight:600}}>{items.length} item{items.length!==1?"s":""}</span>
             </div>
             {items.map(item => (
               <div key={item.id}>
@@ -9731,7 +9731,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail, onToggleSoldOut
                     <div className="admin-row-teams">{item.name}</div>
                     <div className="admin-row-dt">
                       ${(+item.price).toFixed(2)}
-                      {item.description && <span style={{color:"rgba(0,0,0,.3)"}}> · {item.description}</span>}
+                      {item.description && <span style={{color:"rgba(255,255,255,.3)"}}> · {item.description}</span>}
                       {!item.available && <span style={{color:"rgba(239,68,68,.65)"}}> · HIDDEN</span>}
                       {item.sold_out && <span style={{color:"rgba(248,113,113,.8)"}}> · SOLD OUT</span>}
                     </div>
@@ -9754,7 +9754,7 @@ function AdminMenu({ menuItems, onSave, onDelete, onToggleAvail, onToggleSoldOut
       })}
 
       {menuItems.length === 0 && (
-        <div style={{padding:"40px 20px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.3)"}}>
+        <div style={{padding:"40px 20px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>
           No items yet — add your first item above
         </div>
       )}
@@ -9889,7 +9889,7 @@ td:last-child{white-space:nowrap}
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{fontSize:36,marginBottom:12}}>🔐</div>
           <div className="admin-form-title" style={{fontSize:14,letterSpacing:2}}>ADMIN VERIFICATION</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(0,0,0,.45)",marginTop:8,lineHeight:1.5}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.45)",marginTop:8,lineHeight:1.5}}>
             Confirm your admin password before managing player credits.
           </div>
         </div>
@@ -9933,12 +9933,12 @@ td:last-child{white-space:nowrap}
       {/* ── Top-Up History ── */}
       <div style={{padding:"0 14px 10px"}}>
         <div style={{display:"flex",gap:8,marginBottom:showHistory?8:0}}>
-          <button style={{flex:1,padding:"10px",background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.15)",color:"rgba(0,0,0,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}
+          <button style={{flex:1,padding:"10px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer"}}
             onClick={()=>{setShowHistory(!showHistory); if(!showHistory && topUpHistory.length===0) loadHistory();}}>
             {showHistory ? "▲ HIDE HISTORY" : "▼ TOP-UP HISTORY"}
           </button>
           {showHistory && (
-            <button style={{padding:"10px 14px",background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.15)",color:"rgba(0,0,0,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
+            <button style={{padding:"10px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.75)",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,cursor:"pointer",flexShrink:0}}
               onClick={()=>printThermalReceipt(getFilteredHistory())}>🖨 PRINT</button>
           )}
         </div>
@@ -9947,27 +9947,27 @@ td:last-child{white-space:nowrap}
             {/* Filter pills */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
               {[["recent","LAST 5"],["today","TODAY"],["week","WEEK"],["month","MONTH"],["custom","CUSTOM"]].map(([f,label])=>(
-                <button key={f} style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:`1px solid ${histFilter===f?"rgba(0,0,0,.6)":"rgba(0,0,0,.1)"}`,background:histFilter===f?"rgba(0,0,0,.07)":"transparent",color:histFilter===f?"#fff":"rgba(0,0,0,.4)",transition:"all .15s"}}
+                <button key={f} style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:`1px solid ${histFilter===f?"rgba(255,255,255,.6)":"rgba(255,255,255,.12)"}`,background:histFilter===f?"rgba(255,255,255,.08)":"transparent",color:histFilter===f?"#fff":"rgba(255,255,255,.4)",transition:"all .15s"}}
                   onClick={()=>{setHistFilter(f); if(topUpHistory.length===0) loadHistory();}}>
                   {label}
                 </button>
               ))}
-              <button style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:"1px solid rgba(0,0,0,.07)",background:"transparent",color:"rgba(0,0,0,.3)",marginLeft:"auto"}}
+              <button style={{padding:"5px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,cursor:"pointer",border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"rgba(255,255,255,.3)",marginLeft:"auto"}}
                 onClick={loadHistory}>↻</button>
             </div>
             {histFilter === "custom" && (
               <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
                 <input type="date" value={histFrom} onChange={e=>setHistFrom(e.target.value)}
-                  style={{flex:1,background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.1)",color:"#0a0a0a",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
-                <span style={{color:"rgba(0,0,0,.3)",fontSize:11}}>→</span>
+                  style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
+                <span style={{color:"rgba(255,255,255,.3)",fontSize:11}}>→</span>
                 <input type="date" value={histTo} onChange={e=>setHistTo(e.target.value)}
-                  style={{flex:1,background:"rgba(0,0,0,.04)",border:"1px solid rgba(0,0,0,.1)",color:"#0a0a0a",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
+                  style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",padding:"6px 8px",fontFamily:"'Outfit',sans-serif",fontSize:12}} />
               </div>
             )}
             {historyLoading ? (
-              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(0,0,0,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
+              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
             ) : getFilteredHistory().length === 0 ? (
-              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(0,0,0,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups in this period</div>
+              <div style={{textAlign:"center",padding:"16px 0",color:"rgba(255,255,255,.25)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>No top-ups in this period</div>
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:5}}>
                 {getFilteredHistory().map((tx,i) => {
@@ -9975,13 +9975,13 @@ td:last-child{white-space:nowrap}
                   const admin  = Object.values(users).find(u => u.id === tx.added_by);
                   const dt = new Date(tx.created_at);
                   return (
-                    <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.05)"}}>
+                    <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
                       <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,color:"#4ade80",minWidth:60,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#0a0a0a",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {player?.name||"Unknown"}{player?.player_number?` #${player.player_number}`:""}
                         </div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.3)",marginTop:1}}>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:1}}>
                           {admin?.name||"Admin"} · {tx.method||"cash"} · {dt.toLocaleDateString([],{month:"short",day:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
                         </div>
                       </div>
@@ -9989,7 +9989,7 @@ td:last-child{white-space:nowrap}
                   );
                 })}
                 {histFilter==="recent" && topUpHistory.length>5 && (
-                  <div style={{textAlign:"center",padding:"6px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.25)"}}>
+                  <div style={{textAlign:"center",padding:"6px 0",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)"}}>
                     Showing last 5 of {topUpHistory.length} — use filters to see more
                   </div>
                 )}
@@ -10009,12 +10009,12 @@ td:last-child{white-space:nowrap}
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 {u.player_number && (
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(0,0,0,.35)",background:"rgba(0,0,0,.06)",border:"1px solid rgba(0,0,0,.1)",padding:"2px 8px",flexShrink:0}}>
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",flexShrink:0}}>
                     #{u.player_number}
                   </span>
                 )}
                 <div className="admin-row-teams">{u.name}</div>
-                <span style={{fontSize:9,color:"rgba(0,0,0,.25)",marginLeft:"auto",fontFamily:"'Outfit',sans-serif"}}>{expandedPlayer===u.id ? "▲" : "▼"}</span>
+                <span style={{fontSize:9,color:"rgba(255,255,255,.25)",marginLeft:"auto",fontFamily:"'Outfit',sans-serif"}}>{expandedPlayer===u.id ? "▲" : "▼"}</span>
               </div>
               <div className="admin-row-dt">{u.phone||"No phone"}</div>
             </div>
@@ -10032,25 +10032,25 @@ td:last-child{white-space:nowrap}
           </div>
           {/* Per-player top-up history */}
           {expandedPlayer === u.id && (
-            <div style={{padding:"0 14px 10px",background:"rgba(0,0,0,.03)",borderBottom:"1px solid rgba(0,0,0,.05)"}}>
+            <div style={{padding:"0 14px 10px",background:"rgba(255,255,255,.02)",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
               {playerHistLoading === u.id ? (
-                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.25)"}}>Loading...</div>
+                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.25)"}}>Loading...</div>
               ) : !playerHistory[u.id] || playerHistory[u.id].length === 0 ? (
-                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(0,0,0,.2)"}}>No top-ups for this player</div>
+                <div style={{padding:"12px 0",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.2)"}}>No top-ups for this player</div>
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:6}}>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(0,0,0,.3)",marginBottom:4}}>TOP-UP HISTORY — {u.name?.toUpperCase()}</div>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,255,255,.3)",marginBottom:4}}>TOP-UP HISTORY — {u.name?.toUpperCase()}</div>
                   {playerHistory[u.id].map((tx,i) => {
                     const admin = Object.values(users).find(a => a.id === tx.added_by);
                     const dt = new Date(tx.created_at);
                     return (
-                      <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(0,0,0,.03)",border:"1px solid rgba(0,0,0,.04)"}}>
+                      <div key={tx.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}>
                         <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,color:"#4ade80",minWidth:55,flexShrink:0}}>+${(+tx.amount).toFixed(2)}</div>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(0,0,0,.5)"}}>
-                            by <strong style={{color:"rgba(0,0,0,.7)"}}>{admin?.name || "Admin"}</strong> · {tx.method || "cash"}
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.5)"}}>
+                            by <strong style={{color:"rgba(255,255,255,.7)"}}>{admin?.name || "Admin"}</strong> · {tx.method || "cash"}
                           </div>
-                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(0,0,0,.25)",marginTop:1}}>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",marginTop:1}}>
                             {dt.toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})} {dt.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
                           </div>
                         </div>
@@ -10067,7 +10067,7 @@ td:last-child{white-space:nowrap}
 
 
       <div style={{padding:"12px 14px 8px"}}>
-        <button style={{background:"transparent",border:"none",color:"rgba(0,0,0,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",padding:0}}
+        <button style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",padding:0}}
           onClick={()=>{setUnlocked(false);setPinInput("");}}>
           🔒 Lock credits panel
         </button>
