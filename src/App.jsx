@@ -57,6 +57,7 @@ export default function App() {
   const [gifts,          setGifts]          = useState([]);
   const [showGifts,      setShowGifts]      = useState(false);
   const [passportCompletion, setPassportCompletion] = useState(null);
+  const [pendingGiftItems, setPendingGiftItems] = useState([]); // gift(s) queued to add to menu cart
   const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
@@ -1476,6 +1477,7 @@ export default function App() {
           gifts={gifts}
           showGifts={showGifts} setShowGifts={setShowGifts}
           passportCompletion={passportCompletion}
+          pendingGiftItems={pendingGiftItems} setPendingGiftItems={setPendingGiftItems}
           sendNotif={sendNotif}
           sendPush={sendPush}
         />
@@ -2192,6 +2194,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 showPassport = false, setShowPassport, passportStamps = [],
                 gifts = [], showGifts = false, setShowGifts = () => {},
                 passportCompletion = null,
+                pendingGiftItems = [], setPendingGiftItems = () => {},
                 qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
@@ -2303,6 +2306,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             stripeCheckout={stripeCheckout}
             onToast={onToast}
             qrTable={qrTable}
+            gifts={gifts.filter(g => (g.type === "drink_food" || g.type === "item") && !g.redeemed)}
+            pendingGiftItems={pendingGiftItems}
+            onClearPendingGifts={() => setPendingGiftItems([])}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
           {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} /></ErrorBoundary>}
@@ -2369,8 +2375,13 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               passportCompletion={passportCompletion}
               onClose={() => setShowGifts(false)}
               onToast={onToast}
-              onPlaceOrder={placeOrder}
-              qrTable={qrTable}
+              onAddGiftToOrder={(gift) => {
+                setPendingGiftItems(prev =>
+                  prev.find(p => p.giftId === gift.id) ? prev : [...prev, { giftId: gift.id, name: gift.item_name || gift.title }]
+                );
+                setShowGifts(false);
+                setAppTab("menu");
+              }}
             />
           )}
         </div>
@@ -5223,10 +5234,10 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 }
 
 /* ═══ MY GIFTS ═════════════════════════════════════════════════════════════ */
-function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onToast = ()=>{}, onPlaceOrder = null, qrTable = "" }) {
+function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onToast = ()=>{}, onAddGiftToOrder = null }) {
   const [tab, setTab] = useState("active"); // "active" | "history"
   const [redeeming, setRedeeming] = useState(null);
-  const [ordering,  setOrdering]  = useState(null); // gift id currently being ordered
+  const [addedGift, setAddedGift] = useState(null); // brief confirmation after tapping ADD TO ORDER
   const [openedGift, setOpenedGift] = useState(null); // full-screen gift reveal
   const [showInstructions, setShowInstructions] = useState(null); // special gift claim modal
 
@@ -5258,27 +5269,13 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
     }
   };
 
-  /* ── Drinks/Food: player orders in-app for free ── */
-  const redeemDrinkFood = async (g) => {
-    if (!onPlaceOrder || ordering) return;
-    setOrdering(g.id);
-    try {
-      const ok = await onPlaceOrder({
-        tableNumber: qrTable || "Gift Redemption",
-        items: [{ id: `gift_${g.id}`, name: g.item_name || g.title, price: 0, qty: 1, note: "🎁 Gift redemption" }],
-        total: 0,
-        paymentMethod: "gift",
-      });
-      if (ok) {
-        await supabase.from("gifts").update({ redeemed: true, redeemed_at: new Date().toISOString(), redeemed_by: user.id }).eq("id", g.id);
-        try { navigator.vibrate?.([60, 40, 120]); } catch {}
-      }
-    } catch (err) {
-      console.error("Redeem drink/food failed", err);
-      onToast("Could not place order — please try again", false);
-    } finally {
-      setOrdering(null);
-    }
+  /* ── Drinks/Food: add to cart → checkout → redeemed when order placed ── */
+  const addToOrder = (g) => {
+    if (!onAddGiftToOrder) return;
+    setAddedGift(g.id);
+    setTimeout(() => setAddedGift(null), 1800);
+    try { navigator.vibrate?.([40, 20, 60]); } catch {}
+    onAddGiftToOrder(g); // navigates to menu tab and closes this overlay
   };
 
   const dismissOpenedGift = () => setOpenedGift(null);
@@ -5470,10 +5467,8 @@ function MyGiftsView({ user, gifts = [], passportCompletion = null, onClose, onT
                         {redeeming === g.id ? "REDEEMING…" : "REDEEM TO BALANCE"}
                       </button>
                     ) : isFoodType(g) ? (
-                      <button className="gift-redeem-btn gift-redeem-food" onClick={() => redeemDrinkFood(g)} disabled={ordering === g.id || !onPlaceOrder}>
-                        {ordering === g.id
-                          ? <><span style={{display:"inline-block",animation:"spin .8s linear infinite",marginRight:6}}>⏳</span>ORDERING…</>
-                          : <>🍺 ORDER FREE</>}
+                      <button className="gift-redeem-btn gift-redeem-food" onClick={() => addToOrder(g)} disabled={addedGift === g.id}>
+                        {addedGift === g.id ? "✓ ADDED TO ORDER" : "🛒 ADD TO ORDER"}
                       </button>
                     ) : (
                       <button className="gift-redeem-btn gift-redeem-special" onClick={() => setShowInstructions(g)}>
@@ -8931,7 +8926,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   setGroupPaymentMode, assignMyPaymentTo, unassignMyPayment,
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
-  resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "" }) {
+  resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "",
+  gifts = [], pendingGiftItems = [], onClearPendingGifts = () => {} }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [cartNotes,   setCartNotes]   = useState({}); // { [itemId]: noteString }
@@ -8945,6 +8941,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   const [showQRScan,  setShowQRScan]  = useState(false);
   const [showOrderTypeModal, setShowOrderTypeModal] = useState(false);
   const [pendingPayMethod,   setPendingPayMethod]   = useState("credits");
+  /* ── gift cart: free drink/food gifts added from My Gifts ── */
+  const [giftCart, setGiftCart] = useState([]); // [{ giftId, name }]
 
   const available  = menuItems.filter(i => i.available);
   const [activeCat, setActiveCat] = useState(null);
@@ -8977,14 +8975,38 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
     }
   };
 
+  /* ── Consume pending gift items sent from My Gifts ── */
+  useEffect(() => {
+    if (!pendingGiftItems || pendingGiftItems.length === 0) return;
+    setGiftCart(prev => {
+      const next = [...prev];
+      pendingGiftItems.forEach(pg => {
+        if (!next.find(g => g.giftId === pg.giftId)) next.push(pg);
+      });
+      return next;
+    });
+    onClearPendingGifts();
+    setTab("cart");
+  }, [pendingGiftItems]); // eslint-disable-line
+
   const addToCart      = id => setCart(c => ({ ...c, [id]: (c[id]||0)+1 }));
   const removeFromCart = id => setCart(c => { const n={...c}; if(n[id]>1) n[id]--; else delete n[id]; return n; });
   const clearCart      = () => { setCart({}); setCartNotes({}); setNoteOpen({}); };
+  const addGiftToCart  = (g) => setGiftCart(prev => prev.find(x => x.giftId === g.id) ? prev : [...prev, { giftId: g.id, name: g.item_name || g.title }]);
+  const removeGiftFromCart = (giftId) => setGiftCart(prev => prev.filter(g => g.giftId !== giftId));
 
   const cartItems = Object.entries(cart).map(([id, qty]) => {
     const item = menuItems.find(i => i.id === id);
     return { ...item, qty };
   }).filter(i => i.name);
+
+  /* gift cart as renderable items */
+  const giftCartItems = giftCart.map(g => ({
+    giftId: g.giftId, name: g.name, price: 0, qty: 1, isGift: true, id: `gift_${g.giftId}`,
+  }));
+
+  /* gifts available to add from checkout (not already in cart) */
+  const availableGiftsToAdd = gifts.filter(g => !giftCartItems.find(gc => gc.giftId === g.id));
 
   const cartTotal = cartItems.reduce((s,i) => s + i.price * i.qty, 0);
   const cartCount = cartItems.reduce((s,i) => s + i.qty, 0);
@@ -9058,11 +9080,22 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
     try {
       const ok = await onPlaceOrder({
         tableNumber: String(tableNum),
-        items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+        items: [
+          ...cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+          ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
+        ],
         total: +cartTotal.toFixed(2),
         paymentMethod: "credits",
       });
-      if (ok) { clearCart(); setTab("orders"); }
+      if (ok) {
+        if (giftCartItems.length > 0) {
+          try {
+            await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id })
+              .in("id", giftCartItems.map(g => g.giftId));
+          } catch(e) { console.error("Gift redeem failed", e); }
+        }
+        clearCart(); setGiftCart([]); setTab("orders");
+      }
     } finally {
       placingRef.current = false;
       setPlacing(false);
@@ -9081,24 +9114,34 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
     setPlacing(true);
     let newOrder = null;
     try {
+      const allItems = [
+        ...cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+        ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
+      ];
       const { data: ord, error } = await supabase.from("orders").insert({
         user_id: user.id,
         user_name: user.name,
         table_number: String(tableNum),
-        items: cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+        items: allItems,
         total: +cartTotal.toFixed(2),
         payment_method: "card_pending",
         status: "pending",
       }).select().single();
       if (error || !ord) { onToast("Error creating order", false); return; }
       newOrder = ord;
+      if (giftCartItems.length > 0) {
+        try {
+          await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id })
+            .in("id", giftCartItems.map(g => g.giftId));
+        } catch(e) { console.error("Gift redeem failed", e); }
+      }
     } catch(e) {
       onToast("Error creating order", false); return;
     } finally {
       placingRef.current = false;
       setPlacing(false);
     }
-    clearCart();
+    clearCart(); setGiftCart([]);
     // Redirect to Stripe
     stripeCheckout({
       type: "order",
@@ -9260,9 +9303,10 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {available.length === 0 && <div className="empty">{t('noMenu')}</div>}
 
-          {cartCount > 0 && (
+          {(cartCount > 0 || giftCartItems.length > 0) && (
             <div className="cart-fab" onClick={()=>setTab("cart")}>
-              {t('viewCart')} · {cartCount} {t('itemsLabel')} · ${cartTotal.toFixed(2)} →
+              {t('viewCart')} · {cartCount + giftCartItems.length} {t('itemsLabel')} · ${cartTotal.toFixed(2)}
+              {giftCartItems.length > 0 && <span style={{color:"#f59e0b",marginLeft:4}}>+ {giftCartItems.length} free</span>} →
             </div>
           )}
         </div>
@@ -9271,7 +9315,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       {/* ── CART TAB ── */}
       {tab === "cart" && (
         <div style={{paddingBottom:32}}>
-          {cartItems.length === 0 ? (
+          {cartItems.length === 0 && giftCartItems.length === 0 ? (
             <div className="empty" style={{padding:"60px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
               <div style={{fontSize:40}}>🛒</div>
               <div>Your cart is empty</div>
@@ -9279,6 +9323,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
             </div>
           ) : (
             <>
+              {/* Regular menu items */}
               {cartItems.map(item => (
                 <div key={item.id}>
                   <div className="cart-row">
@@ -9308,9 +9353,48 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                   </div>
                 </div>
               ))}
+
+              {/* Gift items in cart */}
+              {giftCartItems.length > 0 && (
+                <div style={{margin:"4px 0 8px",padding:"2px 0"}}>
+                  {giftCartItems.map(item => (
+                    <div key={item.id} className="cart-row" style={{background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,marginBottom:4}}>
+                      <div className="cart-row-name" style={{display:"flex",alignItems:"center",gap:7}}>
+                        <span style={{background:"rgba(245,158,11,.2)",border:"1px solid rgba(245,158,11,.4)",borderRadius:99,padding:"2px 7px",fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:1.5,color:"#f59e0b",flexShrink:0}}>🎁 FREE</span>
+                        {item.name}
+                      </div>
+                      <button onClick={() => removeGiftFromCart(item.giftId)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",padding:"4px 8px",fontSize:13}}>✕</button>
+                      <div className="cart-row-price" style={{color:"#f59e0b",fontFamily:"'Anton',sans-serif"}}>FREE</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── ADD FREE GIFTS PICKER (in checkout) ── */}
+              {availableGiftsToAdd.length > 0 && (
+                <div style={{margin:"8px 0 12px",padding:"12px 14px",background:"rgba(245,158,11,.05)",border:"1px dashed rgba(245,158,11,.28)",borderRadius:10}}>
+                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:8.5,letterSpacing:2,color:"#f59e0b",marginBottom:8}}>🎁 YOUR FREE GIFT{availableGiftsToAdd.length > 1 ? "S" : ""}</div>
+                  {availableGiftsToAdd.map(g => (
+                    <button key={g.id} onClick={() => addGiftToCart(g)}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,cursor:"pointer",marginBottom:6,textAlign:"left"}}>
+                      <span style={{fontSize:18,flexShrink:0}}>🍺</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:.5,color:"#fff",flex:1}}>{g.item_name || g.title}</span>
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"#f59e0b",fontWeight:700,flexShrink:0}}>+ ADD FREE</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="cart-total-row">
                 <span className="cart-total-label">{t('total')}</span>
-                <span className="cart-total-val">${cartTotal.toFixed(2)}</span>
+                <div style={{textAlign:"right"}}>
+                  <span className="cart-total-val">${cartTotal.toFixed(2)}</span>
+                  {giftCartItems.length > 0 && (
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"#f59e0b",fontWeight:600,marginTop:2}}>
+                      + {giftCartItems.length} free gift item{giftCartItems.length > 1 ? "s" : ""}
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={{padding:"0 16px"}}>
                 {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
