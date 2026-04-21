@@ -2313,7 +2313,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
           )}
           {appTab === "keepups" && user?.keepups_access && (
-            <ErrorBoundary name="keepups"><KeepupsView user={user} /></ErrorBoundary>
+            <ErrorBoundary name="keepups"><KeepupsView user={user} users={users} /></ErrorBoundary>
           )}
           {appTab === "admin" && isAdmin && (
             <ErrorBoundary name="admin"><AdminView
@@ -5819,18 +5819,35 @@ function AdminKeepupsAccess({ users, onSetAccess }) {
    Operator-only tab for logging keep-up scores during the Wine Factory game.
    Players must spend $50+ to qualify. Operator enters name + score, can edit.
    ═══════════════════════════════════════════════════════════════════════════ */
-function KeepupsView({ user }) {
-  const [scores, setScores] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState("");
-  const [scoreVal, setScoreVal] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [editName, setEditName] = useState("");
-  const [editScore, setEditScore] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [showBoard, setShowBoard] = useState(false);
+function KeepupsView({ user, users = {} }) {
+  const [scores, setScores]               = useState([]);
+  const [loading, setLoading]             = useState(true);
+  /* player search */
+  const [searchQ, setSearchQ]             = useState("");
+  const [searchOpen, setSearchOpen]       = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  /* score input */
+  const [scoreVal, setScoreVal]           = useState("");
+  const [adding, setAdding]               = useState(false);
+  /* edit */
+  const [editId, setEditId]               = useState(null);
+  const [editScore, setEditScore]         = useState("");
+  const [saving, setSaving]               = useState(false);
+  /* leaderboard slide-up sheet */
+  const [showBoard, setShowBoard]         = useState(false);
+  const [boardAnim, setBoardAnim]         = useState(false);
 
+  /* ── user list for search ── */
+  const userList = Object.values(users).filter(u => u.name);
+
+  const filteredUsers = searchQ.trim().length > 0
+    ? userList.filter(u =>
+        u.name?.toLowerCase().includes(searchQ.toLowerCase()) ||
+        String(u.player_number || "").includes(searchQ.trim())
+      ).slice(0, 8)
+    : [];
+
+  /* ── realtime load ── */
   const load = async () => {
     const { data } = await supabase.from("keepups_scores").select("*").order("score", { ascending: false });
     setScores(data || []);
@@ -5845,37 +5862,38 @@ function KeepupsView({ user }) {
     return () => supabase.removeChannel(ch);
   }, []);
 
+  /* ── add score ── */
   const addScore = async () => {
-    const n = name.trim();
+    if (!selectedPlayer) return;
     const s = parseInt(scoreVal, 10);
-    if (!n) return;
     if (isNaN(s) || s < 0) return;
     setAdding(true);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const { data, error } = await supabase.from("keepups_scores").insert({
-        player_name: n, score: s, entered_by: authUser?.id || null,
+        player_name: selectedPlayer.name,
+        user_id: selectedPlayer.id,
+        score: s,
+        entered_by: authUser?.id || null,
       }).select().maybeSingle();
       if (error) throw error;
       if (data) setScores(prev => [...prev, data].sort((a,b) => b.score - a.score));
-      setName(""); setScoreVal("");
+      setSelectedPlayer(null); setSearchQ(""); setScoreVal("");
       try { navigator.vibrate?.([40, 20, 80]); } catch {}
     } catch (err) { alert("Error: " + err.message); }
     setAdding(false);
   };
 
-  const startEdit = (row) => {
-    setEditId(row.id); setEditName(row.player_name); setEditScore(String(row.score));
-  };
+  /* ── edit (score only) ── */
+  const startEdit = (row) => { setEditId(row.id); setEditScore(String(row.score)); };
 
   const saveEdit = async () => {
-    const n = editName.trim();
     const s = parseInt(editScore, 10);
-    if (!n || isNaN(s) || s < 0) return;
+    if (isNaN(s) || s < 0) return;
     setSaving(true);
     try {
       const { data, error } = await supabase.from("keepups_scores")
-        .update({ player_name: n, score: s, updated_at: new Date().toISOString() })
+        .update({ score: s, updated_at: new Date().toISOString() })
         .eq("id", editId).select().maybeSingle();
       if (error) throw error;
       if (data) setScores(prev => prev.map(x => x.id === data.id ? data : x).sort((a,b) => b.score - a.score));
@@ -5884,12 +5902,24 @@ function KeepupsView({ user }) {
     setSaving(false);
   };
 
+  /* ── delete ── */
   const deleteScore = async (row) => {
     if (!confirm(`Delete ${row.player_name}'s score (${row.score})?`)) return;
     await supabase.from("keepups_scores").delete().eq("id", row.id);
     setScores(prev => prev.filter(x => x.id !== row.id));
   };
 
+  /* ── leaderboard sheet animation ── */
+  const openBoard = () => {
+    setShowBoard(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setBoardAnim(true)));
+  };
+  const closeBoard = () => {
+    setBoardAnim(false);
+    setTimeout(() => setShowBoard(false), 400);
+  };
+
+  /* ── helpers ── */
   const medalColor = (rank) => {
     if (rank === 1) return "#FFD700";
     if (rank === 2) return "#C0C0C0";
@@ -5897,11 +5927,22 @@ function KeepupsView({ user }) {
     return "rgba(255,255,255,.25)";
   };
 
+  const rankBg = (rank) => {
+    if (rank === 1) return "rgba(255,215,0";
+    if (rank === 2) return "rgba(192,192,192";
+    if (rank === 3) return "rgba(205,127,50";
+    return "rgba(255,255,255";
+  };
+
+  /* profile object from users dict (may not exist for old records) */
+  const profileFor = (row) => row.user_id ? (users[row.user_id] || { name: row.player_name }) : { name: row.player_name };
+
+  const canAdd = !!selectedPlayer && scoreVal !== "" && !adding;
+
   return (
-    <div style={{paddingBottom:60}}>
+    <div style={{paddingBottom:80}}>
       {/* ── Header ── */}
       <div style={{position:"relative",padding:"28px 20px 20px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-        {/* Wine Factory Logo */}
         <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
           <div style={{width:80,height:80,borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)",boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>
             <img src="/logos/winefactory.jpg" alt="The Wine Factory" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -5912,41 +5953,92 @@ function KeepupsView({ user }) {
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.35)",marginTop:6}}>CHALLENGE</div>
         {/* Leaderboard button */}
         <button
-          onClick={() => setShowBoard(true)}
-          style={{position:"absolute",top:24,right:16,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",background:"rgba(245,200,90,.1)",border:"1px solid rgba(245,200,90,.3)",borderRadius:100,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2,color:"#f5c85a",cursor:"pointer"}}>
+          onClick={openBoard}
+          style={{position:"absolute",top:24,right:16,display:"flex",alignItems:"center",gap:6,padding:"9px 14px",background:"rgba(245,200,90,.1)",border:"1px solid rgba(245,200,90,.35)",borderRadius:100,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2,color:"#f5c85a",cursor:"pointer",transition:"background .18s"}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/></svg>
           TOP
         </button>
       </div>
 
       {/* ── Add player form ── */}
-      <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+      <div style={{padding:"18px 16px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:2.5,color:"rgba(255,255,255,.35)",marginBottom:10}}>ADD PLAYER</div>
-        <div style={{display:"flex",gap:8,marginBottom:8}}>
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && scoreVal && addScore()}
-            placeholder="Player name"
-            style={{flex:1,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"11px 13px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,outline:"none"}}
-          />
+
+        {/* Account requirement notice */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 12px",background:"rgba(245,200,90,.06)",border:"1px solid rgba(245,200,90,.18)",borderRadius:8,marginBottom:12}}>
+          <span style={{fontSize:13,flexShrink:0,marginTop:1}}>ℹ️</span>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11.5,color:"rgba(255,255,255,.5)",fontWeight:500,lineHeight:1.45}}>
+            Players must have an <strong style={{color:"rgba(245,200,90,.8)"}}>active app account</strong> and a minimum <strong style={{color:"rgba(245,200,90,.8)"}}>$50 spend</strong> at The Wine Factory to qualify.
+          </div>
+        </div>
+
+        {/* Player search or selected player */}
+        <div style={{position:"relative",marginBottom:8}}>
+          {selectedPlayer ? (
+            /* Selected player chip */
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"rgba(245,200,90,.08)",border:"1px solid rgba(245,200,90,.3)",borderRadius:8}}>
+              <Av u={selectedPlayer} size={32} fontSize={13}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedPlayer.name}</div>
+                {selectedPlayer.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.35)",fontWeight:500}}>#{selectedPlayer.player_number}</div>}
+              </div>
+              <button onClick={()=>{setSelectedPlayer(null);setSearchQ("");}} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>✕</button>
+            </div>
+          ) : (
+            /* Search input */
+            <>
+              <div style={{position:"relative"}}>
+                <svg style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",opacity:.4}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  value={searchQ}
+                  onChange={e => { setSearchQ(e.target.value); setSearchOpen(true); }}
+                  onFocus={() => setSearchOpen(true)}
+                  onBlur={() => setTimeout(() => setSearchOpen(false), 160)}
+                  placeholder="Search by name or player #"
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:8,padding:"12px 13px 12px 36px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:500,outline:"none"}}
+                />
+              </div>
+              {/* Dropdown */}
+              {searchOpen && filteredUsers.length > 0 && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#161616",border:"1px solid rgba(255,255,255,.12)",borderRadius:10,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                  {filteredUsers.map(u => (
+                    <button key={u.id} onMouseDown={()=>{ setSelectedPlayer(u); setSearchQ(""); setSearchOpen(false); }}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",cursor:"pointer",textAlign:"left"}}>
+                      <Av u={u} size={30} fontSize={12}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:.3,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                        {u.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",fontWeight:500}}>#{u.player_number}</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {searchOpen && searchQ.trim().length > 0 && filteredUsers.length === 0 && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:50,background:"#161616",border:"1px solid rgba(255,255,255,.12)",borderRadius:10,padding:"14px 16px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                  No players found — player must have an active account
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Score + button row */}
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
           <input
             value={scoreVal}
             onChange={e => setScoreVal(e.target.value.replace(/\D/g,""))}
-            onKeyDown={e => e.key === "Enter" && name.trim() && addScore()}
+            onKeyDown={e => e.key === "Enter" && canAdd && addScore()}
             placeholder="Score"
             inputMode="numeric"
-            style={{width:90,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:6,padding:"11px 13px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:18,textAlign:"center",outline:"none"}}
+            disabled={!selectedPlayer}
+            style={{flex:1,background: selectedPlayer ? "rgba(255,255,255,.07)" : "rgba(255,255,255,.03)",border:`1px solid ${selectedPlayer ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.06)"}`,borderRadius:8,padding:"13px 16px",color: selectedPlayer ? "#fff" : "rgba(255,255,255,.2)",fontFamily:"'Anton',sans-serif",fontSize:22,textAlign:"center",outline:"none",transition:"all .2s"}}
           />
-        </div>
-        <button
-          onClick={addScore}
-          disabled={adding || !name.trim() || scoreVal === ""}
-          style={{width:"100%",padding:"13px",background: (name.trim() && scoreVal !== "") ? "#f5c85a" : "rgba(245,200,90,.15)",color: (name.trim() && scoreVal !== "") ? "#000" : "rgba(255,255,255,.25)",border:"none",borderRadius:8,fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2.5,cursor: (name.trim() && scoreVal !== "") ? "pointer" : "not-allowed",transition:"all .18s"}}>
-          {adding ? "ADDING…" : "+ ADD SCORE"}
-        </button>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.25)",marginTop:8,textAlign:"center",fontWeight:500}}>
-          🍷 Minimum $50 spend to qualify · Highest score wins
+          <button
+            onClick={addScore}
+            disabled={!canAdd}
+            style={{padding:"13px 20px",background: canAdd ? "#f5c85a" : "rgba(245,200,90,.12)",color: canAdd ? "#000" : "rgba(255,255,255,.2)",border:"none",borderRadius:8,fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor: canAdd ? "pointer" : "not-allowed",transition:"all .18s",flexShrink:0}}>
+            {adding ? "…" : "+ ADD"}
+          </button>
         </div>
       </div>
 
@@ -5966,38 +6058,43 @@ function KeepupsView({ user }) {
         ) : scores.map((row, idx) => {
           const rank = idx + 1;
           const mc = medalColor(rank);
+          const rb = rankBg(rank);
           const isEditing = editId === row.id;
+          const prof = profileFor(row);
           return (
-            <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",marginBottom:8,background: rank <= 3 ? `rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.05)` : "rgba(255,255,255,.025)",border:`1px solid ${rank <= 3 ? `rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.2)` : "rgba(255,255,255,.07)"}`,borderRadius:10,transition:"all .2s"}}>
-              {/* Rank */}
-              <div style={{flexShrink:0,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":rank===3?"205,127,50":"255,255,255"},.1)`,border:`1.5px solid ${mc}`,fontFamily:"'Anton',sans-serif",fontSize:rank<=3?14:12,color:mc}}>
-                {rank <= 3 ? (rank===1?"🥇":rank===2?"🥈":"🥉") : rank}
+            <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.18)`:"rgba(255,255,255,.07)"}`,borderRadius:10,transition:"all .2s"}}>
+              {/* Rank badge */}
+              <div style={{flexShrink:0,width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:`${rb},.1)`,border:`1.5px solid ${mc}`,fontFamily:"'Anton',sans-serif",fontSize:rank<=3?13:11,color:mc}}>
+                {rank<=3?(rank===1?"🥇":rank===2?"🥈":"🥉"):rank}
               </div>
 
+              {/* Avatar */}
+              <Av u={prof} size={34} fontSize={13}/>
+
               {isEditing ? (
-                /* Edit mode */
                 <>
-                  <input value={editName} onChange={e=>setEditName(e.target.value)} style={{flex:1,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,outline:"none"}}/>
-                  <input value={editScore} onChange={e=>setEditScore(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={{width:72,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:18,textAlign:"center",outline:"none"}}/>
-                  <button onClick={saveEdit} disabled={saving} style={{padding:"7px 12px",background:"#fff",color:"#000",border:"none",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:1.5,cursor:"pointer"}}>{saving?"…":"SAVE"}</button>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>}
+                  </div>
+                  <input value={editScore} onChange={e=>setEditScore(e.target.value.replace(/\D/g,""))} inputMode="numeric"
+                    style={{width:72,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:5,padding:"7px 10px",color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:20,textAlign:"center",outline:"none"}}/>
+                  <button onClick={saveEdit} disabled={saving} style={{padding:"7px 12px",background:"#f5c85a",color:"#000",border:"none",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,letterSpacing:1.5,cursor:"pointer"}}>{saving?"…":"SAVE"}</button>
                   <button onClick={()=>setEditId(null)} style={{padding:"7px 10px",background:"transparent",color:"rgba(255,255,255,.4)",border:"1px solid rgba(255,255,255,.12)",borderRadius:5,fontFamily:"'Anton',sans-serif",fontSize:9.5,cursor:"pointer"}}>✕</button>
                 </>
               ) : (
-                /* View mode */
                 <>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:.5,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.3)",marginTop:2,fontWeight:500}}>
-                      {new Date(row.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
-                    </div>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                    {row.user_id && users[row.user_id]?.player_number && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500,marginTop:1}}>#{users[row.user_id].player_number}</div>}
                   </div>
                   <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:mc,letterSpacing:0,lineHeight:1,flexShrink:0}}>{row.score}</div>
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <button onClick={()=>startEdit(row)} style={{width:34,height:34,borderRadius:"50%",border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    <button onClick={()=>startEdit(row)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
-                    <button onClick={()=>deleteScore(row)} style={{width:34,height:34,borderRadius:"50%",border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    <button onClick={()=>deleteScore(row)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                     </button>
                   </div>
                 </>
@@ -6007,38 +6104,81 @@ function KeepupsView({ user }) {
         })}
       </div>
 
-      {/* ── Leaderboard Modal ── */}
+      {/* ── Leaderboard slide-up sheet ── */}
       {showBoard && (
-        <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,.9)",backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setShowBoard(false)}}>
-          <div style={{width:"100%",maxWidth:400,maxHeight:"85vh",overflowY:"auto",background:"linear-gradient(160deg,#141414,#050505)",border:"1px solid rgba(255,255,255,.14)",borderRadius:18,padding:"28px 24px 24px",position:"relative"}}>
-            <button onClick={()=>setShowBoard(false)} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"#fff",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-            {/* Logo */}
-            <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-              <div style={{width:56,height:56,borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
-                <img src="/logos/winefactory.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              </div>
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={closeBoard}
+            style={{position:"fixed",inset:0,zIndex:8999,background:`rgba(0,0,0,${boardAnim?.5:.0})`,transition:"background .42s",backdropFilter:"blur(4px)"}}
+          />
+          {/* Sheet */}
+          <div style={{
+            position:"fixed",bottom:0,left:0,right:0,zIndex:9000,
+            height:"82vh",
+            background:"linear-gradient(170deg,#181818 0%,#080808 100%)",
+            borderTopLeftRadius:22,borderTopRightRadius:22,
+            border:"1px solid rgba(255,255,255,.12)",
+            borderBottom:"none",
+            transform:`translateY(${boardAnim?"0":"100%"})`,
+            transition:"transform .42s cubic-bezier(.22,.61,.36,1)",
+            display:"flex",flexDirection:"column",
+            overflow:"hidden",
+          }}>
+            {/* Sheet handle */}
+            <div style={{display:"flex",justifyContent:"center",padding:"12px 0 6px",flexShrink:0}}>
+              <div style={{width:38,height:4,borderRadius:99,background:"rgba(255,255,255,.15)"}}/>
             </div>
-            <div style={{textAlign:"center",marginBottom:20}}>
+
+            {/* Sheet header */}
+            <div style={{padding:"10px 20px 16px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,.07)",flexShrink:0,position:"relative"}}>
+              <button onClick={closeBoard} style={{position:"absolute",top:8,right:16,width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
+                <div style={{width:48,height:48,borderRadius:11,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
+                  <img src="/logos/winefactory.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+              </div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:4,color:"#f5c85a",marginBottom:3}}>THE WINE FACTORY</div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:3,color:"#fff"}}>LEADERBOARD</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(255,255,255,.25)",marginTop:4,fontWeight:500}}>Top 10 players</div>
             </div>
-            {scores.length === 0 ? (
-              <div style={{textAlign:"center",padding:"20px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>No scores yet</div>
-            ) : scores.slice(0,20).map((row, idx) => {
-              const rank = idx + 1;
-              const mc = medalColor(rank);
-              return (
-                <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":rank===3?"205,127,50":"255,255,255"},.03)`,border:`1px solid ${rank<=3?`rgba(${rank===1?"255,215,0":rank===2?"192,192,192":"205,127,50"},.18)`:"rgba(255,255,255,.06)"}`,borderRadius:10}}>
-                  <div style={{width:30,textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:rank<=3?16:12,color:mc,flexShrink:0}}>
-                    {rank<=3?(rank===1?"🥇":rank===2?"🥈":"🥉"):rank}
+
+            {/* Sheet list */}
+            <div style={{flex:1,overflowY:"auto",padding:"14px 16px 32px"}}>
+              {scores.length === 0 ? (
+                <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>No scores yet</div>
+              ) : scores.slice(0,10).map((row, idx) => {
+                const rank = idx + 1;
+                const mc = medalColor(rank);
+                const rb = rankBg(rank);
+                const prof = profileFor(row);
+                return (
+                  <div key={row.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:8,background:`${rb},.04)`,border:`1px solid ${rank<=3?`${rb},.2)`:"rgba(255,255,255,.06)"}`,borderRadius:11,
+                    opacity: boardAnim ? 1 : 0,
+                    transform: boardAnim ? "translateY(0)" : "translateY(16px)",
+                    transition:`opacity .3s ${idx * 0.045}s, transform .3s ${idx * 0.045}s`,
+                  }}>
+                    {/* Medal / rank */}
+                    <div style={{width:32,textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:rank<=3?18:13,color:mc,flexShrink:0}}>
+                      {rank<=3?(rank===1?"🥇":rank===2?"🥈":"🥉"):rank}
+                    </div>
+                    {/* Avatar */}
+                    <Av u={prof} size={36} fontSize={14}/>
+                    {/* Name + number */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
+                      {row.user_id && users[row.user_id]?.player_number && (
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",fontWeight:500}}>#{users[row.user_id].player_number}</div>
+                      )}
+                    </div>
+                    {/* Score */}
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:mc,flexShrink:0,lineHeight:1}}>{row.score}</div>
                   </div>
-                  <div style={{flex:1,fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:.4,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.player_name}</div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:24,color:mc,flexShrink:0}}>{row.score}</div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

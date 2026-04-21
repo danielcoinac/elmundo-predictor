@@ -57,7 +57,11 @@ CREATE POLICY "Keepups operators can delete scores"
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (keepups_access = true OR is_admin = true OR badge IN ('developer','owner','staff')))
   );
 
--- 2. Add keepups_access column to profiles (idempotent)
+-- 2. Add user_id FK column to keepups_scores (idempotent — links score to app account)
+ALTER TABLE keepups_scores ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_keepups_user ON keepups_scores(user_id);
+
+-- 3. Add keepups_access column to profiles (idempotent)
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS keepups_access BOOLEAN DEFAULT FALSE;
 
 -- 3. Enable realtime
