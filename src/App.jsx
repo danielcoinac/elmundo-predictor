@@ -1132,10 +1132,12 @@ export default function App() {
 (async()=>{
   try{
     if(typeof qz==='undefined')return;
+    qz.security.setCertificatePromise(function(resolve){resolve('');});
+    qz.security.setSignaturePromise(function(){return function(resolve){resolve('');};});
     await qz.websocket.connect();
-    const cfg=qz.configs.create('EPSON TM-m30');
+    const cfg=qz.configs.create('192.168.1.82');
     await qz.print(cfg,[{type:'raw',format:'command',data:'\\x1d\\x56\\x00'}]);
-  }catch(e){}
+  }catch(e){console.warn('QZ cut:',e);}
 })();
 <\/script>`;
 
