@@ -4567,7 +4567,7 @@ const STAMP_INKS = [
   { fg: "#1e40af", ring: "#3b82f6" },   // blue
   { fg: "#991b1b", ring: "#dc2626" },   // red
   { fg: "#166534", ring: "#22c55e" },   // green
-  { fg: "#6b21a8", ring: "#a855f7" },   // purple
+  { fg: "#6b21a8", ring: "#0ea5e9" },   // purple
   { fg: "#92400e", ring: "#f59e0b" },   // amber
   { fg: "#0e7490", ring: "#06b6d4" },   // cyan
 ];
@@ -6276,7 +6276,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
   };
 
   /* type → display helpers */
-  const typeColor   = (t) => t === "credits" ? "#10b981" : t === "drink_food" || t === "item" ? "#f59e0b" : "#a855f7";
+  const typeColor   = (t) => t === "credits" ? "#10b981" : t === "drink_food" || t === "item" ? "#f59e0b" : "#0ea5e9";
   const typeIcon    = (t) => t === "credits" ? (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M14.31 8a4 4 0 0 0-6.31 4.87M9.69 16a4 4 0 0 0 6.31-4.87"/></svg>
   ) : t === "drink_food" || t === "item" ? (
@@ -6408,8 +6408,8 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
           <div className="admin-gifts-stat-val" style={{color:"#f59e0b"}}>{totalFoodDrink}</div>
           <div className="admin-gifts-stat-lbl">DRINKS/FOOD</div>
         </div>
-        <div className="admin-gifts-stat" style={{borderTop:"2px solid #a855f7"}}>
-          <div className="admin-gifts-stat-val" style={{color:"#a855f7"}}>{totalSpecial}</div>
+        <div className="admin-gifts-stat" style={{borderTop:"2px solid #0ea5e9"}}>
+          <div className="admin-gifts-stat-val" style={{color:"#0ea5e9"}}>{totalSpecial}</div>
           <div className="admin-gifts-stat-lbl">SPECIAL</div>
         </div>
         <div className="admin-gifts-stat">
@@ -6557,7 +6557,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
               {[
                 { id:"credits",    label:"CREDITS",      sub:"Added to balance",   col:"#10b981" },
                 { id:"drink_food", label:"DRINK / FOOD", sub:"Player orders in-app", col:"#f59e0b" },
-                { id:"special",    label:"SPECIAL PRIZE",sub:"Go to restaurant",   col:"#a855f7" },
+                { id:"special",    label:"SPECIAL PRIZE",sub:"Go to restaurant",   col:"#0ea5e9" },
               ].map(opt => (
                 <button key={opt.id} onClick={()=>setType(opt.id)} style={{
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
@@ -6601,7 +6601,7 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
                   </div>
                 )}
                 {type === "special" && (
-                  <div style={{padding:"8px 10px",background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.2)",borderRadius:7,marginBottom:12,fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(168,85,247,.8)",fontWeight:500,lineHeight:1.5}}>
+                  <div style={{padding:"8px 10px",background:"rgba(14,165,233,.06)",border:"1px solid rgba(14,165,233,.2)",borderRadius:7,marginBottom:12,fontFamily:"'Outfit',sans-serif",fontSize:10.5,color:"rgba(14,165,233,.8)",fontWeight:500,lineHeight:1.5}}>
                     🎁 Player will be instructed to come to the restaurant — staff marks it redeemed manually
                   </div>
                 )}
