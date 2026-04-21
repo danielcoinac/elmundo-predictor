@@ -1080,10 +1080,11 @@ export default function App() {
       <div class="row"><span>Date &amp; Time</span><span>${dateStr} · ${timeStr}</span></div>
       <div class="divider"></div>
       <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
-      </div></body></html>`);
+      <div style="height:20mm"></div>
+      </div><script>window.onafterprint=()=>window.close();</script></body></html>`);
       win.document.close();
       win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 400);
+      setTimeout(() => { win.print(); }, 400);
     } else {
       toast$("Credits added ✓ — allow popups to print receipt", true);
     }
@@ -1181,9 +1182,10 @@ export default function App() {
       <div class="wc">⚽ WORLD CUP 2026 ⚽</div>
       <div class="url">www.elmundobonaire.com</div>
     </div>
-    </div></body></html>`);
+    <div style="height:20mm"></div>
+    </div><script>window.onafterprint=()=>window.close();</script></body></html>`);
     win.document.close(); win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 400);
+    setTimeout(() => { win.print(); }, 400);
   };
 
   const createGroupOrder = async (tableNumber) => {
@@ -9842,6 +9844,8 @@ td:last-child{white-space:nowrap}
 <div class="divider"></div>
 <div class="total">TOTAL: $${total.toFixed(2)}</div>
 <div class="footer">www.elmundobonaire.com</div>
+<div style="height:20mm"></div>
+<script>window.onafterprint=()=>window.close();</script>
 </body></html>`);
     w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
   };
