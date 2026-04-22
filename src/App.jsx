@@ -8426,6 +8426,7 @@ function GroupOrderView({
   calcMyGroupShare,
   resetGroupToLobby,
   stripeCheckout, onToast, qrTable = "",
+  gifts = [],
 }) {
   const [screen, setScreen] = useState(qrTable ? "create" : "start"); // "start"|"create"|"join"|"lobby"|"checkout"|"payment"|"placed"
   const [joinCode, setJoinCode] = useState("");
@@ -8459,6 +8460,29 @@ function GroupOrderView({
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, [activeGroup?.status, activeGroup?.updated_at]);
+
+  // Auto-add unredeemed gifts to group order when entering lobby
+  const addedGiftIdsRef = useRef(new Set());
+  useEffect(() => {
+    if (screen !== "lobby" || !activeGroup) return;
+    gifts.forEach(g => {
+      if (addedGiftIdsRef.current.has(g.id)) return;
+      addedGiftIdsRef.current.add(g.id);
+      addGroupItem({ id: g.id, name: (g.item_name || g.title || "Gift Item"), price: 0 });
+    });
+  }, [screen, activeGroup?.id, gifts.length]);
+
+  // Redeem gifts when group order is placed
+  useEffect(() => {
+    if (screen !== "placed") return;
+    const ids = [...addedGiftIdsRef.current];
+    if (!ids.length) return;
+    supabase.from("gifts").update({ redeemed: true, redeemed_at: new Date().toISOString(), redeemed_by: user.id })
+      .in("id", ids).then(() => { addedGiftIdsRef.current.clear(); });
+  }, [screen]);
+
+  // Reset gift tracking when joining a new group
+  useEffect(() => { addedGiftIdsRef.current.clear(); }, [activeGroup?.id]);
 
   // Auto-retry placing order when all members show paid but order still hasn't been placed
   const [retrying, setRetrying] = useState(false);
@@ -8772,6 +8796,19 @@ function GroupOrderView({
           </div>
         );
       })}
+
+      {/* Auto-included gifts notice */}
+      {gifts.length > 0 && (
+        <div style={{margin:"0 16px 8px",padding:"10px 14px",background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.3)",borderRadius:8,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>🎁</span>
+          <div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1.5,color:"#fbbf24",marginBottom:2}}>GIFTS INCLUDED</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.55)"}}>
+              {gifts.map(g => g.item_name || g.title || "Gift").join(", ")} · automatically added for free
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add items button */}
       <div style={{padding:"12px 16px"}}>
@@ -9980,6 +10017,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
           resetGroupToLobby={resetGroupToLobby}
           stripeCheckout={stripeCheckout} onToast={onToast}
           qrTable={qrTable}
+          gifts={gifts.filter(g => (g.type === "drink_food" || g.type === "item") && !g.redeemed)}
         />
       )}
     </div>
