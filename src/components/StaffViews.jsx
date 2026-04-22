@@ -837,7 +837,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const isSel = editSel === tbl.id;
     const isDraggingThis = dragging?.id === tbl.id;
     const isFlashing = !editMode && !!flashTables[tableKey];
-    const isClickable = !editMode && (s !== "empty" || todayTblOrd.length > 0);
 
     // Zone (P2) style
     const zoneBg   = editMode ? (isSel ? `${zoneColor}30` : `${zoneColor}18`) : `${zoneColor}22`;
@@ -853,7 +852,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             ? `2px ${editMode && isSel ? "solid" : "solid"} ${zoneBord}`
             : (editMode ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})` : `2px solid ${st.border}`),
           borderRadius: tbl.shape === "round" ? "50%" : 10,
-          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (isClickable ? "pointer" : "default"),
+          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : "default",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
           transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
           boxShadow: isZone
@@ -866,8 +865,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           userSelect:"none", touchAction:"none",
           zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
         }}
-        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (isClickable && !isZone && setSelectedTable(tableKey))}
-        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (isClickable && !isZone && setSelectedTable(tableKey))}
+        onMouseDown={e => editMode && startDrag(e, tbl.id)}
+        onTouchStart={e => editMode && startDrag(e, tbl.id)}
         onClick={e => editMode && (e.stopPropagation(), setEditSel(tbl.id))}
       >
         {/* Zone color circle + name (P2) */}
@@ -883,10 +882,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
         )}
 
-        {/* Customer initial — bottom-left */}
-        {!isZone && !editMode && lastInitial && todayTblOrd.length > 0 && (
-          <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{lastInitial}</div>
-        )}
 
         {/* EDIT: shape toggle (top-left) */}
         {editMode && (
@@ -1182,7 +1177,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         </div>
         {/* Detail panel */}
-        {selectedTable && !editMode && <TableDetail />}
 
         {/* ── PENDING ITEMS SUMMARY ── */}
         {!editMode && (() => {
