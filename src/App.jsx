@@ -2289,19 +2289,19 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     try {
       const saved = JSON.parse(localStorage.getItem("em_fp_p2") || "null");
       if (Array.isArray(saved) && saved.length > 0) {
-        return saved.map(z => ({ id: z.id, name: String(z.id), color: z.color || "#f1f5f9", bg: `${z.color || "#f1f5f9"}22` }));
+        return saved.map(z => ({ id: z.id, name: `ZONE ${z.id}`, color: z.color || "#f1f5f9", bg: `${z.color || "#f1f5f9"}22` }));
       }
     } catch {}
     return [
-      { id:"RED",    name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
-      { id:"ORANGE", name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
-      { id:"YELLOW", name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
-      { id:"GREEN",  name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
-      { id:"TEAL",   name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
-      { id:"BLUE",   name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
-      { id:"PURPLE", name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
-      { id:"PINK",   name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
-      { id:"WHITE",  name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
+      { id:1, name:"ZONE 1", color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
+      { id:2, name:"ZONE 2", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
+      { id:3, name:"ZONE 3", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
+      { id:4, name:"ZONE 4", color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
+      { id:5, name:"ZONE 5", color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
+      { id:6, name:"ZONE 6", color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
+      { id:7, name:"ZONE 7", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
+      { id:8, name:"ZONE 8", color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
+      { id:9, name:"ZONE 9", color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
     ];
   };
   const OUTDOOR_ZONES = loadOutdoorZones();
@@ -9645,7 +9645,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                         onClick={onChangeZone}>
                         <div style={{width:16,height:16,borderRadius:"50%",background:outdoorZone.color,boxShadow:`0 0 12px ${outdoorZone.color}88`,flexShrink:0}}/>
                         <div style={{flex:1}}>
-                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:outdoorZone.color,letterSpacing:2}}>{outdoorZone.name} ZONE</div>
+                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:outdoorZone.color,letterSpacing:2}}>{outdoorZone.name}</div>
                           <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Tap to change zone</div>
                         </div>
                         <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",letterSpacing:1}}>CHANGE ›</span>

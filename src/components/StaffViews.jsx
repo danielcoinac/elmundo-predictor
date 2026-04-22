@@ -536,17 +536,17 @@ const ZONE_PALETTE = [
   "#84cc16","#06b6d4","#8b5cf6","#f43f5e","#ffffff",
 ];
 
-// Plan #2 — Outdoor zones with canvas layout (id = zone name string)
+// Plan #2 — Outdoor zones with canvas layout (id = zone number)
 const FP_DEFAULT_P2 = [
-  { id:"RED",    color:"#ef4444", x:60,  y:60,  w:120, h:90,  shape:"rect" },
-  { id:"ORANGE", color:"#f97316", x:210, y:60,  w:120, h:90,  shape:"rect" },
-  { id:"YELLOW", color:"#eab308", x:360, y:60,  w:120, h:90,  shape:"rect" },
-  { id:"GREEN",  color:"#22c55e", x:60,  y:180, w:120, h:90,  shape:"rect" },
-  { id:"TEAL",   color:"#14b8a6", x:210, y:180, w:120, h:90,  shape:"rect" },
-  { id:"BLUE",   color:"#3b82f6", x:360, y:180, w:120, h:90,  shape:"rect" },
-  { id:"PURPLE", color:"#a855f7", x:60,  y:300, w:120, h:90,  shape:"rect" },
-  { id:"PINK",   color:"#ec4899", x:210, y:300, w:120, h:90,  shape:"rect" },
-  { id:"WHITE",  color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
+  { id:1, color:"#ef4444", x:60,  y:60,  w:120, h:90,  shape:"rect" },
+  { id:2, color:"#f97316", x:210, y:60,  w:120, h:90,  shape:"rect" },
+  { id:3, color:"#eab308", x:360, y:60,  w:120, h:90,  shape:"rect" },
+  { id:4, color:"#22c55e", x:60,  y:180, w:120, h:90,  shape:"rect" },
+  { id:5, color:"#14b8a6", x:210, y:180, w:120, h:90,  shape:"rect" },
+  { id:6, color:"#3b82f6", x:360, y:180, w:120, h:90,  shape:"rect" },
+  { id:7, color:"#a855f7", x:60,  y:300, w:120, h:90,  shape:"rect" },
+  { id:8, color:"#ec4899", x:210, y:300, w:120, h:90,  shape:"rect" },
+  { id:9, color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
 ];
 
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
@@ -712,13 +712,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     if (isP2) {
       // Generate a unique zone name
       const used = new Set(curTables.map(t => t.id));
-      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      let newId = null;
-      for (let i = 0; i < 26; i++) {
-        const candidate = `ZONE-${letters[i]}`;
-        if (!used.has(candidate)) { newId = candidate; break; }
-      }
-      if (!newId) return;
+      let newId = 1;
+      while (used.has(newId)) newId++;
+      if (newId > 99) return;
       const usedColors = new Set(curTables.map(t => t.color));
       const defaultColor = ZONE_PALETTE.find(c => !usedColors.has(c)) || ZONE_PALETTE[0];
       const newT = { id: newId, color: defaultColor, x: cx, y: 80, w: 120, h: 90, shape: "rect" };
@@ -818,7 +814,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {isZone && (
           <>
             <div style={{width:Math.min(tbl.w*.28, 28),height:Math.min(tbl.w*.28, 28),borderRadius:"50%",background:zoneColor,marginBottom:6,boxShadow:`0 0 10px ${zoneColor}88`,opacity:editMode?0.9:0.85}}/>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:Math.min(tbl.w*.13, 14),color:zoneColor,letterSpacing:2,lineHeight:1,textAlign:"center"}}>{tbl.id}</span>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:Math.min(tbl.w*.13, 14),color:zoneColor,letterSpacing:2,lineHeight:1,textAlign:"center"}}>ZONE {tbl.id}</span>
           </>
         )}
 
