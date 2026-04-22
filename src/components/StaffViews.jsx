@@ -73,17 +73,13 @@ function printReceipt(ord) {
 
   </div></body></html>`;
 
-  // Use hidden iframe — no popup, no tab switch, print dialog appears directly
-  const existing = document.getElementById("__receipt_frame");
-  if (existing) existing.remove();
   const iframe = document.createElement("iframe");
-  iframe.id = "__receipt_frame";
   iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;opacity:0;";
   document.body.appendChild(iframe);
   iframe.contentDocument.open();
   iframe.contentDocument.write(html);
   iframe.contentDocument.close();
-  iframe.contentWindow.onafterprint = () => iframe.remove();
+  iframe.contentWindow.onafterprint = () => { try { document.body.removeChild(iframe); } catch(e) {} };
   setTimeout(() => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e) {} }, 300);
 }
 
@@ -625,6 +621,11 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     refresh();
     const iv = setInterval(refresh, 10000);
     return () => clearInterval(iv);
+  }, []);
+
+  // Cancel all flash timers on unmount to avoid setState on unmounted component
+  useEffect(() => {
+    return () => { Object.values(flashTimersRef.current).forEach(clearTimeout); };
   }, []);
 
   // Detect new orders → flash table green + spawn floating toast

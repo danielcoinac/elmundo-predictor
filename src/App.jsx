@@ -1142,7 +1142,7 @@ export default function App() {
     iframe.contentDocument.close();
     setTimeout(() => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e) {}
-      setTimeout(() => { afterPrint?.(); document.body.removeChild(iframe); }, CUT_DELAY);
+      setTimeout(() => { afterPrint?.(); try { document.body.removeChild(iframe); } catch(e) {} }, CUT_DELAY);
     }, 400);
   };
 
