@@ -1257,6 +1257,8 @@
   .fp-pending-name{font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.75);font-weight:600}
   @keyframes fpBlink{0%,100%{opacity:1}50%{opacity:.4}}
   .fp-blink{animation:fpBlink 1.2s ease-in-out infinite}
+  @keyframes fpFlashGreen{0%{box-shadow:0 0 0 3px #4ade80,0 0 30px rgba(74,222,128,.6);border-color:#4ade80;background:rgba(74,222,128,.25)}60%{box-shadow:0 0 0 2px rgba(74,222,128,.5),0 0 16px rgba(74,222,128,.3);border-color:rgba(74,222,128,.6);background:rgba(74,222,128,.12)}100%{box-shadow:none;border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.04)}}
+  .fp-flash-green{animation:fpFlashGreen 2.5s ease-out forwards}
   @keyframes cdGlow{0%,100%{opacity:1;text-shadow:0 0 8px currentColor}50%{opacity:.55;text-shadow:0 0 2px currentColor}}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.15)}}
   @keyframes countdown-pulse{0%,100%{opacity:1}50%{opacity:.4}}

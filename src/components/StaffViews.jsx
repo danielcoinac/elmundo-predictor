@@ -571,6 +571,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [dragging,  setDragging ] = useState(null);
   const [resizing,  setResizing ] = useState(null);
   const [editSel,   setEditSel  ] = useState(null);
+  const [flashTables, setFlashTables] = useState({}); // tableKey → flash timestamp
+  const seenOrderIds = useRef(new Set());
   const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
@@ -599,6 +601,34 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const clock = setInterval(() => setNow(Date.now()), 30000);
     return () => { clearInterval(iv); clearInterval(clock); };
   }, []);
+
+  // Detect new orders → flash their table green for 2.5s
+  useEffect(() => {
+    if (!allOrders.length) return;
+    const newKeys = [];
+    allOrders.forEach(o => {
+      if (!seenOrderIds.current.has(o.id)) {
+        seenOrderIds.current.add(o.id);
+        const key = String(o.table_number).startsWith("OUT-") ? o.table_number : String(o.table_number);
+        newKeys.push(key);
+      }
+    });
+    if (newKeys.length === 0) return;
+    const ts = Date.now();
+    setFlashTables(prev => {
+      const next = { ...prev };
+      newKeys.forEach(k => { next[k] = ts; });
+      return next;
+    });
+    const timer = setTimeout(() => {
+      setFlashTables(prev => {
+        const next = { ...prev };
+        newKeys.forEach(k => { if (next[k] === ts) delete next[k]; });
+        return next;
+      });
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [allOrders]);
 
   // Get active (non-completed) orders grouped by table
   const allActiveOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
@@ -778,6 +808,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const payIcon = hasSponsor ? "★" : null;
     const isSel = editSel === tbl.id;
     const isDraggingThis = dragging?.id === tbl.id;
+    const isFlashing = !editMode && !!flashTables[tableKey];
 
     // Zone (P2) style
     const zoneBg   = editMode ? (isSel ? `${zoneColor}30` : `${zoneColor}18`) : `${zoneColor}22`;
@@ -785,10 +816,10 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
     return (
       <div
-        className={!isZone && !editMode && st.blink ? "fp-blink" : ""}
+        className={isFlashing ? "fp-flash-green" : (!isZone && !editMode && st.blink ? "fp-blink" : "")}
         style={{
           position:"absolute", left:tbl.x, top:tbl.y, width:tbl.w, height:tbl.h,
-          background: isZone ? zoneBg : (editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg),
+          background: isFlashing ? "rgba(74,222,128,.18)" : isZone ? zoneBg : (editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg),
           border: isZone
             ? `2px ${editMode && isSel ? "solid" : "solid"} ${zoneBord}`
             : (editMode ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})` : `2px solid ${st.border}`),
