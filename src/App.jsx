@@ -1042,9 +1042,7 @@ export default function App() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
     const dateStr = now.toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" });
-    const win = window.open("", "_blank", "width=320,height=400");
-    if (win) {
-      win.document.write(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title>
+    silentPrint(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title>
       <style>
         @page { size: 80mm auto; margin: 0; }
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -1081,13 +1079,7 @@ export default function App() {
       <div class="divider"></div>
       <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
       <div style="height:20mm"></div>
-      </div></body></html>`);
-      win.document.close();
-      win.focus();
-      setTimeout(() => { win.print(); setTimeout(() => { sendCut(); win.close(); }, CUT_DELAY); }, 400);
-    } else {
-      toast$("Credits added ✓ — allow popups to print receipt", true);
-    }
+      </div></body></html>`, sendCut);
   };
 
   const updateOrderStatus = async (orderId, status) => {
@@ -1129,10 +1121,22 @@ export default function App() {
   const sendCut = () => { new Image().src = 'http://localhost:9200/cut?' + Date.now(); };
   const CUT_DELAY = 1500;
 
+  // ── Silent print via hidden iframe — no new tab, no preview ──────────────
+  const silentPrint = (html, afterPrint) => {
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    setTimeout(() => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e) {}
+      setTimeout(() => { afterPrint?.(); document.body.removeChild(iframe); }, CUT_DELAY);
+    }, 400);
+  };
+
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
-    const win = window.open("", "_blank", "width=360,height=600");
-    if (!win) { toast$("Allow popups to print receipt", false); return; }
     const now = new Date(ord.created_at);
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
     const dateStr = now.toLocaleDateString("en-US",{weekday:"short",month:"long",day:"numeric",year:"numeric"});
@@ -1140,7 +1144,7 @@ export default function App() {
       `<div class="row"><span>${it.qty}x ${it.name.toUpperCase()}</span><span>$${(it.price*it.qty).toFixed(2)}</span></div>`
     ).join("");
     const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "COMPLIMENTARY" : "CASH";
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt</title>
+    silentPrint(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt</title>
     <style>
       @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box;page-break-inside:avoid;break-inside:avoid}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       body{font-family:'Arial Black','Arial',sans-serif;font-size:14px;font-weight:700;color:#000;background:#fff}
@@ -1187,9 +1191,7 @@ export default function App() {
       <div class="url">www.elmundobonaire.com</div>
     </div>
     <div style="height:20mm"></div>
-    </div></body></html>`);
-    win.document.close(); win.focus();
-    setTimeout(() => { win.print(); setTimeout(() => { sendCut(); win.close(); }, CUT_DELAY); }, 400);
+    </div></body></html>`, sendCut);
   };
 
   const createGroupOrder = async (tableNumber) => {
@@ -2240,14 +2242,12 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
   const printOutdoorReceipt = (ord, zone) => {
-    const win = window.open("", "_blank", "width=360,height=500");
-    if (!win) return;
     const now = new Date(ord.created_at || new Date());
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
     const itemRows = (ord.items || []).map(it =>
       `<div class="row"><span class="qty">${it.qty}×</span><span class="name">${it.name.toUpperCase()}</span><span class="price">$${(it.price*it.qty).toFixed(2)}</span></div>`
     ).join("");
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
+    silentPrint(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
 <style>
 @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Arial Black',Arial,sans-serif;background:#fff;color:#000}
 .zone-hdr{text-align:center;padding:14px 0 10px;border-bottom:3px solid #000;margin-bottom:6px}
@@ -2277,10 +2277,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 <div class="time">${timeStr}</div>
 <div class="footer">www.elmundobonaire.com</div>
 <div style="height:20mm"></div>
-<script>window.onafterprint=()=>window.close();<\/script>
-</body></html>`);
-    win.document.close(); win.focus();
-    setTimeout(() => { win.print(); }, 400);
+</body></html>`, sendCut);
   };
 
   // Load outdoor zones from the floor plan layout (staff-editable in Plan 2)
@@ -10096,8 +10093,7 @@ function AdminCredits({ users, onAddCredits }) {
     }).join("");
     const total = txList.reduce((s,t)=>s+(+t.amount),0);
     const filterLabel = histFilter==="recent"?"Last 5":histFilter==="today"?"Today":histFilter==="week"?"This Week":histFilter==="month"?"This Month":`${histFrom||""}${histTo?" → "+histTo:""}`;
-    const w = window.open("","_blank","width=340,height=600");
-    w.document.write(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title><style>
+    silentPrint(`<!DOCTYPE html><html><head><title>Top-Up Receipt</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Courier New',monospace;font-size:11px;width:72mm;padding:4mm;background:#fff;color:#000}
 h1{font-size:13px;text-align:center;font-weight:bold;margin-bottom:2px}
@@ -10119,8 +10115,7 @@ td:last-child{white-space:nowrap}
 <div class="total">TOTAL: $${total.toFixed(2)}</div>
 <div class="footer">www.elmundobonaire.com</div>
 <div style="height:20mm"></div>
-</body></html>`);
-    w.document.close(); w.focus(); setTimeout(()=>{ w.print(); setTimeout(()=>{ sendCut(); w.close(); }, CUT_DELAY); },400);
+</body></html>`, sendCut);
   };
 
   const loadPlayerHistory = async (userId) => {

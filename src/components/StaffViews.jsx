@@ -889,22 +889,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   };
 
   // ── TABLE DETAIL PANEL ────────────────────────────────────────────────────
-  // Simplified flow: CONFIRM (prints receipt + completes) or CANCEL
   const TableDetail = () => {
     const orders = (byTable[selectedTable]||[]);
-    const [busy, setBusy] = useState({});
-
-    const doConfirm = async (ordId) => {
-      setBusy(p => ({...p, [ordId]: true}));
-      const ord = orders.find(o => o.id === ordId);
-      if (ord) {
-        try { printReceipt({ ...ord, table_number: selectedTable }); } catch(e) { console.error("printReceipt error", e); }
-      }
-      await supabase.from("orders").update({ status: "completed" }).eq("id", ordId);
-      onToast("Order #" + (ord?.order_number || ordId.slice(0,6)) + " confirmed ✓");
-      await onLoad();
-      setBusy(p => ({...p, [ordId]: false}));
-    };
 
     return (
       <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
@@ -927,7 +913,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
             {orders.map(ord => {
               const items = ord.items || [];
-              const isBusy = !!busy[ord.id];
 
               return (
                 <div key={ord.id} style={{border:"1px solid rgba(255,255,255,.1)"}}>
@@ -966,16 +951,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                       <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"rgba(255,255,255,.35)"}}>{ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "GIFT" : ord.payment_method?.startsWith("group") ? "GROUP" : ord.payment_method?.toUpperCase() || "—"}</span>
                     </div>
 
-                    {/* Action buttons */}
-                    {ord.status !== "completed" && (
-                      <div style={{display:"flex",gap:8,paddingBottom:12,paddingTop:4}}>
-                        <button disabled={isBusy} onClick={()=>doConfirm(ord.id)}
-                          style={{flex:1,padding:"14px",border:"none",background:"#fff",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#000",cursor:isBusy?"not-allowed":"pointer",opacity:isBusy?.6:1,transition:"opacity .15s",fontWeight:900,boxShadow:"0 4px 16px rgba(255,255,255,.1)"}}>
-                          {isBusy ? "…" : "✓ CONFIRM"}
-                        </button>
-                        {/* Cancel button removed per owner request */}
-                      </div>
-                    )}
 
                   </div>
                 </div>
@@ -1059,15 +1034,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             </div>
           </div>
 
-          {/* Row 3: color legend */}
-          <div className="fp-legend">
-            {[{color:"#4ade80",label:"NEW ORDER"},{color:"#fff",label:"READY"},{color:"#fbbf24",label:"WAITING 10m+"},{color:"#f87171",label:"URGENT 15m+"}].map(({color,label})=>(
-              <div key={label} className="fp-legend-pill">
-                <div className="fp-legend-dot" style={{background:color,boxShadow:`0 0 6px ${color}88`}}/>
-                <span className="fp-legend-txt">{label}</span>
-              </div>
-            ))}
-          </div>
         </>)}
       </div>
 
