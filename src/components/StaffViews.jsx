@@ -649,10 +649,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         const tbl = (isOut ? tablesP2 : tables).find(t =>
           isOut ? `OUT-${t.id}` === key : String(t.id) === key
         );
-        newEntries.push({ key, label, tbl });
+        newEntries.push({ key, label, tbl, ord: o });
       }
     });
     if (newEntries.length === 0) return;
+    // Print receipt on the bar device for each new order
+    newEntries.forEach(({ ord }) => { if (ord) try { printReceipt(ord); } catch(e) {} });
     const ts = Date.now();
     // Flash + toasts — timers stored in ref so effect cleanup never cancels them
     setFlashTables(prev => {

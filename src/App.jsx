@@ -964,14 +964,12 @@ export default function App() {
         if (refundBal != null) setMyCredits(refundBal);
         toast$("Error placing order — credits refunded", false); return false;
       }
-      if (newOrd) try { printOrderReceipt(newOrd, user.name); } catch(e) {}
     } else {
       const { data: newOrd, error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
         items, total, payment_method: paymentMethod, status: "completed",
       }).select().single();
       if (error) { toast$("Error placing order", false); return false; }
-      if (newOrd) try { printOrderReceipt(newOrd, user.name); } catch(e) {}
     }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
     try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
@@ -9288,7 +9286,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
         if (giftCartItems.length > 0) {
           try { await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id }).in("id", giftCartItems.map(g => g.giftId)); } catch(e) {}
         }
-        printOutdoorReceipt({ items: allItems, total, created_at: new Date().toISOString() }, outdoorZone);
         onToast?.("Order sent! 🍺");
         try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
         clearCart(); setGiftCart([]); setTab("orders");
