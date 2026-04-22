@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useRegisterSW } from "virtual:pwa-register/react";
 import jsQR from "jsqr";
 import { supabase } from "./lib/supabase";
 import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
@@ -18,6 +19,7 @@ function getEventLabel() {
    ROOT
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
   const [page,     setPage]     = useState("loading");
   const [authTab,  setAuthTab]  = useState("login");
   const tableFromQR = new URLSearchParams(window.location.search).get("table") || "";
@@ -1429,6 +1431,12 @@ export default function App() {
       {showOnboarding && <OnboardingTutorial onDone={() => { localStorage.setItem(ONBOARDING_KEY, "1"); setShowOnboarding(false); }} />}
       {isOffline && (
         <div className="offline-bar">OFFLINE — SOME FEATURES MAY NOT WORK</div>
+      )}
+      {needRefresh && (
+        <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#111",border:"1px solid rgba(74,222,128,.5)",borderRadius:12,padding:"12px 20px",display:"flex",alignItems:"center",gap:14,boxShadow:"0 4px 24px rgba(0,0,0,.7)",whiteSpace:"nowrap"}}>
+          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.8)"}}>🔄 New version available</span>
+          <button onClick={() => updateServiceWorker(true)} style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1.5,padding:"7px 16px",background:"rgba(74,222,128,.15)",border:"1px solid rgba(74,222,128,.6)",color:"#4ade80",borderRadius:8,cursor:"pointer"}}>UPDATE NOW</button>
+        </div>
       )}
       {toast && (
         <div className={`notification ${toast.ok ? "notif-ok" : "notif-err"}`}>
