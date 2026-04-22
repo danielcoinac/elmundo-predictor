@@ -693,7 +693,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const tableStatus = (num) => {
     const key = isP2 ? `OUT-${num}` : String(num);
     const today = todayByTable[key] || [];
-    if (today.some(o => o.payment_method?.startsWith("group"))) return "group";
+    if (today.some(o => o.payment_method?.startsWith("group") && o.status !== "completed" && o.status !== "cancelled")) return "group";
     if (today.length > 0) return "active_today";
     return "empty";
   };

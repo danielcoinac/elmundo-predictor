@@ -1135,7 +1135,7 @@ export default function App() {
   // ── Silent print via hidden iframe — no new tab, no preview ──────────────
   const silentPrint = (html, afterPrint) => {
     const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
+    iframe.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;border:none;left:-9999px;top:-9999px;";
     document.body.appendChild(iframe);
     iframe.contentDocument.open();
     iframe.contentDocument.write(html);
@@ -9275,7 +9275,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
         // Insert as completed immediately — no staff confirmation needed for outdoor
         const { error } = await supabase.from("orders").insert({
           user_id: user.id, user_name: user.name,
-          table_number: `OUT-${outdoorZone.name}`,
+          table_number: `OUT-${outdoorZone.id}`,
           items: allItems, total, payment_method: paymentMethod, status: "completed",
         });
         if (error) {
@@ -9344,7 +9344,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
         ];
         const { data: ord, error } = await supabase.from("orders").insert({
           user_id: user.id, user_name: user.name,
-          table_number: `OUT-${outdoorZone.name}`,
+          table_number: `OUT-${outdoorZone.id}`,
           items: allItems, total: +cartTotal.toFixed(2),
           payment_method: "card_pending", status: "pending",
         }).select().single();
