@@ -1129,53 +1129,6 @@ export default function App() {
   const sendCut = () => { new Image().src = 'http://localhost:9200/cut?' + Date.now(); };
   const CUT_DELAY = 1500;
 
-  // ── Outdoor zone receipt — auto-prints immediately when outdoor order placed ─
-  const printOutdoorReceipt = (ord, zone) => {
-    const win = window.open("", "_blank", "width=360,height=500");
-    if (!win) return;
-    const now = new Date(ord.created_at || new Date());
-    const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-    const itemRows = (ord.items || []).map(it =>
-      `<div class="row"><span class="qty">${it.qty}×</span><span class="name">${it.name.toUpperCase()}</span><span class="price">$${(it.price*it.qty).toFixed(2)}</span></div>`
-    ).join("");
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
-<style>
-@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Arial Black',Arial,sans-serif;background:#fff;color:#000}
-.zone-block{width:100%;padding:22mm 0 18mm;background:${zone.color};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
-.zone-circle{width:40mm;height:40mm;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;margin-bottom:4mm}
-.zone-name{font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
-.zone-label{font-size:12px;font-weight:900;letter-spacing:4px;color:rgba(255,255,255,.8)}
-.brand{text-align:center;padding:10px 0 6px;border-bottom:3px solid #000}
-.brand-name{font-size:22px;font-weight:900;letter-spacing:5px}
-.brand-sub{font-size:10px;font-weight:900;letter-spacing:3px;margin-top:3px;opacity:.6}
-.items{padding:8px 10px}
-.row{display:flex;align-items:baseline;padding:6px 0;border-bottom:1px dashed #ccc;gap:4px}
-.qty{font-size:16px;font-weight:900;min-width:24px;opacity:.5}
-.name{font-size:15px;font-weight:800;flex:1}
-.price{font-size:14px;font-weight:900;white-space:nowrap}
-.total{display:flex;justify-content:space-between;padding:10px 10px 6px;border-top:3px solid #000;margin-top:4px}
-.total-lbl{font-size:20px;font-weight:900}
-.total-amt{font-size:20px;font-weight:900}
-.footer{text-align:center;padding:8px 0 10px;font-size:10px;font-weight:700;opacity:.5}
-.time{text-align:center;font-size:11px;font-weight:700;padding:4px 0;border-top:1px dashed #ccc;opacity:.6}
-<\/style></head><body>
-<div class="zone-block">
-  <div class="zone-circle"><span style="font-size:32px">🌴</span></div>
-  <div class="zone-name">${zone.name}</div>
-  <div class="zone-label">OUTDOOR ZONE</div>
-</div>
-<div class="brand"><div class="brand-name">EL MUNDO</div><div class="brand-sub">OUTDOOR BAR · BONAIRE</div></div>
-<div class="items">${itemRows}</div>
-<div class="total"><span class="total-lbl">TOTAL</span><span class="total-amt">$${(+ord.total).toFixed(2)}</span></div>
-<div class="time">${timeStr}</div>
-<div class="footer">www.elmundobonaire.com</div>
-<div style="height:20mm"></div>
-<script>window.onafterprint=()=>window.close();<\/script>
-</body></html>`);
-    win.document.close(); win.focus();
-    setTimeout(() => { win.print(); }, 400);
-  };
-
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
     const win = window.open("", "_blank", "width=360,height=600");
@@ -2285,6 +2238,52 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     localStorage.setItem("em_install_dismissed", "1");
   };
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+  const printOutdoorReceipt = (ord, zone) => {
+    const win = window.open("", "_blank", "width=360,height=500");
+    if (!win) return;
+    const now = new Date(ord.created_at || new Date());
+    const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const itemRows = (ord.items || []).map(it =>
+      `<div class="row"><span class="qty">${it.qty}×</span><span class="name">${it.name.toUpperCase()}</span><span class="price">$${(it.price*it.qty).toFixed(2)}</span></div>`
+    ).join("");
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
+<style>
+@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Arial Black',Arial,sans-serif;background:#fff;color:#000}
+.zone-block{width:100%;padding:22mm 0 18mm;background:${zone.color};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.zone-circle{width:40mm;height:40mm;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;margin-bottom:4mm}
+.zone-name{font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.zone-label{font-size:12px;font-weight:900;letter-spacing:4px;color:rgba(255,255,255,.8)}
+.brand{text-align:center;padding:10px 0 6px;border-bottom:3px solid #000}
+.brand-name{font-size:22px;font-weight:900;letter-spacing:5px}
+.brand-sub{font-size:10px;font-weight:900;letter-spacing:3px;margin-top:3px;opacity:.6}
+.items{padding:8px 10px}
+.row{display:flex;align-items:baseline;padding:6px 0;border-bottom:1px dashed #ccc;gap:4px}
+.qty{font-size:16px;font-weight:900;min-width:24px;opacity:.5}
+.name{font-size:15px;font-weight:800;flex:1}
+.price{font-size:14px;font-weight:900;white-space:nowrap}
+.total{display:flex;justify-content:space-between;padding:10px 10px 6px;border-top:3px solid #000;margin-top:4px}
+.total-lbl{font-size:20px;font-weight:900}
+.total-amt{font-size:20px;font-weight:900}
+.footer{text-align:center;padding:8px 0 10px;font-size:10px;font-weight:700;opacity:.5}
+.time{text-align:center;font-size:11px;font-weight:700;padding:4px 0;border-top:1px dashed #ccc;opacity:.6}
+<\/style></head><body>
+<div class="zone-block">
+  <div class="zone-circle"><span style="font-size:32px">🌴</span></div>
+  <div class="zone-name">${zone.name}</div>
+  <div class="zone-label">OUTDOOR ZONE</div>
+</div>
+<div class="brand"><div class="brand-name">EL MUNDO</div><div class="brand-sub">OUTDOOR BAR · BONAIRE</div></div>
+<div class="items">${itemRows}</div>
+<div class="total"><span class="total-lbl">TOTAL</span><span class="total-amt">$${(+ord.total).toFixed(2)}</span></div>
+<div class="time">${timeStr}</div>
+<div class="footer">www.elmundobonaire.com</div>
+<div style="height:20mm"></div>
+<script>window.onafterprint=()=>window.close();<\/script>
+</body></html>`);
+    win.document.close(); win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
 
   const OUTDOOR_ZONES = [
     { id:1, name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
