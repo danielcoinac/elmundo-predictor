@@ -1259,6 +1259,8 @@
   .fp-blink{animation:fpBlink 1.2s ease-in-out infinite}
   @keyframes fpFlashGreen{0%{box-shadow:0 0 0 3px #4ade80,0 0 30px rgba(74,222,128,.6);border-color:#4ade80;background:rgba(74,222,128,.25)}60%{box-shadow:0 0 0 2px rgba(74,222,128,.5),0 0 16px rgba(74,222,128,.3);border-color:rgba(74,222,128,.6);background:rgba(74,222,128,.12)}100%{box-shadow:none;border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.04)}}
   .fp-flash-green{animation:fpFlashGreen 2.5s ease-out forwards}
+  @keyframes fpToast{0%{opacity:0;transform:translate(-50%,-4px)}15%{opacity:1;transform:translate(-50%,-16px)}75%{opacity:1;transform:translate(-50%,-20px)}100%{opacity:0;transform:translate(-50%,-28px)}}
+  .fp-toast{position:absolute;transform:translate(-50%,-16px);background:rgba(20,20,20,.92);border:1px solid rgba(74,222,128,.4);color:#4ade80;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;white-space:nowrap;pointer-events:none;animation:fpToast 3s ease-out forwards;z-index:50;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   @keyframes cdGlow{0%,100%{opacity:1;text-shadow:0 0 8px currentColor}50%{opacity:.55;text-shadow:0 0 2px currentColor}}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.15)}}
   @keyframes countdown-pulse{0%,100%{opacity:1}50%{opacity:.4}}

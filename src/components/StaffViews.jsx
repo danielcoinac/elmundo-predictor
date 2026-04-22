@@ -572,6 +572,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [resizing,  setResizing ] = useState(null);
   const [editSel,   setEditSel  ] = useState(null);
   const [flashTables, setFlashTables] = useState({}); // tableKey → flash timestamp
+  const [fpToasts,    setFpToasts]    = useState([]); // { id, tableKey, label, x, y }
   const seenOrderIds = useRef(new Set());
   const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
@@ -602,37 +603,60 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     return () => { clearInterval(iv); clearInterval(clock); };
   }, []);
 
-  // Detect new orders → flash their table green for 2.5s
+  // Detect new orders → flash table green + spawn floating toast
   useEffect(() => {
     if (!allOrders.length) return;
-    const newKeys = [];
+    const newEntries = []; // { key, label, tbl }
     allOrders.forEach(o => {
       if (!seenOrderIds.current.has(o.id)) {
         seenOrderIds.current.add(o.id);
-        const key = String(o.table_number).startsWith("OUT-") ? o.table_number : String(o.table_number);
-        newKeys.push(key);
+        const isOut = String(o.table_number).startsWith("OUT-");
+        const key   = String(o.table_number);
+        const label = isOut
+          ? `🌴 ${key.replace("OUT-","")} ordered!`
+          : `🍺 Table ${o.table_number} ordered!`;
+        // Find table position for toast placement
+        const tbl = (isOut ? tablesP2 : tables).find(t =>
+          isOut ? `OUT-${t.id}` === key : String(t.id) === key
+        );
+        newEntries.push({ key, label, tbl });
       }
     });
-    if (newKeys.length === 0) return;
+    if (newEntries.length === 0) return;
     const ts = Date.now();
+    // Flash
     setFlashTables(prev => {
       const next = { ...prev };
-      newKeys.forEach(k => { next[k] = ts; });
+      newEntries.forEach(({ key }) => { next[key] = ts; });
       return next;
     });
+    // Toasts
+    const toastItems = newEntries.map(({ key, label, tbl }) => ({
+      id: `${key}-${ts}`,
+      label,
+      x: tbl ? tbl.x + tbl.w / 2 : 80,
+      y: tbl ? tbl.y - 10 : 80,
+    }));
+    setFpToasts(prev => [...prev, ...toastItems]);
     const timer = setTimeout(() => {
       setFlashTables(prev => {
         const next = { ...prev };
-        newKeys.forEach(k => { if (next[k] === ts) delete next[k]; });
+        newEntries.forEach(({ key }) => { if (next[key] === ts) delete next[key]; });
         return next;
       });
-    }, 2500);
+      setFpToasts(prev => prev.filter(t => !toastItems.find(ti => ti.id === t.id)));
+    }, 3000);
     return () => clearTimeout(timer);
   }, [allOrders]);
 
-  // Get active (non-completed) orders grouped by table
-  const allActiveOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
-  // Filter orders by plan: plan 1 = numeric tables, plan 2 = OUT-ZONE strings
+  // Financial summary — today only
+  const todayStr = new Date().toDateString();
+  const todayOrders  = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
+  const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
+  const todayCount   = todayOrders.length;
+
+  // Active = card_pending orders still awaiting Stripe payment
+  const allActiveOrders = allOrders.filter(o => o.status === "pending" && o.payment_method === "card_pending");
   const activeOrders = allActiveOrders.filter(o => isP2 ? String(o.table_number).startsWith("OUT-") : !String(o.table_number).startsWith("OUT-"));
   const byTable = activeOrders.reduce((acc, o) => {
     const t = String(o.table_number);
@@ -641,39 +665,41 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     return acc;
   }, {});
 
-  // Financial summary — today only (custom ranges live in the REPORT tab)
-  const todayStr = new Date().toDateString();
-  const todayOrders  = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
-  const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
-  const todayCount   = todayOrders.length;
+  // Today's orders per table (for revenue, group detection, recent activity)
+  const todayByTable = todayOrders.reduce((acc, o) => {
+    const t = String(o.table_number);
+    if (!acc[t]) acc[t] = [];
+    acc[t].push(o);
+    return acc;
+  }, {});
 
-  // Table status based on oldest pending order age
-  // 5 clear states based on what's actually happening at the table
+  // Table status
   const tableStatus = (num) => {
     const key = isP2 ? `OUT-${num}` : String(num);
-    const orders = byTable[key] || [];
-    if (orders.length === 0) return "empty";
-    const hasPending  = orders.some(o => o.status === "pending");
-    const hasReady    = orders.some(o => o.status === "ready");
-    if (hasPending) {
-      const oldest = Math.min(...orders.filter(o=>o.status==="pending").map(o => new Date(o.created_at).getTime()));
+    const pending = byTable[key] || [];      // card_pending Stripe orders
+    const today   = todayByTable[key] || []; // all today's orders
+
+    // Card payment waiting — yellow/red based on age
+    if (pending.length > 0) {
+      const oldest = Math.min(...pending.map(o => new Date(o.created_at).getTime()));
       const mins = (now - oldest) / 60000;
-      if (mins >= 15) return "urgent";   // red blink — nobody took the order 15+ min
-      if (mins >= 10) return "warning";  // yellow — waiting 10+ min
-      return "new";                      // green — fresh order just came in
+      if (mins >= 10) return "card_urgent";  // red blink — unpaid 10+ min
+      return "card_pending";                 // yellow — waiting for card payment
     }
-    if (hasReady) return "ready";        // white pulse — ready to be picked up
-    return "active";                     // blue — in progress
+    // Group order placed today
+    if (today.some(o => o.payment_method?.startsWith("group"))) return "group";
+    // Had orders today
+    if (today.length > 0) return "active_today";
+    return "empty";
   };
 
   const statusStyle = (s) => ({
-    empty:     { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", dot:null,      blink:false },
-    new:       { bg:"rgba(34,197,94,.15)",   border:"rgba(34,197,94,.8)",     color:"#4ade80",               dot:"#4ade80", blink:false },
-    active:    { bg:"rgba(96,165,250,.12)",  border:"rgba(96,165,250,.7)",    color:"#93c5fd",               dot:"#93c5fd", blink:false },
-    ready:     { bg:"rgba(255,255,255,.1)",   border:"rgba(255,255,255,.7)",   color:"#e0e0e0",               dot:"#e0e0e0", blink:false },
-    warning:   { bg:"rgba(251,191,36,.15)",  border:"rgba(251,191,36,.85)",   color:"#fbbf24",               dot:"#fbbf24", blink:false },
-    urgent:    { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               dot:"#f87171", blink:true  },
-  }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", dot:null, blink:false });
+    empty:        { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", blink:false },
+    active_today: { bg:"rgba(96,165,250,.07)",  border:"rgba(96,165,250,.3)",    color:"rgba(96,165,250,.6)",   blink:false },
+    group:        { bg:"rgba(96,165,250,.15)",  border:"rgba(96,165,250,.8)",    color:"#93c5fd",               blink:false },
+    card_pending: { bg:"rgba(251,191,36,.13)",  border:"rgba(251,191,36,.8)",    color:"#fbbf24",               blink:false },
+    card_urgent:  { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               blink:true  },
+  }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", blink:false });
 
   const statusColor = s => s==="pending"?"#f59e0b":s==="ready"?"#fff":"rgba(255,255,255,.3)";
   const statusLabel = s => s==="pending"?"NEW ORDER":s==="ready"?"READY":"";
@@ -792,23 +818,24 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
   // ── Table / Zone element ───────────────────────────────────────────────────
   const TableEl = ({ tbl }) => {
-    const isZone = isP2; // Plan 2 = colored zones
+    const isZone = isP2;
     const zoneColor = tbl.color || "#ffffff";
     const s  = editMode ? "empty" : tableStatus(tbl.id);
     const st = statusStyle(s);
     const tableKey = isZone ? `OUT-${tbl.id}` : String(tbl.id);
-    const orders = editMode ? [] : (byTable[tableKey] || []);
-    const pCount = orders.filter(o => o.status === "pending").length;
-    const pendingOrds = orders.filter(o => o.status === "pending");
-    const elapsedMins = pendingOrds.length > 0
-      ? Math.floor((now - Math.min(...pendingOrds.map(o => new Date(o.created_at).getTime()))) / 60000)
+    const cardOrders  = editMode ? [] : (byTable[tableKey] || []);
+    const todayTblOrd = editMode ? [] : (todayByTable[tableKey] || []);
+    const pCount = cardOrders.length;
+    const todayRev = todayTblOrd.reduce((s, o) => s + (+o.total || 0), 0);
+    const hasNote = todayTblOrd.some(o => (o.items || []).some(i => i.note));
+    const isGroup = todayTblOrd.some(o => o.payment_method?.startsWith("group"));
+    const lastInitial = todayTblOrd.length > 0
+      ? (todayTblOrd[todayTblOrd.length - 1].user_name || "?")[0].toUpperCase()
       : null;
-    const firstInitial = orders.length > 0 ? (orders[0].user_name || "?").charAt(0).toUpperCase() : null;
-    const hasSponsor = orders.some(o => o.payment_method === "sponsor_gift");
-    const payIcon = hasSponsor ? "★" : null;
     const isSel = editSel === tbl.id;
     const isDraggingThis = dragging?.id === tbl.id;
     const isFlashing = !editMode && !!flashTables[tableKey];
+    const isClickable = !editMode && (s !== "empty" || todayTblOrd.length > 0);
 
     // Zone (P2) style
     const zoneBg   = editMode ? (isSel ? `${zoneColor}30` : `${zoneColor}18`) : `${zoneColor}22`;
@@ -824,21 +851,21 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             ? `2px ${editMode && isSel ? "solid" : "solid"} ${zoneBord}`
             : (editMode ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})` : `2px solid ${st.border}`),
           borderRadius: tbl.shape === "round" ? "50%" : 10,
-          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (isZone ? "default" : (s!=="empty"?"pointer":"default")),
+          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (isClickable ? "pointer" : "default"),
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
           transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
           boxShadow: isZone
             ? (editMode && isSel ? `0 0 0 3px ${zoneColor}44, 0 8px 24px rgba(0,0,0,.5)` : `0 0 14px ${zoneColor}22`)
             : (editMode ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
               : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)`
-                : s==="ready" ? `0 0 18px rgba(255,255,255,.35), 0 0 40px rgba(255,255,255,.12), inset 0 0 14px rgba(255,255,255,.08)`
-                : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)`
+                : s==="group" ? `0 0 14px rgba(96,165,250,.4), 0 0 28px rgba(96,165,250,.15)`
+                : s==="card_pending" ? `0 0 12px rgba(251,191,36,.35)`
                 : "0 1px 4px rgba(0,0,0,.3)")),
           userSelect:"none", touchAction:"none",
           zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
         }}
-        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (!isZone && s!=="empty" && setSelectedTable(tableKey))}
-        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (!isZone && s!=="empty" && setSelectedTable(tableKey))}
+        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (isClickable && !isZone && setSelectedTable(tableKey))}
+        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (isClickable && !isZone && setSelectedTable(tableKey))}
         onClick={e => editMode && (e.stopPropagation(), setEditSel(tbl.id))}
       >
         {/* Zone color circle + name (P2) */}
@@ -854,35 +881,29 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
         )}
 
-        {/* Elapsed (P1 only) */}
-        {!isZone && !editMode && elapsedMins !== null && (
-          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:st.color,opacity:.85,letterSpacing:.5,lineHeight:1,marginTop:2,fontWeight:700}}>
-            {elapsedMins < 1 ? "<1m" : `${elapsedMins}m`}
-          </span>
+        {/* Revenue badge — bottom center (P1 only, if had orders today) */}
+        {!isZone && !editMode && todayRev > 0 && (
+          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:st.color,opacity:.8,letterSpacing:.5,lineHeight:1,marginTop:3,fontWeight:700}}>${todayRev.toFixed(0)}</span>
         )}
 
-        {/* Status dots (P1 only) */}
-        {!isZone && !editMode && orders.length > 0 && (
-          <div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap",justifyContent:"center",maxWidth:tbl.w-12}}>
-            {orders.map((o,i) => (
-              <div key={i} style={{width:7,height:7,borderRadius:"50%",background:statusColor(o.status),boxShadow:o.status==="pending"?`0 0 4px ${statusColor(o.status)}`:"none"}}/>
-            ))}
-          </div>
-        )}
-
-        {/* Pending badge (P1 only) */}
+        {/* Card pending count badge — top-right */}
         {!isZone && !editMode && pCount > 0 && (
-          <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#f59e0b",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(245,158,11,.7)"}}>{pCount}</div>
+          <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#fbbf24",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(251,191,36,.7)"}}>{pCount}</div>
         )}
 
-        {/* Customer initial (P1 only) */}
-        {!isZone && !editMode && firstInitial && s!=="empty" && (
-          <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{firstInitial}</div>
+        {/* Group icon — top-left */}
+        {!isZone && !editMode && isGroup && (
+          <div style={{position:"absolute",top:-6,left:-6,width:16,height:16,borderRadius:"50%",background:"rgba(96,165,250,.3)",border:"1px solid rgba(96,165,250,.8)",fontSize:8,display:"flex",alignItems:"center",justifyContent:"center"}}>👥</div>
         )}
 
-        {/* Sponsor icon (P1 only) */}
-        {!isZone && !editMode && payIcon && (
-          <div style={{position:"absolute",bottom:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.4)",fontSize:9,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{payIcon}</div>
+        {/* Note flag — bottom-right */}
+        {!isZone && !editMode && hasNote && (
+          <div style={{position:"absolute",bottom:-6,right:-6,width:15,height:15,borderRadius:"50%",background:"rgba(251,191,36,.2)",border:"1px solid rgba(251,191,36,.6)",fontSize:8,display:"flex",alignItems:"center",justifyContent:"center"}}>📝</div>
+        )}
+
+        {/* Customer initial — bottom-left */}
+        {!isZone && !editMode && lastInitial && todayRev > 0 && (
+          <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{lastInitial}</div>
         )}
 
         {/* EDIT: shape toggle (top-left) */}
@@ -921,7 +942,21 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
   // ── TABLE DETAIL PANEL ────────────────────────────────────────────────────
   const TableDetail = () => {
-    const orders = (byTable[selectedTable]||[]);
+    const cardPending = (byTable[selectedTable] || []);
+    const todayTbl    = (todayByTable[selectedTable] || []);
+    const todayRev    = todayTbl.reduce((s, o) => s + (+o.total || 0), 0);
+    const [clearing, setClearing] = useState(false);
+
+    const clearPending = async () => {
+      setClearing(true);
+      await Promise.all(cardPending.map(o =>
+        supabase.from("orders").update({ status: "completed" }).eq("id", o.id)
+      ));
+      await onLoad();
+      setClearing(false);
+      setSelectedTable(null);
+      onToast("Table cleared ✓");
+    };
 
     return (
       <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
@@ -930,19 +965,29 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           {/* Header */}
           <div className="fp-detail-header">
             <div>
-              <div className="fp-detail-title">{String(selectedTable).startsWith("OUT-") ? `🌴 ${String(selectedTable).replace("OUT-","")} ZONE` : `TABLE ${selectedTable}`}</div>
-              <div className="fp-detail-sub">{orders.length} order{orders.length!==1?"s":""}</div>
+              <div className="fp-detail-title">{String(selectedTable).startsWith("OUT-") ? `🌴 ${String(selectedTable).replace("OUT-","")}` : `TABLE ${selectedTable}`}</div>
+              <div className="fp-detail-sub">{todayTbl.length} order{todayTbl.length!==1?"s":""} today · ${todayRev.toFixed(2)}</div>
             </div>
             <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} className="fp-detail-close">✕</button>
           </div>
 
+          {/* Clear pending card payments */}
+          {cardPending.length > 0 && (
+            <div style={{padding:"10px 16px",background:"rgba(251,191,36,.08)",borderBottom:"1px solid rgba(251,191,36,.2)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fbbf24"}}>{cardPending.length} card payment{cardPending.length>1?"s":""} pending</span>
+              <button onClick={clearPending} disabled={clearing} style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,padding:"6px 14px",border:"1px solid rgba(251,191,36,.5)",background:"rgba(251,191,36,.15)",color:"#fbbf24",cursor:"pointer",borderRadius:6}}>
+                {clearing ? "…" : "CLEAR TABLE"}
+              </button>
+            </div>
+          )}
+
           {/* Orders */}
           <div style={{overflowY:"auto",flex:1,padding:"12px 16px",display:"flex",flexDirection:"column",gap:16}}>
-            {orders.length === 0 && (
-              <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.3)"}}>No active orders</div>
+            {todayTbl.length === 0 && (
+              <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.3)"}}>No orders today</div>
             )}
 
-            {orders.map(ord => {
+            {[...todayTbl].reverse().map(ord => {
               const items = ord.items || [];
 
               return (
@@ -1145,10 +1190,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             )}
             {/* Tables / Zones */}
             {curTables.map(t => <TableEl key={t.id} tbl={t} />)}
+
+            {/* Floating toasts */}
+            {fpToasts.map(t => (
+              <div key={t.id} className="fp-toast" style={{left: t.x, top: t.y}}>
+                {t.label}
+              </div>
+            ))}
           </div>
         </div>
-        {/* Detail panel (Plan 1 only — P2 orders auto-complete) */}
-        {!isP2 && selectedTable && !editMode && <TableDetail />}
+        {/* Detail panel */}
+        {selectedTable && !editMode && <TableDetail />}
 
         {/* ── PENDING ITEMS SUMMARY ── */}
         {!editMode && (() => {
