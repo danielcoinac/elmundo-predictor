@@ -549,6 +549,9 @@ const FP_DEFAULT_P2 = [
   { id:9, color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
 ];
 
+// Module-level set — survives FloorPlan remounts (tab switches)
+const _seenOrderIds = new Set();
+
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
   const [activePlan, setActivePlan] = useState("1");
   const isP2 = activePlan === "2";
@@ -573,7 +576,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [editSel,   setEditSel  ] = useState(null);
   const [flashTables, setFlashTables] = useState({}); // tableKey → flash timestamp
   const [fpToasts,    setFpToasts]    = useState([]); // { id, tableKey, label, x, y }
-  const seenOrderIds   = useRef(new Set());
+  const seenOrderIds   = { current: _seenOrderIds }; // points to module-level set
   const flashTimersRef = useRef({});
   const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
