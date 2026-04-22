@@ -9091,7 +9091,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
           ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
         ],
         total: +cartTotal.toFixed(2),
-        paymentMethod: "credits",
+        paymentMethod: +cartTotal.toFixed(2) === 0 ? "sponsor_gift" : "credits",
       });
       if (ok) {
         if (giftCartItems.length > 0) {
