@@ -496,7 +496,10 @@ function AdminReport({ allOrders }) {
 /* ═══ FLOOR PLAN ════════════════════════════════════════════════════════════ */
 const FP_KEY     = 'fp-layout-v3';
 const FP_BAR_KEY = 'fp-bar-v3';
+const FP_KEY_P2     = 'fp-layout-v3-p2';
+const FP_BAR_KEY_P2 = 'fp-bar-v3-p2';
 const FP_BAR_DEF = { x:780, y:12, w:120, h:64 };
+const FP_BAR_DEF_P2 = { x:660, y:12, w:180, h:56 };
 const FP_DEFAULT = [
   { id:1,  x:90,  y:24,  w:90, h:70, shape:"rect"  },
   { id:2,  x:210, y:24,  w:90, h:70, shape:"rect"  },
@@ -526,22 +529,66 @@ const FP_DEFAULT = [
   { id:26, x:366, y:582, w:72, h:72, shape:"round" },
 ];
 
+// Plan #2 — Outdoor bar area (tables 101–115)
+const FP_DEFAULT_P2 = [
+  { id:101, x:80,  y:100, w:80, h:64, shape:"rect"  },
+  { id:102, x:200, y:100, w:80, h:64, shape:"rect"  },
+  { id:103, x:320, y:100, w:80, h:64, shape:"rect"  },
+  { id:104, x:440, y:100, w:80, h:64, shape:"rect"  },
+  { id:105, x:80,  y:220, w:80, h:64, shape:"rect"  },
+  { id:106, x:200, y:220, w:80, h:64, shape:"rect"  },
+  { id:107, x:320, y:220, w:80, h:64, shape:"rect"  },
+  { id:108, x:440, y:220, w:80, h:64, shape:"rect"  },
+  { id:109, x:80,  y:340, w:72, h:72, shape:"round" },
+  { id:110, x:190, y:340, w:72, h:72, shape:"round" },
+  { id:111, x:300, y:340, w:72, h:72, shape:"round" },
+  { id:112, x:410, y:340, w:72, h:72, shape:"round" },
+  { id:113, x:130, y:460, w:80, h:64, shape:"rect"  },
+  { id:114, x:260, y:460, w:80, h:64, shape:"rect"  },
+  { id:115, x:390, y:460, w:80, h:64, shape:"rect"  },
+];
+
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
-  const loadSaved = () => { try { const s = localStorage.getItem(FP_KEY); return s ? JSON.parse(s) : FP_DEFAULT; } catch { return FP_DEFAULT; } };
+  const [activePlan, setActivePlan] = useState("1");
+  const isP2 = activePlan === "2";
+  const fpKey    = isP2 ? FP_KEY_P2    : FP_KEY;
+  const fpBarKey = isP2 ? FP_BAR_KEY_P2 : FP_BAR_KEY;
+  const fpDef    = isP2 ? FP_DEFAULT_P2 : FP_DEFAULT;
+  const fpBarDef = isP2 ? FP_BAR_DEF_P2 : FP_BAR_DEF;
+  const loadSaved = (key, def) => { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } };
+
   const [selectedTable, setSelectedTable] = useState(null);
   const [now,       setNow      ] = useState(Date.now());
   const [editMode,  setEditMode ] = useState(false);
-  const [fpView,  setFpView ] = useState("live"); // "live" | "history" | "report"
-  const [showFin, setShowFin] = useState(false);  // hide financials by default
-  const [tables,    setTables   ] = useState(loadSaved);
-  const [savedTbls, setSavedTbls] = useState(loadSaved);
-  const [dragging,  setDragging ] = useState(null); // { id, ox, oy }
-  const [resizing,  setResizing ] = useState(null); // { id, sx, sy, sw, sh }
+  const [fpView,  setFpView ] = useState("live");
+  const [showFin, setShowFin] = useState(false);
+  const [tables,    setTables   ] = useState(() => loadSaved(FP_KEY, FP_DEFAULT));
+  const [savedTbls, setSavedTbls] = useState(() => loadSaved(FP_KEY, FP_DEFAULT));
+  const [tablesP2,    setTablesP2   ] = useState(() => loadSaved(FP_KEY_P2, FP_DEFAULT_P2));
+  const [savedTblsP2, setSavedTblsP2] = useState(() => loadSaved(FP_KEY_P2, FP_DEFAULT_P2));
+  const [dragging,  setDragging ] = useState(null);
+  const [resizing,  setResizing ] = useState(null);
   const [editSel,   setEditSel  ] = useState(null);
-  const [barPos,    setBarPos   ] = useState(() => { try { const s = localStorage.getItem(FP_BAR_KEY); return s ? JSON.parse(s) : FP_BAR_DEF; } catch { return FP_BAR_DEF; } });
-  const [savedBar,  setSavedBar ] = useState(() => { try { const s = localStorage.getItem(FP_BAR_KEY); return s ? JSON.parse(s) : FP_BAR_DEF; } catch { return FP_BAR_DEF; } });
-  const [barDrag,   setBarDrag  ] = useState(null); // { ox, oy }
+  const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
+  const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
+  const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
+  const [savedBarP2,setSavedBarP2] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
+  const [barDrag,   setBarDrag  ] = useState(null);
   const canvasRef = useRef(null);
+
+  // Plan-aware aliases
+  const curTables    = isP2 ? tablesP2    : tables;
+  const setCurTables = isP2 ? setTablesP2 : setTables;
+  const curBar       = isP2 ? barPosP2    : barPos;
+  const setCurBar    = isP2 ? setBarPosP2 : setBarPos;
+
+  const switchPlan = (p) => {
+    setActivePlan(p);
+    setEditMode(false);
+    setSelectedTable(null);
+    setEditSel(null);
+    setFpView("live");
+  };
 
   // Auto-refresh orders + clock every 10s
   useEffect(() => {
@@ -552,7 +599,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   }, []);
 
   // Get active (non-completed) orders grouped by table
-  const activeOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
+  const allActiveOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
+  // Filter orders by plan: plan 1 = tables 1-99, plan 2 = tables 100+
+  const activeOrders = allActiveOrders.filter(o => isP2 ? +o.table_number >= 100 : +o.table_number < 100);
   const byTable = activeOrders.reduce((acc, o) => {
     const t = String(o.table_number);
     if (!acc[t]) acc[t] = [];
@@ -597,7 +646,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const statusLabel = s => s==="pending"?"NEW ORDER":s==="ready"?"READY":"";
 
   const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
-  const urgentTables = tables.filter(t => tableStatus(t.id)==="urgent");
+  const urgentTables = curTables.filter(t => tableStatus(t.id)==="urgent");
 
   // ── Drag / Resize ──────────────────────────────────────────────────────────
   const getPos = e => e.touches ? { x:e.touches[0].clientX, y:e.touches[0].clientY } : { x:e.clientX, y:e.clientY };
@@ -607,7 +656,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     e.stopPropagation(); e.preventDefault();
     const pos = getPos(e);
     const rect = canvasRef.current.getBoundingClientRect();
-    const t = tables.find(t => t.id === id);
+    const t = curTables.find(t => t.id === id);
     setDragging({ id, ox: pos.x - rect.left - t.x, oy: pos.y - rect.top - t.y });
     setEditSel(id);
   };
@@ -615,7 +664,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const startResize = (e, id) => {
     e.stopPropagation(); e.preventDefault();
     const pos = getPos(e);
-    const t = tables.find(t => t.id === id);
+    const t = curTables.find(t => t.id === id);
     setResizing({ id, sx: pos.x, sy: pos.y, sw: t.w, sh: t.h });
   };
 
@@ -626,12 +675,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       const rect = canvasRef.current.getBoundingClientRect();
       const x = Math.max(0, Math.min(rect.width - 30, pos.x - rect.left - dragging.ox));
       const y = Math.max(0, pos.y - rect.top - dragging.oy);
-      setTables(ts => ts.map(t => t.id === dragging.id ? { ...t, x, y } : t));
+      setCurTables(ts => ts.map(t => t.id === dragging.id ? { ...t, x, y } : t));
     }
     if (resizing) {
       const dx = pos.x - resizing.sx;
       const dy = pos.y - resizing.sy;
-      setTables(ts => ts.map(t => t.id === resizing.id ? {
+      setCurTables(ts => ts.map(t => t.id === resizing.id ? {
         ...t,
         w: Math.max(50, resizing.sw + dx),
         h: t.shape === "round" ? Math.max(50, resizing.sw + dx) : Math.max(40, resizing.sh + dy),
@@ -639,7 +688,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     }
     if (barDrag) {
       const rect = canvasRef.current.getBoundingClientRect();
-      setBarPos(b => ({
+      setCurBar(b => ({
         ...b,
         x: Math.max(0, Math.min(rect.width - b.w, pos.x - rect.left - barDrag.ox)),
         y: Math.max(0, pos.y - rect.top - barDrag.oy),
@@ -651,42 +700,45 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
   // ── Edit actions ───────────────────────────────────────────────────────────
   const addTable = () => {
-    const maxId = tables.length > 0 ? Math.max(...tables.map(t => t.id)) : 0;
+    const minId = isP2 ? 100 : 0;
+    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => t.id)) : minId;
     const rect = canvasRef.current?.getBoundingClientRect();
     const cx = rect ? Math.max(10, (rect.width / 2) - 36) : 200;
     const newT = { id: maxId + 1, x: cx, y: 80, w: 72, h: 56, shape: "rect" };
-    setTables(ts => [...ts, newT]);
+    setCurTables(ts => [...ts, newT]);
     setEditSel(maxId + 1);
   };
 
   const deleteTable = (id) => {
-    setTables(ts => ts.filter(t => t.id !== id));
+    setCurTables(ts => ts.filter(t => t.id !== id));
     if (editSel === id) setEditSel(null);
   };
 
   const toggleShape = (id) => {
-    setTables(ts => ts.map(t => t.id === id
+    setCurTables(ts => ts.map(t => t.id === id
       ? { ...t, shape: t.shape === "rect" ? "round" : "rect" }
       : t
     ));
   };
 
   const saveLayout = () => {
-    localStorage.setItem(FP_KEY, JSON.stringify(tables));
-    localStorage.setItem(FP_BAR_KEY, JSON.stringify(barPos));
-    setSavedTbls(tables); setSavedBar(barPos);
+    localStorage.setItem(fpKey, JSON.stringify(curTables));
+    localStorage.setItem(fpBarKey, JSON.stringify(curBar));
+    if (isP2) { setSavedTblsP2(tablesP2); setSavedBarP2(barPosP2); }
+    else       { setSavedTbls(tables);     setSavedBar(barPos);     }
     setEditMode(false); setEditSel(null);
   };
 
   const cancelEdit = () => {
-    setTables(savedTbls); setBarPos(savedBar);
+    if (isP2) { setTablesP2(savedTblsP2); setBarPosP2(savedBarP2); }
+    else       { setTables(savedTbls);     setBarPos(savedBar);      }
     setEditMode(false); setEditSel(null);
   };
 
-  const resetLayout = () => { setTables(FP_DEFAULT); setBarPos(FP_BAR_DEF); setEditSel(null); };
+  const resetLayout = () => { setCurTables(fpDef); setCurBar(fpBarDef); setEditSel(null); };
 
   // ── Canvas dimensions ───────────────────────────────────────────────────────
-  const canvasH = Math.max(700, ...tables.map(t => t.y + t.h + 80));
+  const canvasH = Math.max(700, ...curTables.map(t => t.y + t.h + 80));
   const CANVAS_MIN_W = 920;
 
   // ── Table element ──────────────────────────────────────────────────────────
@@ -894,10 +946,22 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="fp-header">
 
+        {/* Plan selector */}
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          {[{id:"1",label:"🏠 FLOOR PLAN #1"},{id:"2",label:"🌴 FLOOR PLAN #2 · OUTDOOR"}].map(p => (
+            <button key={p.id} onClick={()=>switchPlan(p.id)}
+              style={{padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",border:"none",borderRadius:4,transition:"all .2s",
+                background: activePlan===p.id ? "#fff" : "rgba(255,255,255,.07)",
+                color: activePlan===p.id ? "#000" : "rgba(255,255,255,.5)",
+                boxShadow: activePlan===p.id ? "0 0 16px rgba(255,255,255,.15)" : "none",
+              }}>{p.label}</button>
+          ))}
+        </div>
+
         {/* Row 1: title + view toggle */}
         <div className="fp-header-row1">
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <span className="fp-title">FLOOR PLAN</span>
+            <span className="fp-title">{isP2 ? "OUTDOOR BAR" : "FLOOR PLAN"}</span>
             {fpView === "live" && (editMode ? (
               <span className="fp-edit-badge">EDIT MODE</span>
             ) : (
@@ -971,6 +1035,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
         )}
+        {/* Plan 2 — ordering coming soon banner */}
+        {isP2 && (
+          <div style={{margin:"0 0 12px",padding:"12px 16px",background:"rgba(251,191,36,.08)",border:"1px solid rgba(251,191,36,.25)",borderRadius:8,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:18}}>🌴</span>
+            <div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#fbbf24"}}>OUTDOOR BAR — ORDERING COMING SOON</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Floor plan is editable. Live order routing will be enabled once the outdoor bar is set up.</div>
+            </div>
+          </div>
+        )}
+
         {/* Canvas */}
         <div className="fp-canvas-scroll">
           <div
@@ -990,35 +1065,51 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             <div
               className="fp-bar"
               style={{
-                left:barPos.x, top:barPos.y, width:barPos.w, height:barPos.h,
+                left:curBar.x, top:curBar.y, width:curBar.w, height:curBar.h,
                 border: editMode ? `2px dashed rgba(255,255,255,.5)` : "1.5px solid rgba(107,58,31,.7)",
                 cursor: editMode ? (barDrag ? "grabbing" : "grab") : "default",
                 boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.6)" : "inset 0 1px 0 rgba(255,255,255,.06), 0 4px 16px rgba(0,0,0,.5), 0 0 0 1px rgba(107,58,31,.3)",
                 transition: barDrag ? "none" : "border .2s",
                 zIndex: barDrag ? 20 : 2,
               }}
-              onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
-              onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - barPos.x, oy: pos.y - rect.top - barPos.y }); }}
+              onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
+              onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
             >
-              <span className="fp-bar-label">BAR</span>
+              <span className="fp-bar-label">{isP2 ? "OUTDOOR BAR" : "BAR"}</span>
               {editMode && (
                 <div
-                  onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = barPos.w; const startH = barPos.h;
-                    const onMove = e => setBarPos(b => ({ ...b, w: Math.max(40, startW + e.clientX - startX), h: Math.max(30, startH + e.clientY - startY) }));
+                  onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = curBar.w; const startH = curBar.h;
+                    const onMove = e => setCurBar(b => ({ ...b, w: Math.max(40, startW + e.clientX - startX), h: Math.max(30, startH + e.clientY - startY) }));
                     const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
                     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp); }}
                   style={{position:"absolute",bottom:-1,right:-1,width:14,height:14,background:"rgba(255,255,255,.6)",cursor:"se-resize",borderRadius:"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
                 />
               )}
             </div>
-            {/* Stairs */}
-            <div className="fp-stairs">
-              <div className="fp-stairs-line"/>
-              <span className="fp-stairs-label">▼  STAIRS  ▼</span>
-              <div className="fp-stairs-line"/>
-            </div>
+            {/* Stairs — only on plan 1 */}
+            {!isP2 && (
+              <div className="fp-stairs">
+                <div className="fp-stairs-line"/>
+                <span className="fp-stairs-label">▼  STAIRS  ▼</span>
+                <div className="fp-stairs-line"/>
+              </div>
+            )}
+            {/* Plan 2 landmarks */}
+            {isP2 && (
+              <>
+                <div style={{position:"absolute",left:540,top:240,width:120,height:80,background:"rgba(34,197,94,.06)",border:"1px dashed rgba(34,197,94,.3)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:4,pointerEvents:"none"}}>
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(34,197,94,.5)"}}>TRIBUNE</span>
+                </div>
+                <div style={{position:"absolute",left:540,top:350,width:80,height:60,background:"rgba(251,191,36,.06)",border:"1px dashed rgba(251,191,36,.3)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(251,191,36,.5)"}}>DJ</span>
+                </div>
+                <div style={{position:"absolute",left:10,top:540,width:100,height:60,background:"rgba(239,68,68,.06)",border:"1px dashed rgba(239,68,68,.35)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,color:"rgba(239,68,68,.5)"}}>NOOD EXIT</span>
+                </div>
+              </>
+            )}
             {/* Tables */}
-            {tables.map(t => <TableEl key={t.id} tbl={t} />)}
+            {curTables.map(t => <TableEl key={t.id} tbl={t} />)}
           </div>
         </div>
         {/* Table detail panel */}
