@@ -8431,10 +8431,28 @@ function GroupOrderView({
   const [copied, setCopied] = useState(false);
   const [takenTables, setTakenTables] = useState([]);
   const [cancelNote, setCancelNote] = useState(false);
+  const [paySecsLeft, setPaySecsLeft] = useState(null); // countdown for payment phase
   const [showQRScan, setShowQRScan] = useState(false);
   const [goMenuOpen, setGoMenuOpen] = useState(false);
   const [goMenuSection, setGoMenuSection] = useState("DRINKS");
   const [goMenuCat, setGoMenuCat] = useState("all");
+
+  // 10-min payment countdown — starts when group enters awaiting_payment
+  useEffect(() => {
+    if (activeGroup?.status !== "awaiting_payment") { setPaySecsLeft(null); return; }
+    const started = activeGroup.updated_at ? new Date(activeGroup.updated_at).getTime() : Date.now();
+    const deadline = started + 10 * 60 * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setPaySecsLeft(left);
+      if (left === 0) {
+        supabase.from("group_orders").update({ status: "cancelled" }).eq("id", activeGroup.id);
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [activeGroup?.status, activeGroup?.updated_at]);
 
   // Load taken tables whenever the create screen is shown
   useEffect(() => {
@@ -8882,12 +8900,26 @@ function GroupOrderView({
   // ── SCREEN: PAYMENT (awaiting_payment) ──
   if (screen === "payment") {
     const anyPaid = groupMembers.some(m => m.payment_status === "paid");
+    const timerMins = paySecsLeft !== null ? Math.floor(paySecsLeft / 60) : null;
+    const timerSecs = paySecsLeft !== null ? paySecsLeft % 60 : null;
+    const timerUrgent = paySecsLeft !== null && paySecsLeft <= 120;
+    const timerDisplay = paySecsLeft !== null
+      ? `${timerMins}:${String(timerSecs).padStart(2,"0")}`
+      : null;
+
+    const PayTimer = timerDisplay ? (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",marginBottom:12,background:timerUrgent?"rgba(239,68,68,.12)":"rgba(251,191,36,.08)",border:`1px solid ${timerUrgent?"rgba(239,68,68,.4)":"rgba(251,191,36,.3)"}`,borderRadius:10}}>
+        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:timerUrgent?"#f87171":"rgba(255,255,255,.5)"}}>Complete payment or order cancels</span>
+        <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:timerUrgent?"#f87171":"#fbbf24"}}>{timerDisplay}</span>
+      </div>
+    ) : null;
 
     // HOST PAYS ALL
     if (activeGroup?.payment_mode === "host" && isHost) {
       const alreadyPaid = myMember?.payment_status === "paid";
       return (
         <div style={{padding:"24px 16px"}}>
+          {PayTimer}
           {!anyPaid && (
             <button className="go-btn-secondary" style={{marginBottom:16,padding:"8px 16px",fontSize:11}}
               onClick={resetGroupToLobby}>
@@ -8947,6 +8979,7 @@ function GroupOrderView({
       const hostPaid = groupMembers.find(m => m.user_id === activeGroup.host_user_id)?.payment_status === "paid";
       return (
         <div style={{padding:"40px 16px",textAlign:"center"}}>
+          {PayTimer}
           <div style={{fontSize:48,marginBottom:16}}>{hostPaid ? "✅" : "⏳"}</div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:2,color:"#fff",marginBottom:8}}>
             {hostPaid ? "Payment confirmed!" : "Waiting for host to pay…"}
@@ -8967,6 +9000,7 @@ function GroupOrderView({
 
       return (
         <div style={{padding:"16px"}}>
+          {PayTimer}
           {isHost && !anyPaid && (
             <button className="go-btn-secondary" style={{marginBottom:16,padding:"8px 16px",fontSize:11}}
               onClick={resetGroupToLobby}>

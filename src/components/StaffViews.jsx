@@ -595,12 +595,26 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     setFpView("live");
   };
 
-  // Auto-refresh orders + clock every 10s
+  // Auto-refresh orders + clock every 10s + auto-cancel stale orders
   useEffect(() => {
-    onLoad();
-    const iv = setInterval(() => { onLoad(); setNow(Date.now()); }, 10000);
-    const clock = setInterval(() => setNow(Date.now()), 30000);
-    return () => { clearInterval(iv); clearInterval(clock); };
+    const refresh = async () => {
+      await onLoad();
+      setNow(Date.now());
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      // Cancel card_pending orders unpaid for 10+ min
+      await supabase.from("orders")
+        .update({ status: "cancelled" })
+        .eq("status", "pending").eq("payment_method", "card_pending")
+        .lt("created_at", cutoff);
+      // Cancel group orders stuck in awaiting_payment for 10+ min
+      await supabase.from("group_orders")
+        .update({ status: "cancelled" })
+        .eq("status", "awaiting_payment")
+        .lt("updated_at", cutoff);
+    };
+    refresh();
+    const iv = setInterval(refresh, 10000);
+    return () => clearInterval(iv);
   }, []);
 
   // Detect new orders → flash table green + spawn floating toast
@@ -655,17 +669,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
   const todayCount   = todayOrders.length;
 
-  // Active = card_pending orders still awaiting Stripe payment
-  const allActiveOrders = allOrders.filter(o => o.status === "pending" && o.payment_method === "card_pending");
-  const activeOrders = allActiveOrders.filter(o => isP2 ? String(o.table_number).startsWith("OUT-") : !String(o.table_number).startsWith("OUT-"));
-  const byTable = activeOrders.reduce((acc, o) => {
-    const t = String(o.table_number);
-    if (!acc[t]) acc[t] = [];
-    acc[t].push(o);
-    return acc;
-  }, {});
-
-  // Today's orders per table (for revenue, group detection, recent activity)
+  // Today's orders per table
   const todayByTable = todayOrders.reduce((acc, o) => {
     const t = String(o.table_number);
     if (!acc[t]) acc[t] = [];
@@ -673,32 +677,24 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     return acc;
   }, {});
 
-  // Table status
+  // Active = card_pending Stripe orders (kept for auto-cancel logic only, no color)
+  const allActiveOrders = allOrders.filter(o => o.status === "pending" && o.payment_method === "card_pending");
+  const activeOrders = allActiveOrders.filter(o => isP2 ? String(o.table_number).startsWith("OUT-") : !String(o.table_number).startsWith("OUT-"));
+  const byTable = {}; // not used for display anymore
+
+  // Table status — only group (light blue) or empty/active_today
   const tableStatus = (num) => {
     const key = isP2 ? `OUT-${num}` : String(num);
-    const pending = byTable[key] || [];      // card_pending Stripe orders
-    const today   = todayByTable[key] || []; // all today's orders
-
-    // Card payment waiting — yellow/red based on age
-    if (pending.length > 0) {
-      const oldest = Math.min(...pending.map(o => new Date(o.created_at).getTime()));
-      const mins = (now - oldest) / 60000;
-      if (mins >= 10) return "card_urgent";  // red blink — unpaid 10+ min
-      return "card_pending";                 // yellow — waiting for card payment
-    }
-    // Group order placed today
+    const today = todayByTable[key] || [];
     if (today.some(o => o.payment_method?.startsWith("group"))) return "group";
-    // Had orders today
     if (today.length > 0) return "active_today";
     return "empty";
   };
 
   const statusStyle = (s) => ({
-    empty:        { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",   color:"rgba(255,255,255,.25)", blink:false },
-    active_today: { bg:"rgba(96,165,250,.07)",  border:"rgba(96,165,250,.3)",    color:"rgba(96,165,250,.6)",   blink:false },
-    group:        { bg:"rgba(96,165,250,.15)",  border:"rgba(96,165,250,.8)",    color:"#93c5fd",               blink:false },
-    card_pending: { bg:"rgba(251,191,36,.13)",  border:"rgba(251,191,36,.8)",    color:"#fbbf24",               blink:false },
-    card_urgent:  { bg:"rgba(239,68,68,.18)",   border:"rgba(239,68,68,.95)",    color:"#f87171",               blink:true  },
+    empty:        { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",  color:"rgba(255,255,255,.25)", blink:false },
+    active_today: { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",  color:"rgba(255,255,255,.25)", blink:false },
+    group:        { bg:"rgba(96,165,250,.15)",  border:"rgba(96,165,250,.8)",   color:"#93c5fd",               blink:false },
   }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", blink:false });
 
   const statusColor = s => s==="pending"?"#f59e0b":s==="ready"?"#fff":"rgba(255,255,255,.3)";
@@ -823,9 +819,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const s  = editMode ? "empty" : tableStatus(tbl.id);
     const st = statusStyle(s);
     const tableKey = isZone ? `OUT-${tbl.id}` : String(tbl.id);
-    const cardOrders  = editMode ? [] : (byTable[tableKey] || []);
     const todayTblOrd = editMode ? [] : (todayByTable[tableKey] || []);
-    const pCount = cardOrders.length;
+    const pCount = 0; // card pending no longer tracked visually
     const todayRev = todayTblOrd.reduce((s, o) => s + (+o.total || 0), 0);
     const hasNote = todayTblOrd.some(o => (o.items || []).some(i => i.note));
     const isGroup = todayTblOrd.some(o => o.payment_method?.startsWith("group"));
@@ -879,11 +874,6 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {/* Table number (P1) */}
         {!isZone && (
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
-        )}
-
-        {/* Card pending count badge — top-right */}
-        {!isZone && !editMode && pCount > 0 && (
-          <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#fbbf24",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(251,191,36,.7)"}}>{pCount}</div>
         )}
 
         {/* Customer initial — bottom-left */}
