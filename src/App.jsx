@@ -1081,10 +1081,10 @@ export default function App() {
       <div class="divider"></div>
       <div class="center footer">Enjoy the match! ⚽<br>Use credits to order food &amp; drinks.</div>
       <div style="height:20mm"></div>
-      </div>${EPOS_CUT_SCRIPT}</body></html>`);
+      </div></body></html>`);
       win.document.close();
       win.focus();
-      setTimeout(() => { win.print(); }, 400);
+      setTimeout(() => { win.print(); setTimeout(() => { sendCut(); win.close(); }, CUT_DELAY); }, 400);
     } else {
       toast$("Credits added ✓ — allow popups to print receipt", true);
     }
@@ -1126,12 +1126,8 @@ export default function App() {
   };
 
   // ── Epson ePOS direct cut — sends ESC/POS cut via printer's built-in API ──
-  const EPOS_CUT_SCRIPT = `
-<script>
-window.onafterprint=()=>{
-  fetch('http://localhost:9200/cut').catch(()=>{}).finally(()=>window.close());
-};
-<\/script>`;
+  const sendCut = () => fetch('http://localhost:9200/cut').catch(()=>{});
+  const CUT_DELAY = 1500;
 
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
@@ -1191,9 +1187,9 @@ window.onafterprint=()=>{
       <div class="url">www.elmundobonaire.com</div>
     </div>
     <div style="height:20mm"></div>
-    </div>${EPOS_CUT_SCRIPT}</body></html>`);
+    </div></body></html>`);
     win.document.close(); win.focus();
-    setTimeout(() => { win.print(); }, 400);
+    setTimeout(() => { win.print(); setTimeout(() => { sendCut(); win.close(); }, CUT_DELAY); }, 400);
   };
 
   const createGroupOrder = async (tableNumber) => {
@@ -9853,9 +9849,8 @@ td:last-child{white-space:nowrap}
 <div class="total">TOTAL: $${total.toFixed(2)}</div>
 <div class="footer">www.elmundobonaire.com</div>
 <div style="height:20mm"></div>
-${EPOS_CUT_SCRIPT}
 </body></html>`);
-    w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
+    w.document.close(); w.focus(); setTimeout(()=>{ w.print(); setTimeout(()=>{ sendCut(); w.close(); }, CUT_DELAY); },400);
   };
 
   const loadPlayerHistory = async (userId) => {
