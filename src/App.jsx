@@ -9559,7 +9559,8 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
           <div className="wallet-card">
             <div className="wallet-card-label">AVAILABLE BALANCE</div>
             <div className="wallet-card-amount">${(+myCredits).toFixed(2)}</div>
-            <div className="wallet-card-name">{user.name}{user.player_number ? <span style={{marginLeft:10,fontSize:"0.7em",opacity:0.5,letterSpacing:2}}>#{user.player_number}</span> : null}</div>
+            <div className="wallet-card-name">{user.name}</div>
+            {user.player_number ? <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,letterSpacing:4,color:"#fff",marginTop:8,opacity:0.9}}>PLAYER <span style={{color:"#facc15"}}>#{user.player_number}</span></div> : null}
           </div>
 
           {/* Top up section */}
