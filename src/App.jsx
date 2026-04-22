@@ -8083,7 +8083,7 @@ function QRTableScanner({ onScan, onClose }) {
           if (!video || !canvas || video.readyState !== 4) { rafRef.current = requestAnimationFrame(scan); return; }
           canvas.width  = video.videoWidth;
           canvas.height = video.videoHeight;
-          const ctx = canvas.getContext("2d");
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
           ctx.drawImage(video, 0, 0);
           const img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
