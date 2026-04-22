@@ -1159,4 +1159,214 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   );
 }
 
-export { printReceipt, AdminHistory, AdminReport, FloorPlan };
+/* ═══ ORDER FEED ════════════════════════════════════════════════════════════ */
+function OrderFeed({ allOrders = [], menuItems = [], onToggleSoldOut = () => {} }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ── Live order feed ──────────────────────────────────────────────────────
+  const recentOrders = [...allOrders]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 30);
+
+  const timeAgo = (ts) => {
+    const mins = Math.floor((now - new Date(ts).getTime()) / 60000);
+    if (mins < 1) return "<1m ago";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ago`;
+  };
+
+  const formatTable = (t) => {
+    const s = String(t || "");
+    if (s.startsWith("OUT-")) return `🌴 ${s.replace("OUT-", "")}`;
+    return `TABLE ${s}`;
+  };
+
+  const payLabel = (m) =>
+    m === "credits" ? "CREDITS" :
+    m === "card" ? "CARD" :
+    m === "sponsor_gift" ? "GIFT" :
+    m?.startsWith("group") ? "GROUP" :
+    (m || "CASH").toUpperCase();
+
+  // ── Availability toggles ─────────────────────────────────────────────────
+  const grouped = menuItems.reduce((acc, item) => {
+    const cat = item.category || "Other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
+    return acc;
+  }, {});
+
+  return (
+    <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 14px 40px" }}>
+
+      {/* ── SECTION: LIVE ORDERS ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <span style={{
+          fontFamily: "'Anton',sans-serif", fontSize: 13, letterSpacing: 3, color: "#fff"
+        }}>LIVE ORDERS</span>
+        {/* Green pulsing dot */}
+        <span style={{
+          display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+          background: "#4ade80", boxShadow: "0 0 6px #4ade80",
+          animation: "of-pulse 1.6s ease-in-out infinite",
+        }} />
+        <span style={{
+          fontFamily: "'Outfit',sans-serif", fontSize: 11, color: "rgba(255,255,255,.35)",
+          marginLeft: "auto"
+        }}>{recentOrders.length} orders</span>
+      </div>
+
+      <style>{`
+        @keyframes of-pulse {
+          0%,100% { opacity:1; transform:scale(1); }
+          50%      { opacity:.4; transform:scale(1.4); }
+        }
+      `}</style>
+
+      {recentOrders.length === 0 && (
+        <div style={{
+          padding: "28px 0", textAlign: "center",
+          fontFamily: "'Outfit',sans-serif", fontSize: 13, color: "rgba(255,255,255,.2)"
+        }}>No orders yet</div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 32 }}>
+        {recentOrders.map(ord => (
+          <div key={ord.id} style={{
+            background: "rgba(255,255,255,.03)",
+            border: "1px solid rgba(255,255,255,.1)",
+            padding: "10px 14px",
+          }}>
+            {/* Card top row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+              <div>
+                <span style={{
+                  fontFamily: "'Anton',sans-serif", fontSize: 13, color: "#fff", letterSpacing: 1
+                }}>{formatTable(ord.table_number)}</span>
+                {ord.order_number && (
+                  <span style={{
+                    fontFamily: "'Anton',sans-serif", fontSize: 10, color: "rgba(255,255,255,.35)",
+                    letterSpacing: 1, marginLeft: 10
+                  }}>#{ord.order_number}</span>
+                )}
+              </div>
+              <span style={{
+                fontFamily: "'Outfit',sans-serif", fontSize: 11, color: "rgba(255,255,255,.3)", fontWeight: 600
+              }}>{timeAgo(ord.created_at)}</span>
+            </div>
+
+            {/* Customer name */}
+            {ord.user_name && (
+              <div style={{
+                fontFamily: "'Outfit',sans-serif", fontSize: 12, color: "rgba(255,255,255,.45)",
+                fontWeight: 600, marginBottom: 6
+              }}>{ord.user_name}</div>
+            )}
+
+            {/* Items list */}
+            <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 6, marginBottom: 6 }}>
+              {(ord.items || []).map((it, i) => (
+                <div key={i} style={{
+                  display: "flex", justifyContent: "space-between",
+                  fontFamily: "'Outfit',sans-serif", fontSize: 12, color: "rgba(255,255,255,.6)",
+                  fontWeight: 500, padding: "2px 0"
+                }}>
+                  <span>
+                    <span style={{ fontFamily: "'Anton',sans-serif", color: "rgba(255,255,255,.4)", marginRight: 6 }}>
+                      {it.qty}×
+                    </span>
+                    {it.name}
+                  </span>
+                  <span style={{ color: "rgba(255,255,255,.3)", flexShrink: 0, marginLeft: 8 }}>
+                    ${(it.price * it.qty).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Total + payment */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{
+                fontFamily: "'Anton',sans-serif", fontSize: 16, color: "#fff"
+              }}>${(+ord.total).toFixed(2)}</span>
+              <span style={{
+                fontFamily: "'Anton',sans-serif", fontSize: 9, letterSpacing: 2,
+                color: "rgba(255,255,255,.3)", background: "rgba(255,255,255,.05)",
+                padding: "3px 7px", border: "1px solid rgba(255,255,255,.08)"
+              }}>{payLabel(ord.payment_method)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── SECTION: AVAILABILITY ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
+        borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 20
+      }}>
+        <span style={{
+          fontFamily: "'Anton',sans-serif", fontSize: 13, letterSpacing: 3, color: "#fff"
+        }}>AVAILABILITY</span>
+      </div>
+
+      {menuItems.length === 0 && (
+        <div style={{
+          padding: "28px 0", textAlign: "center",
+          fontFamily: "'Outfit',sans-serif", fontSize: 13, color: "rgba(255,255,255,.2)"
+        }}>No menu items</div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {Object.entries(grouped).map(([category, items]) => (
+          <div key={category}>
+            {/* Category header */}
+            <div style={{
+              fontFamily: "'Anton',sans-serif", fontSize: 9, letterSpacing: 3,
+              color: "rgba(255,255,255,.3)", marginBottom: 8
+            }}>{category.toUpperCase()}</div>
+
+            <div style={{
+              background: "rgba(255,255,255,.03)",
+              border: "1px solid rgba(255,255,255,.08)",
+            }}>
+              {items.map((item, i) => (
+                <div key={item.id || item.name} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "10px 14px",
+                  borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none",
+                }}>
+                  <span style={{
+                    fontFamily: "'Outfit',sans-serif", fontSize: 13, fontWeight: 600,
+                    color: item.sold_out ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.8)",
+                    textDecoration: item.sold_out ? "line-through" : "none",
+                  }}>{item.name}</span>
+
+                  <button
+                    onClick={() => onToggleSoldOut(item)}
+                    style={{
+                      fontFamily: "'Anton',sans-serif", fontSize: 9, letterSpacing: 2,
+                      padding: "6px 12px", cursor: "pointer", border: "none",
+                      flexShrink: 0, marginLeft: 12,
+                      background: item.sold_out ? "rgba(248,113,113,.15)" : "rgba(74,222,128,.15)",
+                      color: item.sold_out ? "#f87171" : "#4ade80",
+                      outline: `1px solid ${item.sold_out ? "rgba(248,113,113,.35)" : "rgba(74,222,128,.35)"}`,
+                      transition: "all .15s",
+                    }}
+                  >{item.sold_out ? "SOLD OUT" : "IN STOCK"}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { printReceipt, AdminHistory, AdminReport, FloorPlan, OrderFeed };

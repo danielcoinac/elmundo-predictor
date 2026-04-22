@@ -6,7 +6,7 @@ import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
 import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { FloorPlan } from "./components/StaffViews";
+import { FloorPlan, OrderFeed } from "./components/StaffViews";
 import "./styles.css";
 
 /** Read event branding from localStorage — works in any context (outside React components) */
@@ -607,7 +607,7 @@ export default function App() {
     if (page === "app" && user?.id) subscribeToPush(user.id);
   }, [page, user?.id, subscribeToPush]);
 
-  // Schedule "1 hour before match" reminders (local)
+  // Schedule match notifications: 1 hour before + at kickoff
   useEffect(() => {
     if (page !== "app" || !matches.length) return;
     notifTimersRef.current.forEach(clearTimeout);
@@ -617,15 +617,24 @@ export default function App() {
       if (m.status === "finished") return;
       const ko = matchKickoff(m);
       if (!ko) return;
-      const reminderAt = ko.getTime() - 60 * 60 * 1000;
-      const delay = reminderAt - now;
-      if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
+      const koMs = ko.getTime();
+      // 1 hour before
+      const reminderDelay = koMs - 60 * 60 * 1000 - now;
+      if (reminderDelay > 0 && reminderDelay < 24 * 60 * 60 * 1000) {
         notifTimersRef.current.push(setTimeout(() => {
-          sendNotif("📢 Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the game stats!`, `match-reminder-${m.id}`);
+          sendNotif("📢 Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — place your prediction!`, `match-reminder-${m.id}`);
           toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
-          // Push to ALL users (even those with app closed)
           if (isAdminRef.current) sendPush({ title: "⚠️ Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict!`, tag: `reminder-${m.id}` });
-        }, delay));
+        }, reminderDelay));
+      }
+      // At kickoff
+      const kickoffDelay = koMs - now;
+      if (kickoffDelay > 0 && kickoffDelay < 24 * 60 * 60 * 1000) {
+        notifTimersRef.current.push(setTimeout(() => {
+          sendNotif("⚽ Match started!", `${m.home} vs ${m.away} is LIVE now!`, `match-start-${m.id}`);
+          toast$(`🔴 ${m.home} vs ${m.away} has kicked off!`);
+          if (isAdminRef.current) sendPush({ title: "⚽ KICK OFF!", body: `${m.home} vs ${m.away} is live!`, tag: `kickoff-${m.id}` });
+        }, kickoffDelay));
       }
     });
     return () => notifTimersRef.current.forEach(clearTimeout);
@@ -2322,7 +2331,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     ...(appSettings.showMenu !== false ? [{ id:"menu", label:t('menu'), ico:<MenuIco /> }] : []),
     { id:"profile", label:t('profile'), ico:<PersonIco /> },
     ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
-    ...(user?.floorplan_access ? [{ id:"floorplan", label:"FLOOR", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
+    ...(user?.floorplan_access ? [{ id:"floorplan", label:"SERVICE", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
     ...(user?.keepups_access ? [{ id:"keepups", label:"KEEP-UPS", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2c0 0-4 4-4 10s4 10 4 10"/><path d="M12 2c0 0 4 4 4 10s-4 10-4 10"/><path d="M2 12h20"/><path d="M4.93 7h14.14M4.93 17h14.14"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
@@ -2402,7 +2411,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
           {appTab === "floorplan" && user?.floorplan_access && (
-            <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
+            <ErrorBoundary name="floorplan"><OrderFeed allOrders={allOrders} menuItems={menuItems} onToggleSoldOut={toggleMenuItemSoldOut} /></ErrorBoundary>
           )}
           {appTab === "keepups" && user?.keepups_access && (
             <ErrorBoundary name="keepups"><KeepupsView user={user} users={users} /></ErrorBoundary>
@@ -2660,12 +2669,12 @@ function MatchPulse({ matches, allPreds }) {
     return () => clearInterval(id);
   }, []);
 
-  // Find currently live matches (kickoff → kickoff + 120 min)
+  // Show pulse from 60 min before kickoff through 90 min after
   const liveMatches = matches.filter(m => {
     const ko = matchKickoff(m);
     if (!ko) return false;
     const koMs = ko.getTime();
-    return now >= koMs && now <= koMs + 120 * 60 * 1000 && m.status === "upcoming";
+    return now >= koMs - 60 * 60 * 1000 && now <= koMs + 90 * 60 * 1000 && m.status === "upcoming";
   });
 
   if (liveMatches.length === 0) return null;
@@ -2674,7 +2683,10 @@ function MatchPulse({ matches, allPreds }) {
     <div className="pulse-wrap">
       {liveMatches.map(m => {
         const ko = matchKickoff(m);
-        const elapsed = ko ? Math.floor((now - ko.getTime()) / 60000) : 0;
+        const koMs = ko ? ko.getTime() : 0;
+        const isPreKickoff = now < koMs;
+        const minsUntil = isPreKickoff ? Math.ceil((koMs - now) / 60000) : 0;
+        const elapsed = !isPreKickoff && ko ? Math.floor((now - koMs) / 60000) : 0;
         const half = elapsed <= 45 ? 1 : 2;
         const minute = elapsed <= 45 ? elapsed : elapsed - 15; // 15min halftime
 
@@ -2705,13 +2717,15 @@ function MatchPulse({ matches, allPreds }) {
             <div className="pulse-ring"/>
             <div className="pulse-ring pulse-ring-2"/>
 
-            {/* Header: LIVE + minute */}
+            {/* Header: pre-kickoff or LIVE */}
             <div className="pulse-header">
               <div className="pulse-live">
-                <span className="pulse-live-dot"/>
-                <span className="pulse-live-text">LIVE</span>
+                <span className="pulse-live-dot" style={isPreKickoff ? {background:"#fbbf24",boxShadow:"0 0 8px #fbbf24"} : {}}/>
+                <span className="pulse-live-text" style={isPreKickoff ? {color:"#fbbf24"} : {}}>{isPreKickoff ? "SOON" : "LIVE"}</span>
               </div>
-              <span className="pulse-live-min">{minute > 0 ? `${minute}'` : "KICK OFF"}</span>
+              <span className="pulse-live-min">
+                {isPreKickoff ? `in ${minsUntil}m` : minute > 0 ? `${minute}'` : "KICK OFF"}
+              </span>
             </div>
 
             {/* Teams row */}
