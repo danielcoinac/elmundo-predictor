@@ -945,22 +945,24 @@ export default function App() {
       }
       setMyCredits(newBal);
       // Insert order after successful deduction
-      const { error } = await supabase.from("orders").insert({
+      const { data: newOrd, error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
-        items, total, payment_method: paymentMethod, status: "pending",
-      });
+        items, total, payment_method: paymentMethod, status: "completed",
+      }).select().single();
       if (error) {
         // Order failed after credits deducted — refund automatically
         const { data: refundBal } = await supabase.rpc("add_credits", { p_user_id: user.id, p_amount: total });
         if (refundBal != null) setMyCredits(refundBal);
         toast$("Error placing order — credits refunded", false); return false;
       }
+      if (newOrd) try { printOrderReceipt(newOrd, user.name); } catch(e) {}
     } else {
-      const { error } = await supabase.from("orders").insert({
+      const { data: newOrd, error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
-        items, total, payment_method: paymentMethod, status: "pending",
-      });
+        items, total, payment_method: paymentMethod, status: "completed",
+      }).select().single();
       if (error) { toast$("Error placing order", false); return false; }
+      if (newOrd) try { printOrderReceipt(newOrd, user.name); } catch(e) {}
     }
     toast$("Order placed! 🍺 The bar will prepare it shortly.");
     try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
@@ -1334,7 +1336,7 @@ export default function App() {
       items: items.map(i => ({ id: i.item_id, name: i.item_name, price: i.price, qty: i.qty, category: i.category||"" })),
       total: +total.toFixed(2),
       payment_method: order.payment_mode === "host" ? "group_host" : "group_individual",
-      status: "pending",
+      status: "completed",
     });
     if (orderError) { toast$("Error placing group order — please contact staff", false); return false; }
     const { error: statusError } = await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId);
