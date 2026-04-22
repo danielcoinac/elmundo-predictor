@@ -1445,7 +1445,7 @@ export default function App() {
           adminDeleteMatch={adminDeleteMatch}
           adminSaveRules={adminSaveRules}
           adminSaveSponsors={adminSaveSponsors}
-          menuItems={menuItems} myCredits={myCredits} myOrders={myOrders}
+          menuItems={menuItems} myCredits={myCredits} setMyCredits={setMyCredits} myOrders={myOrders}
           placeOrder={placeOrder}
           saveMenuItem={saveMenuItem} deleteMenuItem={deleteMenuItem}
           toggleMenuItemAvail={toggleMenuItemAvail}
@@ -2183,7 +2183,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 users,
                 adminUpdateMatch, adminAddMatch, adminDeleteMatch,
                 adminSaveRules, adminSaveSponsors,
-                menuItems, myCredits, myOrders, placeOrder,
+                menuItems, myCredits, setMyCredits, myOrders, placeOrder,
                 saveMenuItem, deleteMenuItem, toggleMenuItemAvail, toggleMenuItemSoldOut,
                 adminAddCredits, updateOrderStatus, deleteOrder, cancelOrder, loadAllOrders, allOrders, matchesLoaded,
                 activeGroup, groupMembers, groupItems,
@@ -2283,17 +2283,28 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     setTimeout(() => { win.print(); }, 400);
   };
 
-  const OUTDOOR_ZONES = [
-    { id:1, name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
-    { id:2, name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
-    { id:3, name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
-    { id:4, name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
-    { id:5, name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
-    { id:6, name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
-    { id:7, name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
-    { id:8, name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
-    { id:9, name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
-  ];
+  // Load outdoor zones from the floor plan layout (staff-editable in Plan 2)
+  // Falls back to defaults if no floor plan saved yet
+  const loadOutdoorZones = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("em_fp_p2") || "null");
+      if (Array.isArray(saved) && saved.length > 0) {
+        return saved.map(z => ({ id: z.id, name: String(z.id), color: z.color || "#f1f5f9", bg: `${z.color || "#f1f5f9"}22` }));
+      }
+    } catch {}
+    return [
+      { id:"RED",    name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
+      { id:"ORANGE", name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
+      { id:"YELLOW", name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
+      { id:"GREEN",  name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
+      { id:"TEAL",   name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
+      { id:"BLUE",   name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
+      { id:"PURPLE", name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
+      { id:"PINK",   name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
+      { id:"WHITE",  name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
+    ];
+  };
+  const OUTDOOR_ZONES = loadOutdoorZones();
   const [isOutside,          setIsOutside]          = useState(null); // null | true | false
   const [outdoorZone,        setOutdoorZone]        = useState(null); // zone object | null
   const [showLocationModal,  setShowLocationModal]  = useState(false);
@@ -2384,6 +2395,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             onChangeZone={()=>{ setShowZonePicker(true); }}
             outdoorZones={OUTDOOR_ZONES}
             printOutdoorReceipt={printOutdoorReceipt}
+            setMyCredits={setMyCredits}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
           {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} /></ErrorBoundary>}
@@ -9048,7 +9060,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "",
   gifts = [], pendingGiftItems = [], onClearPendingGifts = () => {},
   isOutside = false, outdoorZone = null, onChangeLocation = ()=>{}, onChangeZone = ()=>{},
-  outdoorZones = [], printOutdoorReceipt = ()=>{} }) {
+  outdoorZones = [], printOutdoorReceipt = ()=>{}, setMyCredits = ()=>{} }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [cartNotes,   setCartNotes]   = useState({}); // { [itemId]: noteString }

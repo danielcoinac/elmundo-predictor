@@ -529,6 +529,13 @@ const FP_DEFAULT = [
   { id:26, x:366, y:582, w:72, h:72, shape:"round" },
 ];
 
+// Preset color swatches for zone color picker
+const ZONE_PALETTE = [
+  "#ef4444","#f97316","#eab308","#22c55e","#14b8a6",
+  "#3b82f6","#a855f7","#ec4899","#f1f5f9","#f59e0b",
+  "#84cc16","#06b6d4","#8b5cf6","#f43f5e","#ffffff",
+];
+
 // Plan #2 — Outdoor zones with canvas layout (id = zone name string)
 const FP_DEFAULT_P2 = [
   { id:"RED",    color:"#ef4444", x:60,  y:60,  w:120, h:90,  shape:"rect" },
@@ -552,6 +559,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const loadSaved = (key, def) => { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } };
 
   const [selectedTable, setSelectedTable] = useState(null);
+  const [colorPickerZone, setColorPickerZone] = useState(null); // zone id being recolored
   const [now,       setNow      ] = useState(Date.now());
   const [editMode,  setEditMode ] = useState(false);
   const [fpView,  setFpView ] = useState("live");
@@ -699,10 +707,26 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   };
 
   const addTable = () => {
-    if (isP2) return; // P2 zones are fixed — drag/resize/recolor only
-    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => +t.id || 0)) : 0;
     const rect = canvasRef.current?.getBoundingClientRect();
-    const cx = rect ? Math.max(10, (rect.width / 2) - 36) : 200;
+    const cx = rect ? Math.max(10, (rect.width / 2) - 60) : 200;
+    if (isP2) {
+      // Generate a unique zone name
+      const used = new Set(curTables.map(t => t.id));
+      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      let newId = null;
+      for (let i = 0; i < 26; i++) {
+        const candidate = `ZONE-${letters[i]}`;
+        if (!used.has(candidate)) { newId = candidate; break; }
+      }
+      if (!newId) return;
+      const usedColors = new Set(curTables.map(t => t.color));
+      const defaultColor = ZONE_PALETTE.find(c => !usedColors.has(c)) || ZONE_PALETTE[0];
+      const newT = { id: newId, color: defaultColor, x: cx, y: 80, w: 120, h: 90, shape: "rect" };
+      setCurTables(ts => [...ts, newT]);
+      setEditSel(newId);
+      return;
+    }
+    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => +t.id || 0)) : 0;
     const newT = { id: maxId + 1, x: cx, y: 80, w: 72, h: 56, shape: "rect" };
     setCurTables(ts => [...ts, newT]);
     setEditSel(maxId + 1);
@@ -843,20 +867,17 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         )}
 
-        {/* EDIT: color picker (P2 zones — top-right) */}
+        {/* EDIT: color swatch trigger (P2 zones — top-right) */}
         {isZone && editMode && (
-          <label onMouseDown={e=>e.stopPropagation()}
-            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",cursor:"pointer",border:`2px solid ${zoneColor}`,background:zoneColor,zIndex:30,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}
-            title="Change color">
-            <input type="color" value={zoneColor} onChange={e=>{e.stopPropagation();changeZoneColor(tbl.id,e.target.value);}}
-              style={{opacity:0,position:"absolute",width:"200%",height:"200%",cursor:"pointer"}}/>
-          </label>
+          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setColorPickerZone(v=>v===tbl.id?null:tbl.id);}}
+            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",cursor:"pointer",border:`2px solid rgba(255,255,255,.6)`,background:zoneColor,zIndex:30}}
+            title="Change color"/>
         )}
 
-        {/* EDIT: delete (P1 only — top-right) */}
-        {!isZone && editMode && (
-          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();deleteTable(tbl.id);}}
-            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:13,color:"#f87171",lineHeight:1,zIndex:30}}>
+        {/* EDIT: delete — bottom-left for zones (top-right taken by color), top-right for tables */}
+        {editMode && (
+          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();deleteTable(tbl.id);setColorPickerZone(null);}}
+            style={{position:"absolute",...(isZone?{bottom:-9,left:-9}:{top:-9,right:-9}),width:18,height:18,borderRadius:"50%",background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:13,color:"#f87171",lineHeight:1,zIndex:30}}>
             ×
           </div>
         )}
@@ -1058,12 +1079,28 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {fpView === "live" && (<>
         {/* Edit toolbar */}
         {editMode && (
+          <>
           <div className="fp-edit-toolbar">
-            {!isP2 && <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">+ ADD TABLE</button>}
+            <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">{isP2 ? "+ ADD ZONE" : "+ ADD TABLE"}</button>
             <button onClick={resetLayout} className="fp-toolbar-btn fp-toolbar-btn-reset">↺ RESET</button>
-            <div className="fp-toolbar-hint">{isP2 ? "Drag · □/○ · 🎨 color · ⊿ resize" : "Drag · □/○ shape · × delete · ⊿ resize"}</div>
+            <div className="fp-toolbar-hint">{isP2 ? "Drag · □/○ · 🎨 color · ⊿ resize · × delete" : "Drag · □/○ · × delete · ⊿ resize"}</div>
             <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
+          {/* Color palette popover for selected zone */}
+          {isP2 && colorPickerZone !== null && (
+            <div style={{padding:"10px 12px",background:"#1a1a1a",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.4)",flexShrink:0}}>COLOR ›</span>
+              {ZONE_PALETTE.map(c => (
+                <div key={c} onClick={()=>{ changeZoneColor(colorPickerZone, c); setColorPickerZone(null); }}
+                  style={{width:24,height:24,borderRadius:"50%",background:c,cursor:"pointer",flexShrink:0,
+                    border: (curTables.find(t=>t.id===colorPickerZone)?.color===c) ? "2px solid #fff" : "2px solid transparent",
+                    boxShadow:`0 0 8px ${c}88`}}/>
+              ))}
+              <button onClick={()=>setColorPickerZone(null)}
+                style={{marginLeft:"auto",background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:16,padding:"0 4px"}}>✕</button>
+            </div>
+          )}
+          </>
         )}
         {/* Canvas — shared for both plans */}
         <div className="fp-canvas-scroll">
