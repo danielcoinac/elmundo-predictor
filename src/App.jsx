@@ -9401,44 +9401,39 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       {tab === "menu" && (
         <div style={{paddingBottom: cartCount > 0 ? 140 : 20}}>
 
-          {/* ── Section toggle: DRINKS / FOOD ── */}
-          <div className="menu-section-toggle">
-            {menuSections.map(sec => (
-              <button
-                key={sec.section}
-                className={`menu-sec-btn ${activeSection === sec.section ? "menu-sec-btn-on" : ""}`}
-                onClick={() => {
-                  setActiveSection(sec.section);
-                  const el = document.querySelector('.body') || window;
-                  if (el.scrollTo) el.scrollTo({ top: 0 });
-                }}>
-                <span className="menu-sec-btn-icon">{sec.section === "DRINKS" ? "🍹" : "🍽"}</span>
-                <span>{sec.section}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* ── Outdoor zone banner ── */}
-          {isOutside && (
-            <div onClick={onChangeZone} style={{cursor:"pointer",margin:"0",padding:"14px 18px",
-              background: outdoorZone ? outdoorZone.bg : "rgba(255,255,255,.04)",
-              borderBottom:`2px solid ${outdoorZone ? outdoorZone.color+"55" : "rgba(255,255,255,.08)"}`,
-              display:"flex",alignItems:"center",gap:14}}>
-              <div style={{width:18,height:18,borderRadius:"50%",flexShrink:0,
-                background: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.15)",
-                boxShadow: outdoorZone ? `0 0 12px ${outdoorZone.color}` : "none"}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2.5,
-                  color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.55)"}}>
-                  {outdoorZone ? `${outdoorZone.name} ZONE` : "SELECT YOUR ZONE"}
-                </div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",marginTop:1}}>
-                  🌴 Outdoor · tap to change
-                </div>
-              </div>
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.25)",flexShrink:0}}>CHANGE ›</span>
+          {/* ── Section toggle: DRINKS / FOOD + outdoor zone chip ── */}
+          <div style={{display:"flex",alignItems:"stretch",gap:8,padding:"8px 10px 8px"}}>
+            <div className="menu-section-toggle" style={{flex:1,margin:0,padding:0}}>
+              {menuSections.map(sec => (
+                <button
+                  key={sec.section}
+                  className={`menu-sec-btn ${activeSection === sec.section ? "menu-sec-btn-on" : ""}`}
+                  onClick={() => {
+                    setActiveSection(sec.section);
+                    const el = document.querySelector('.body') || window;
+                    if (el.scrollTo) el.scrollTo({ top: 0 });
+                  }}>
+                  <span className="menu-sec-btn-icon">{sec.section === "DRINKS" ? "🍹" : "🍽"}</span>
+                  <span>{sec.section}</span>
+                </button>
+              ))}
             </div>
-          )}
+            {isOutside && (
+              <button onClick={onChangeZone}
+                style={{flexShrink:0,display:"flex",alignItems:"center",gap:7,padding:"0 14px",
+                  borderRadius:12,border:`1.5px solid ${outdoorZone ? outdoorZone.color+"77" : "rgba(255,255,255,.15)"}`,
+                  background: outdoorZone ? outdoorZone.bg : "rgba(255,255,255,.05)",
+                  cursor:"pointer",minWidth:0}}>
+                <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,
+                  background: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.3)",
+                  boxShadow: outdoorZone ? `0 0 8px ${outdoorZone.color}` : "none"}}/>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1.5,
+                  color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.5)",whiteSpace:"nowrap"}}>
+                  {outdoorZone ? outdoorZone.name : "ZONE?"}
+                </span>
+              </button>
+            )}
+          </div>
 
           {/* ── Group order banner (only when the group is still assembling/paying) ── */}
           {activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled" && (
