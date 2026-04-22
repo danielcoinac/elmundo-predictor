@@ -611,7 +611,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       await supabase.from("group_orders")
         .update({ status: "cancelled" })
         .eq("status", "awaiting_payment")
-        .lt("updated_at", cutoff);
+        .lt("created_at", cutoff);
     };
     refresh();
     const iv = setInterval(refresh, 10000);
