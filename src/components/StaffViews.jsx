@@ -890,6 +890,13 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
         )}
 
+        {/* Group order badge — only when active group session */}
+        {!isZone && !editMode && s === "group" && (
+          <div style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",background:"rgba(96,165,250,.2)",border:"1px solid rgba(96,165,250,.6)",borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>
+            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,letterSpacing:1,color:"#93c5fd",textTransform:"uppercase"}}>Group Order</span>
+          </div>
+        )}
+
 
         {/* EDIT: shape toggle (top-left) */}
         {editMode && (
