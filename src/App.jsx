@@ -9109,6 +9109,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   };
 
   const handleStripeOrder = async () => {
+    if (+cartTotal.toFixed(2) === 0) { handleOrder(); return; }
     if (!table.trim()) { setTableErr("Please select your table"); onToast?.("⚠ Please select your table first"); tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
     const tableNum = parseInt(table.trim());
     if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
