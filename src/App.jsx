@@ -1126,7 +1126,7 @@ export default function App() {
   };
 
   // ── Epson ePOS direct cut — sends ESC/POS cut via printer's built-in API ──
-  const sendCut = () => fetch('http://localhost:9200/cut').catch(()=>{});
+  const sendCut = () => { new Image().src = 'http://localhost:9200/cut?' + Date.now(); };
   const CUT_DELAY = 1500;
 
   // ── Order receipt printer ─────────────────────────────────────────────────
