@@ -9646,6 +9646,10 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                         </div>
                       </button>
                     )}
+                  <button onClick={onChangeLocation}
+                    style={{marginTop:8,background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",padding:"2px 0",textDecoration:"underline",display:"block"}}>
+                    Switch to indoor tables →
+                  </button>
                   </div>
                 ) : (
                 <div className="afield" ref={tableRef} style={{marginBottom:14}}>
@@ -9680,6 +9684,10 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                     </button>
                   )}
                   {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{tableErr}</div>}
+                  <button onClick={onChangeLocation}
+                    style={{marginTop:8,background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",padding:"2px 0",textDecoration:"underline",display:"block"}}>
+                    Switch to outdoor zones →
+                  </button>
                 </div>
                 )}
                 <div className="afield" style={{marginBottom:20}}>

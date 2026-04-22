@@ -529,35 +529,17 @@ const FP_DEFAULT = [
   { id:26, x:366, y:582, w:72, h:72, shape:"round" },
 ];
 
-// Plan #2 — Outdoor zones (color-based)
-const OUTDOOR_ZONES = [
-  { id:1, name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
-  { id:2, name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
-  { id:3, name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
-  { id:4, name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
-  { id:5, name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
-  { id:6, name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
-  { id:7, name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
-  { id:8, name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
-  { id:9, name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
-];
-
+// Plan #2 — Outdoor zones with canvas layout (id = zone name string)
 const FP_DEFAULT_P2 = [
-  { id:101, x:80,  y:100, w:80, h:64, shape:"rect"  },
-  { id:102, x:200, y:100, w:80, h:64, shape:"rect"  },
-  { id:103, x:320, y:100, w:80, h:64, shape:"rect"  },
-  { id:104, x:440, y:100, w:80, h:64, shape:"rect"  },
-  { id:105, x:80,  y:220, w:80, h:64, shape:"rect"  },
-  { id:106, x:200, y:220, w:80, h:64, shape:"rect"  },
-  { id:107, x:320, y:220, w:80, h:64, shape:"rect"  },
-  { id:108, x:440, y:220, w:80, h:64, shape:"rect"  },
-  { id:109, x:80,  y:340, w:72, h:72, shape:"round" },
-  { id:110, x:190, y:340, w:72, h:72, shape:"round" },
-  { id:111, x:300, y:340, w:72, h:72, shape:"round" },
-  { id:112, x:410, y:340, w:72, h:72, shape:"round" },
-  { id:113, x:130, y:460, w:80, h:64, shape:"rect"  },
-  { id:114, x:260, y:460, w:80, h:64, shape:"rect"  },
-  { id:115, x:390, y:460, w:80, h:64, shape:"rect"  },
+  { id:"RED",    color:"#ef4444", x:60,  y:60,  w:120, h:90,  shape:"rect" },
+  { id:"ORANGE", color:"#f97316", x:210, y:60,  w:120, h:90,  shape:"rect" },
+  { id:"YELLOW", color:"#eab308", x:360, y:60,  w:120, h:90,  shape:"rect" },
+  { id:"GREEN",  color:"#22c55e", x:60,  y:180, w:120, h:90,  shape:"rect" },
+  { id:"TEAL",   color:"#14b8a6", x:210, y:180, w:120, h:90,  shape:"rect" },
+  { id:"BLUE",   color:"#3b82f6", x:360, y:180, w:120, h:90,  shape:"rect" },
+  { id:"PURPLE", color:"#a855f7", x:60,  y:300, w:120, h:90,  shape:"rect" },
+  { id:"PINK",   color:"#ec4899", x:210, y:300, w:120, h:90,  shape:"rect" },
+  { id:"WHITE",  color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
 ];
 
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
@@ -630,7 +612,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   // Table status based on oldest pending order age
   // 5 clear states based on what's actually happening at the table
   const tableStatus = (num) => {
-    const orders = byTable[String(num)] || [];
+    const key = isP2 ? `OUT-${num}` : String(num);
+    const orders = byTable[key] || [];
     if (orders.length === 0) return "empty";
     const hasPending  = orders.some(o => o.status === "pending");
     const hasReady    = orders.some(o => o.status === "ready");
@@ -711,9 +694,13 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const onEnd = () => { setDragging(null); setResizing(null); setBarDrag(null); };
 
   // ── Edit actions ───────────────────────────────────────────────────────────
+  const changeZoneColor = (id, color) => {
+    setCurTables(ts => ts.map(t => t.id === id ? { ...t, color } : t));
+  };
+
   const addTable = () => {
-    const minId = isP2 ? 100 : 0;
-    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => t.id)) : minId;
+    if (isP2) return; // P2 zones are fixed — drag/resize/recolor only
+    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => +t.id || 0)) : 0;
     const rect = canvasRef.current?.getBoundingClientRect();
     const cx = rect ? Math.max(10, (rect.width / 2) - 36) : 200;
     const newT = { id: maxId + 1, x: cx, y: 80, w: 72, h: 56, shape: "rect" };
@@ -753,11 +740,14 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const canvasH = Math.max(700, ...curTables.map(t => t.y + t.h + 80));
   const CANVAS_MIN_W = 920;
 
-  // ── Table element ──────────────────────────────────────────────────────────
+  // ── Table / Zone element ───────────────────────────────────────────────────
   const TableEl = ({ tbl }) => {
+    const isZone = isP2; // Plan 2 = colored zones
+    const zoneColor = tbl.color || "#ffffff";
     const s  = editMode ? "empty" : tableStatus(tbl.id);
     const st = statusStyle(s);
-    const orders = editMode ? [] : (byTable[String(tbl.id)] || []);
+    const tableKey = isZone ? `OUT-${tbl.id}` : String(tbl.id);
+    const orders = editMode ? [] : (byTable[tableKey] || []);
     const pCount = orders.filter(o => o.status === "pending").length;
     const pendingOrds = orders.filter(o => o.status === "pending");
     const elapsedMins = pendingOrds.length > 0
@@ -769,41 +759,59 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const isSel = editSel === tbl.id;
     const isDraggingThis = dragging?.id === tbl.id;
 
+    // Zone (P2) style
+    const zoneBg   = editMode ? (isSel ? `${zoneColor}30` : `${zoneColor}18`) : `${zoneColor}22`;
+    const zoneBord = editMode ? (isSel ? zoneColor : `${zoneColor}88`) : `${zoneColor}99`;
+
     return (
       <div
-        className={!editMode && st.blink ? "fp-blink" : ""}
+        className={!isZone && !editMode && st.blink ? "fp-blink" : ""}
         style={{
           position:"absolute", left:tbl.x, top:tbl.y, width:tbl.w, height:tbl.h,
-          background: editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg,
-          border: editMode
-            ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})`
-            : `2px solid ${st.border}`,
-          borderRadius: tbl.shape === "round" ? "50%" : 8,
-          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (s!=="empty"?"pointer":"default"),
+          background: isZone ? zoneBg : (editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg),
+          border: isZone
+            ? `2px ${editMode && isSel ? "solid" : "solid"} ${zoneBord}`
+            : (editMode ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})` : `2px solid ${st.border}`),
+          borderRadius: tbl.shape === "round" ? "50%" : 10,
+          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : (isZone ? "default" : (s!=="empty"?"pointer":"default")),
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
           transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
-          boxShadow: editMode
-            ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
-            : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)` : s==="ready" ? `0 0 18px rgba(255,255,255,.35), 0 0 40px rgba(255,255,255,.12), inset 0 0 14px rgba(255,255,255,.08)` : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)` : s==="confirmed" ? `0 0 12px rgba(96,165,250,.2), inset 0 0 8px rgba(96,165,250,.05)` : "0 1px 4px rgba(0,0,0,.3)"),
+          boxShadow: isZone
+            ? (editMode && isSel ? `0 0 0 3px ${zoneColor}44, 0 8px 24px rgba(0,0,0,.5)` : `0 0 14px ${zoneColor}22`)
+            : (editMode ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
+              : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)`
+                : s==="ready" ? `0 0 18px rgba(255,255,255,.35), 0 0 40px rgba(255,255,255,.12), inset 0 0 14px rgba(255,255,255,.08)`
+                : s==="new" ? `0 0 14px rgba(34,197,94,.3), 0 0 30px rgba(34,197,94,.1), inset 0 0 10px rgba(34,197,94,.08)`
+                : "0 1px 4px rgba(0,0,0,.3)")),
           userSelect:"none", touchAction:"none",
           zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
         }}
-        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (s!=="empty" && setSelectedTable(String(tbl.id)))}
-        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (s!=="empty" && setSelectedTable(String(tbl.id)))}
+        onMouseDown={e => editMode ? startDrag(e, tbl.id) : (!isZone && s!=="empty" && setSelectedTable(tableKey))}
+        onTouchStart={e => editMode ? startDrag(e, tbl.id) : (!isZone && s!=="empty" && setSelectedTable(tableKey))}
         onClick={e => editMode && (e.stopPropagation(), setEditSel(tbl.id))}
       >
-        {/* Number */}
-        <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
+        {/* Zone color circle + name (P2) */}
+        {isZone && (
+          <>
+            <div style={{width:Math.min(tbl.w*.28, 28),height:Math.min(tbl.w*.28, 28),borderRadius:"50%",background:zoneColor,marginBottom:6,boxShadow:`0 0 10px ${zoneColor}88`,opacity:editMode?0.9:0.85}}/>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:Math.min(tbl.w*.13, 14),color:zoneColor,letterSpacing:2,lineHeight:1,textAlign:"center"}}>{tbl.id}</span>
+          </>
+        )}
 
-        {/* Elapsed */}
-        {!editMode && elapsedMins !== null && (
+        {/* Table number (P1) */}
+        {!isZone && (
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
+        )}
+
+        {/* Elapsed (P1 only) */}
+        {!isZone && !editMode && elapsedMins !== null && (
           <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:st.color,opacity:.85,letterSpacing:.5,lineHeight:1,marginTop:2,fontWeight:700}}>
             {elapsedMins < 1 ? "<1m" : `${elapsedMins}m`}
           </span>
         )}
 
-        {/* Status dots */}
-        {!editMode && orders.length > 0 && (
+        {/* Status dots (P1 only) */}
+        {!isZone && !editMode && orders.length > 0 && (
           <div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap",justifyContent:"center",maxWidth:tbl.w-12}}>
             {orders.map((o,i) => (
               <div key={i} style={{width:7,height:7,borderRadius:"50%",background:statusColor(o.status),boxShadow:o.status==="pending"?`0 0 4px ${statusColor(o.status)}`:"none"}}/>
@@ -811,18 +819,18 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         )}
 
-        {/* Pending badge */}
-        {!editMode && pCount > 0 && (
+        {/* Pending badge (P1 only) */}
+        {!isZone && !editMode && pCount > 0 && (
           <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#f59e0b",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(245,158,11,.7)"}}>{pCount}</div>
         )}
 
-        {/* Customer initial */}
-        {!editMode && firstInitial && s!=="empty" && (
+        {/* Customer initial (P1 only) */}
+        {!isZone && !editMode && firstInitial && s!=="empty" && (
           <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.35)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{firstInitial}</div>
         )}
 
-        {/* Payment type icon — sponsor gift star */}
-        {!editMode && payIcon && (
+        {/* Sponsor icon (P1 only) */}
+        {!isZone && !editMode && payIcon && (
           <div style={{position:"absolute",bottom:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.4)",fontSize:9,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{payIcon}</div>
         )}
 
@@ -835,8 +843,18 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         )}
 
-        {/* EDIT: delete (top-right) */}
-        {editMode && (
+        {/* EDIT: color picker (P2 zones — top-right) */}
+        {isZone && editMode && (
+          <label onMouseDown={e=>e.stopPropagation()}
+            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",cursor:"pointer",border:`2px solid ${zoneColor}`,background:zoneColor,zIndex:30,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}
+            title="Change color">
+            <input type="color" value={zoneColor} onChange={e=>{e.stopPropagation();changeZoneColor(tbl.id,e.target.value);}}
+              style={{opacity:0,position:"absolute",width:"200%",height:"200%",cursor:"pointer"}}/>
+          </label>
+        )}
+
+        {/* EDIT: delete (P1 only — top-right) */}
+        {!isZone && editMode && (
           <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();deleteTable(tbl.id);}}
             style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:13,color:"#f87171",lineHeight:1,zIndex:30}}>
             ×
@@ -846,7 +864,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {/* EDIT: resize handle (bottom-right) */}
         {editMode && (
           <div onMouseDown={e=>startResize(e,tbl.id)} onTouchStart={e=>startResize(e,tbl.id)}
-            style={{position:"absolute",bottom:-1,right:-1,width:13,height:13,background:"rgba(255,255,255,.55)",cursor:"se-resize",borderRadius:tbl.shape==="round"?"50%":"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
+            style={{position:"absolute",bottom:-1,right:-1,width:13,height:13,background:isZone?zoneColor:"rgba(255,255,255,.55)",cursor:"se-resize",borderRadius:tbl.shape==="round"?"50%":"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
           />
         )}
       </div>
@@ -1041,29 +1059,13 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         {/* Edit toolbar */}
         {editMode && (
           <div className="fp-edit-toolbar">
-            <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">+ ADD TABLE</button>
+            {!isP2 && <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">+ ADD TABLE</button>}
             <button onClick={resetLayout} className="fp-toolbar-btn fp-toolbar-btn-reset">↺ RESET</button>
-            <div className="fp-toolbar-hint">Drag · □/○ shape · × delete · ⊿ resize</div>
+            <div className="fp-toolbar-hint">{isP2 ? "Drag · □/○ · 🎨 color · ⊿ resize" : "Drag · □/○ shape · × delete · ⊿ resize"}</div>
             <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
         )}
-        {/* Plan 2 — zone grid (visual reference only — orders auto-complete on receipt) */}
-        {isP2 ? (
-          <>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"0 4px 12px"}}>
-              {OUTDOOR_ZONES.map(z => (
-                  <div key={z.id}
-                    style={{borderRadius:12,padding:"20px 10px",textAlign:"center",
-                      background: z.bg, border:`1.5px solid ${z.color}55`}}>
-                    <div style={{width:32,height:32,borderRadius:"50%",background:z.color,margin:"0 auto 10px"}}/>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:z.color}}>{z.name}</div>
-                  </div>
-              ))}
-            </div>
-          </>
-        ) : (
-        <>
-        {/* Canvas (Plan 1 only) */}
+        {/* Canvas — shared for both plans */}
         <div className="fp-canvas-scroll">
           <div
             ref={canvasRef}
@@ -1078,7 +1080,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             onTouchMove={onMove} onTouchEnd={onEnd}
             onClick={()=>{ if(editMode) setEditSel(null); }}
           >
-            {/* BAR — dark wood */}
+            {/* BAR */}
             <div
               className="fp-bar"
               style={{
@@ -1092,7 +1094,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
               onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
               onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
             >
-              <span className="fp-bar-label">BAR</span>
+              <span className="fp-bar-label">{isP2 ? "OUTDOOR BAR" : "BAR"}</span>
               {editMode && (
                 <div
                   onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = curBar.w; const startH = curBar.h;
@@ -1103,20 +1105,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                 />
               )}
             </div>
-            {/* Stairs */}
-            <div className="fp-stairs">
-              <div className="fp-stairs-line"/>
-              <span className="fp-stairs-label">▼  STAIRS  ▼</span>
-              <div className="fp-stairs-line"/>
-            </div>
-            {/* Tables */}
+            {/* Stairs (Plan 1 only) */}
+            {!isP2 && (
+              <div className="fp-stairs">
+                <div className="fp-stairs-line"/>
+                <span className="fp-stairs-label">▼  STAIRS  ▼</span>
+                <div className="fp-stairs-line"/>
+              </div>
+            )}
+            {/* Tables / Zones */}
             {curTables.map(t => <TableEl key={t.id} tbl={t} />)}
           </div>
         </div>
-        {/* Table detail panel */}
-        {selectedTable && !editMode && <TableDetail />}
-        </>
-        )}
+        {/* Detail panel (Plan 1 only — P2 orders auto-complete) */}
+        {!isP2 && selectedTable && !editMode && <TableDetail />}
 
         {/* ── PENDING ITEMS SUMMARY ── */}
         {!editMode && (() => {
