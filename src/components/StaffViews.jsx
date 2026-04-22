@@ -573,7 +573,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [editSel,   setEditSel  ] = useState(null);
   const [flashTables, setFlashTables] = useState({}); // tableKey → flash timestamp
   const [fpToasts,    setFpToasts]    = useState([]); // { id, tableKey, label, x, y }
-  const seenOrderIds = useRef(new Set());
+  const seenOrderIds  = useRef(new Set());
+  const initializedOrders = useRef(false);
   const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
@@ -620,6 +621,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   // Detect new orders → flash table green + spawn floating toast
   useEffect(() => {
     if (!allOrders.length) return;
+    // First load: seed the set silently, no flash
+    if (!initializedOrders.current) {
+      allOrders.forEach(o => seenOrderIds.current.add(o.id));
+      initializedOrders.current = true;
+      return;
+    }
     const newEntries = []; // { key, label, tbl }
     allOrders.forEach(o => {
       if (!seenOrderIds.current.has(o.id)) {
