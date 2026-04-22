@@ -269,7 +269,7 @@ export default function App() {
           if (payload.eventType === "UPDATE" && payload.new?.status === "finished" && payload.old?.status !== "finished") {
             playMatchAlert();
             toast$(`⚽ ${r.home} ${r.home_score} – ${r.away_score} ${r.away} · Result is in!`);
-            sendNotif("Match Result!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
+            sendNotif("🚨 Match Result are here!", `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, `result-${r.id}`);
             // Push to ALL users (even those with app closed)
             if (isAdminRef.current) sendPush({ title: "Match Result", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
             try { navigator.vibrate?.([100, 50, 100]); } catch {}
@@ -329,7 +329,7 @@ export default function App() {
         if (newBal != null) setMyCredits(newBal);
         if (newBal != null && oldBal != null && newBal > oldBal) {
           toast$(`💰 +$${(newBal - oldBal).toFixed(2)} credits added to your account!`);
-          sendNotif("Credits Added!", `+$${(newBal - oldBal).toFixed(2)} credits added to your account`, "credits-topup");
+          sendNotif("🏛️ WALLET", `+$${(newBal - oldBal).toFixed(2)} credits added to your account`, "credits-topup");
           try { navigator.vibrate?.([100, 50, 100]); } catch {}
         }
       }).subscribe();
@@ -394,8 +394,8 @@ export default function App() {
         if (payload.eventType === "INSERT" && payload.new) {
           setGifts(g => g.find(x => x.id === payload.new.id) ? g : [payload.new, ...g]);
           // Alert: new gift received — keep it a surprise, no details revealed
-          toast$(`🎁 You got a gift — check it out`);
-          sendNotif("You got a gift", "Check it out", `gift-${payload.new.id}`);
+          toast$(`🎁 You received a gift! — check in account profile > Gifts`);
+          sendNotif("🎁 You received a gift! — check in account profile > Gifts", `gift-${payload.new.id}`);
           try { navigator.vibrate?.([60, 40, 60, 40, 120]); } catch {}
         } else if (payload.eventType === "UPDATE" && payload.new) {
           setGifts(g => g.map(x => x.id === payload.new.id ? payload.new : x));
@@ -621,10 +621,10 @@ export default function App() {
       const delay = reminderAt - now;
       if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
         notifTimersRef.current.push(setTimeout(() => {
-          sendNotif("Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the community pulse!`, `match-reminder-${m.id}`);
+          sendNotif("📢 Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — check the game stats!`, `match-reminder-${m.id}`);
           toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
           // Push to ALL users (even those with app closed)
-          if (isAdminRef.current) sendPush({ title: "Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict!`, tag: `reminder-${m.id}` });
+          if (isAdminRef.current) sendPush({ title: "⚠️ Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict!`, tag: `reminder-${m.id}` });
         }, delay));
       }
     });
@@ -1037,7 +1037,7 @@ export default function App() {
     setUsers(u => u[userId] ? { ...u, [userId]: { ...u[userId], credits: newBal } } : u);
     toast$(`$${amount} credits added to ${userName} ✓`);
     // Push notification to the player
-    sendPush({ title: "Credits Added", body: `$${amount.toFixed(2)} has been added to your balance`, tag: `topup-${userId}`, userIds: [userId] });
+    sendPush({ title: "🏛️ WALLET", body: `$${amount.toFixed(2)} has been added in your account`, tag: `topup-${userId}`, userIds: [userId] });
     // Print top-up receipt
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
@@ -3183,7 +3183,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
       const likerName = users[l.user_id]?.name || l.user_name || "Someone";
       const likedMoment = (ms||[]).find(m=>m.id===l.moment_id);
       const likedImg = likedMoment?.image_url && likedMoment.image_url !== "" ? likedMoment.image_url : null;
-      notifList.push({ id:`l_${l.moment_id}_${l.user_id}`, type:"like", name:likerName, text:"liked your post", momentId:l.moment_id, time:null, img:likedImg });
+      notifList.push({ id:`l_${l.moment_id}_${l.user_id}`, type:"like", name:likerName, text:"liked your post 🔥", momentId:l.moment_id, time:null, img:likedImg });
     });
     notifList.sort((a,b) => b.time > a.time ? 1 : -1);
     setNotifs(notifList);
@@ -3298,7 +3298,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           setMoments(ms => ms.map(m => m.id === r.id ? r : m));
           // Notify user when their post is approved
           if (r.approved && !p.old?.approved && r.posted_by === user.id) {
-            sendNotif("Post Approved!", "Your photo has been approved and is now live on the feed!", `approved-${r.id}`);
+            sendNotif("✅ Post Approved!", "Live now on the feed!", `approved-${r.id}`);
           }
         }
       })
@@ -3311,11 +3311,11 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
           setMoments(ms => {
             const m = ms.find(x => x.id === moment_id);
             if (m && m.posted_by === user.id && user_id !== user.id) {
-              sendNotif("New Like!", `${user_name || users[user_id]?.name || "Someone"} liked your post`, `like-${moment_id}-${user_id}`);
+              sendNotif("👍 New Like!", `${user_name || users[user_id]?.name || "Someone"} liked your post 🔥`, `like-${moment_id}-${user_id}`);
             }
             // Push to post author if it's someone else's like
             if (m && m.posted_by !== user_id && user_id === user.id) {
-              sendPush({ title: `${user.name} liked your post`, body: "Tap to see your post", tag: `like-${moment_id}`, userIds: [m.posted_by] });
+              sendPush({ title: `${user.name} liked your post `, body: "🔥🔥🔥🔥", tag: `like-${moment_id}`, userIds: [m.posted_by] });
             }
             return ms;
           });
@@ -3334,7 +3334,7 @@ function MomentsView({ user, isAdmin, users = {}, preds = {}, matches = [], pts 
         setMoments(ms => {
           const m = ms.find(x => x.id === c.moment_id);
           if (m && m.posted_by === user.id && c.user_id !== user.id) {
-            sendNotif("New Comment!", `${c.user_name || "Someone"}: ${(c.body||"").substring(0,60)}`, `comment-${c.id}`);
+            sendNotif("💬 New Comment!", `${c.user_name || "Someone"}: ${(c.body||"").substring(0,60)}`, `comment-${c.id}`);
           }
           // Push to post author if it's someone else's comment
           if (m && m.posted_by !== c.user_id && c.user_id === user.id) {
@@ -6468,8 +6468,8 @@ function AdminGifts({ users, sendPush = ()=>{} }) {
       // Push notification to recipient(s) — keep it a surprise, no details revealed
       try {
         await sendPush({
-          title: "You got a gift",
-          body: "Check it out",
+          title: "🎁 You received a gift!",
+          body: "Check in my profile > Gifts",
           tag: `gift-${Date.now()}`,
           userIds: recipients,
         });
