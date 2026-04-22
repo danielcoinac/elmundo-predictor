@@ -881,28 +881,13 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
         )}
 
-        {/* Revenue badge — bottom center (P1 only, if had orders today) */}
-        {!isZone && !editMode && todayRev > 0 && (
-          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:st.color,opacity:.8,letterSpacing:.5,lineHeight:1,marginTop:3,fontWeight:700}}>${todayRev.toFixed(0)}</span>
-        )}
-
         {/* Card pending count badge — top-right */}
         {!isZone && !editMode && pCount > 0 && (
           <div style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#fbbf24",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 8px rgba(251,191,36,.7)"}}>{pCount}</div>
         )}
 
-        {/* Group icon — top-left */}
-        {!isZone && !editMode && isGroup && (
-          <div style={{position:"absolute",top:-6,left:-6,width:16,height:16,borderRadius:"50%",background:"rgba(96,165,250,.3)",border:"1px solid rgba(96,165,250,.8)",fontSize:8,display:"flex",alignItems:"center",justifyContent:"center"}}>👥</div>
-        )}
-
-        {/* Note flag — bottom-right */}
-        {!isZone && !editMode && hasNote && (
-          <div style={{position:"absolute",bottom:-6,right:-6,width:15,height:15,borderRadius:"50%",background:"rgba(251,191,36,.2)",border:"1px solid rgba(251,191,36,.6)",fontSize:8,display:"flex",alignItems:"center",justifyContent:"center"}}>📝</div>
-        )}
-
         {/* Customer initial — bottom-left */}
-        {!isZone && !editMode && lastInitial && todayRev > 0 && (
+        {!isZone && !editMode && lastInitial && todayTblOrd.length > 0 && (
           <div style={{position:"absolute",bottom:-5,left:-5,width:16,height:16,borderRadius:"50%",background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.3)",fontFamily:"'Anton',sans-serif",fontSize:8,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{lastInitial}</div>
         )}
 
