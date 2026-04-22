@@ -8460,6 +8460,26 @@ function GroupOrderView({
     return () => clearInterval(iv);
   }, [activeGroup?.status, activeGroup?.updated_at]);
 
+  // Auto-retry placing order when all members show paid but order still hasn't been placed
+  const [retrying, setRetrying] = useState(false);
+  useEffect(() => {
+    if (activeGroup?.status !== "awaiting_payment") return;
+    if (!groupMembers.length) return;
+    const allPaid = groupMembers.every(m => m.payment_status === "paid" || m.payment_status === "assigned");
+    if (!allPaid) return;
+    // Everyone is paid locally — retry every 3s in case last payer's checkAndPlace failed
+    const iv = setInterval(async () => {
+      const placed = await checkAndPlaceGroupOrder(activeGroup.id);
+      if (placed) clearInterval(iv);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [activeGroup?.status, groupMembers]);
+
+  const manualRetryPlace = async () => {
+    setRetrying(true);
+    try { await checkAndPlaceGroupOrder(activeGroup.id); } finally { setRetrying(false); }
+  };
+
   // Load taken tables whenever the create screen is shown
   useEffect(() => {
     if (screen !== "create") return;
@@ -8946,8 +8966,12 @@ function GroupOrderView({
             <div className="go-pay-total-row"><span>TOTAL</span><span>${groupTotal.toFixed(2)}</span></div>
           </div>
           {alreadyPaid ? (
-            <div style={{textAlign:"center",padding:"20px 0",fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80"}}>
-              ✅ Payment confirmed — waiting for order to be placed…
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80",marginBottom:12}}>✅ Payment confirmed — waiting for order to be placed…</div>
+              <button onClick={manualRetryPlace} disabled={retrying}
+                style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1.5,padding:"10px 20px",background:"rgba(74,222,128,.15)",border:"1px solid rgba(74,222,128,.5)",color:"#4ade80",borderRadius:8,cursor:"pointer",opacity:retrying?.6:1}}>
+                {retrying ? "CHECKING…" : "🔄 PLACE ORDER NOW"}
+              </button>
             </div>
           ) : (
             <>
@@ -9091,8 +9115,14 @@ function GroupOrderView({
           )}
 
           {isPaid && (
-            <div style={{textAlign:"center",padding:"16px 0",fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80"}}>
-              ✅ Your payment is confirmed!
+            <div style={{textAlign:"center",padding:"16px 0"}}>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,color:"#4ade80",marginBottom:12}}>✅ Your payment is confirmed!</div>
+              {groupMembers.every(m => m.payment_status === "paid" || m.payment_status === "assigned") && (
+                <button onClick={manualRetryPlace} disabled={retrying}
+                  style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1.5,padding:"10px 20px",background:"rgba(74,222,128,.15)",border:"1px solid rgba(74,222,128,.5)",color:"#4ade80",borderRadius:8,cursor:"pointer",opacity:retrying?.6:1}}>
+                  {retrying ? "CHECKING…" : "🔄 ALL PAID — PLACE ORDER NOW"}
+                </button>
+              )}
             </div>
           )}
         </div>
