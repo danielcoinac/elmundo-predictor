@@ -573,7 +573,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [editSel,   setEditSel  ] = useState(null);
   const [flashTables, setFlashTables] = useState({}); // tableKey → flash timestamp
   const [fpToasts,    setFpToasts]    = useState([]); // { id, tableKey, label, x, y }
-  const seenOrderIds  = useRef(new Set());
+  const seenOrderIds   = useRef(new Set());
+  const flashTimersRef = useRef({});
   const [barPos,    setBarPos   ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [savedBar,  setSavedBar ] = useState(() => loadSaved(FP_BAR_KEY, FP_BAR_DEF));
   const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
@@ -648,13 +649,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     });
     if (newEntries.length === 0) return;
     const ts = Date.now();
-    // Flash
+    // Flash + toasts — timers stored in ref so effect cleanup never cancels them
     setFlashTables(prev => {
       const next = { ...prev };
       newEntries.forEach(({ key }) => { next[key] = ts; });
       return next;
     });
-    // Toasts
     const toastItems = newEntries.map(({ key, label, tbl }) => ({
       id: `${key}-${ts}`,
       label,
@@ -662,15 +662,14 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       y: tbl ? tbl.y - 10 : 80,
     }));
     setFpToasts(prev => [...prev, ...toastItems]);
-    const timer = setTimeout(() => {
-      setFlashTables(prev => {
-        const next = { ...prev };
-        newEntries.forEach(({ key }) => { if (next[key] === ts) delete next[key]; });
-        return next;
-      });
-      setFpToasts(prev => prev.filter(t => !toastItems.find(ti => ti.id === t.id)));
-    }, 3000);
-    return () => clearTimeout(timer);
+    newEntries.forEach(({ key }) => {
+      if (flashTimersRef.current[key]) clearTimeout(flashTimersRef.current[key]);
+      flashTimersRef.current[key] = setTimeout(() => {
+        setFlashTables(prev => { const n = { ...prev }; if (n[key] === ts) delete n[key]; return n; });
+        setFpToasts(prev => prev.filter(t => t.id !== `${key}-${ts}`));
+        delete flashTimersRef.current[key];
+      }, 3000);
+    });
   }, [allOrders]);
 
   // Financial summary — today only
