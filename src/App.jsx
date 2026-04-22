@@ -1129,6 +1129,53 @@ export default function App() {
   const sendCut = () => { new Image().src = 'http://localhost:9200/cut?' + Date.now(); };
   const CUT_DELAY = 1500;
 
+  // ── Outdoor zone receipt — auto-prints immediately when outdoor order placed ─
+  const printOutdoorReceipt = (ord, zone) => {
+    const win = window.open("", "_blank", "width=360,height=500");
+    if (!win) return;
+    const now = new Date(ord.created_at || new Date());
+    const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const itemRows = (ord.items || []).map(it =>
+      `<div class="row"><span class="qty">${it.qty}×</span><span class="name">${it.name.toUpperCase()}</span><span class="price">$${(it.price*it.qty).toFixed(2)}</span></div>`
+    ).join("");
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
+<style>
+@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Arial Black',Arial,sans-serif;background:#fff;color:#000}
+.zone-block{width:100%;padding:22mm 0 18mm;background:${zone.color};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.zone-circle{width:40mm;height:40mm;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;margin-bottom:4mm}
+.zone-name{font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.zone-label{font-size:12px;font-weight:900;letter-spacing:4px;color:rgba(255,255,255,.8)}
+.brand{text-align:center;padding:10px 0 6px;border-bottom:3px solid #000}
+.brand-name{font-size:22px;font-weight:900;letter-spacing:5px}
+.brand-sub{font-size:10px;font-weight:900;letter-spacing:3px;margin-top:3px;opacity:.6}
+.items{padding:8px 10px}
+.row{display:flex;align-items:baseline;padding:6px 0;border-bottom:1px dashed #ccc;gap:4px}
+.qty{font-size:16px;font-weight:900;min-width:24px;opacity:.5}
+.name{font-size:15px;font-weight:800;flex:1}
+.price{font-size:14px;font-weight:900;white-space:nowrap}
+.total{display:flex;justify-content:space-between;padding:10px 10px 6px;border-top:3px solid #000;margin-top:4px}
+.total-lbl{font-size:20px;font-weight:900}
+.total-amt{font-size:20px;font-weight:900}
+.footer{text-align:center;padding:8px 0 10px;font-size:10px;font-weight:700;opacity:.5}
+.time{text-align:center;font-size:11px;font-weight:700;padding:4px 0;border-top:1px dashed #ccc;opacity:.6}
+<\/style></head><body>
+<div class="zone-block">
+  <div class="zone-circle"><span style="font-size:32px">🌴</span></div>
+  <div class="zone-name">${zone.name}</div>
+  <div class="zone-label">OUTDOOR ZONE</div>
+</div>
+<div class="brand"><div class="brand-name">EL MUNDO</div><div class="brand-sub">OUTDOOR BAR · BONAIRE</div></div>
+<div class="items">${itemRows}</div>
+<div class="total"><span class="total-lbl">TOTAL</span><span class="total-amt">$${(+ord.total).toFixed(2)}</span></div>
+<div class="time">${timeStr}</div>
+<div class="footer">www.elmundobonaire.com</div>
+<div style="height:20mm"></div>
+<script>window.onafterprint=()=>window.close();<\/script>
+</body></html>`);
+    win.document.close(); win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
+
   // ── Order receipt printer ─────────────────────────────────────────────────
   const printOrderReceipt = (ord, customerName) => {
     const win = window.open("", "_blank", "width=360,height=600");
@@ -2239,7 +2286,27 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   };
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-  const switchTab = (id) => { setAnimKey(id); setAppTab(id); if (id === "floorplan" && setNewOrderAlert) setNewOrderAlert(false); };
+  const OUTDOOR_ZONES = [
+    { id:1, name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
+    { id:2, name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
+    { id:3, name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
+    { id:4, name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
+    { id:5, name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
+    { id:6, name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
+    { id:7, name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
+    { id:8, name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
+    { id:9, name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
+  ];
+  const [isOutside,          setIsOutside]          = useState(null); // null | true | false
+  const [outdoorZone,        setOutdoorZone]        = useState(null); // zone object | null
+  const [showLocationModal,  setShowLocationModal]  = useState(false);
+  const [showZonePicker,     setShowZonePicker]     = useState(false);
+
+  const switchTab = (id) => {
+    setAnimKey(id); setAppTab(id);
+    if (id === "floorplan" && setNewOrderAlert) setNewOrderAlert(false);
+    if (id === "menu" && isOutside === null) setShowLocationModal(true);
+  };
 
   const tabs = [
     ...(!appSettings.noEventMode && appSettings.showMatches  !== false ? [{ id:"matches",     label:t('matches'),     ico:<SoccerIco /> }] : []),
@@ -2315,6 +2382,11 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             gifts={gifts.filter(g => (g.type === "drink_food" || g.type === "item") && !g.redeemed)}
             pendingGiftItems={pendingGiftItems}
             onClearPendingGifts={() => setPendingGiftItems([])}
+            isOutside={isOutside} outdoorZone={outdoorZone}
+            onChangeLocation={()=>{ setShowLocationModal(true); }}
+            onChangeZone={()=>{ setShowZonePicker(true); }}
+            outdoorZones={OUTDOOR_ZONES}
+            printOutdoorReceipt={printOutdoorReceipt}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
           {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} /></ErrorBoundary>}
@@ -2405,6 +2477,50 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               {!isIOS && <button className="install-banner-btn" onClick={handleInstall}>Install</button>}
               <button className="install-banner-close" onClick={dismissInstall}>✕</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOCATION MODAL ─────────────────────────────────────────────────── */}
+      {showLocationModal && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#111",border:"1px solid rgba(255,255,255,.1)",borderRadius:20,padding:28,width:"100%",maxWidth:360,textAlign:"center"}}>
+            <div style={{fontSize:36,marginBottom:12}}>📍</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:3,color:"#fff",marginBottom:8}}>WHERE ARE YOU?</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",marginBottom:28}}>Choose your location to order</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <button onClick={()=>{ setIsOutside(false); setOutdoorZone(null); setShowLocationModal(false); }}
+                style={{padding:"18px",background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.15)",borderRadius:12,fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:2,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                🏠 <span>INSIDE</span>
+              </button>
+              <button onClick={()=>{ setIsOutside(true); setShowLocationModal(false); setShowZonePicker(true); }}
+                style={{padding:"18px",background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:12,fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:2,color:"#4ade80",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                🌴 <span>OUTSIDE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ZONE PICKER MODAL ───────────────────────────────────────────────── */}
+      {showZonePicker && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,overflowY:"auto"}}>
+          <div style={{background:"#111",border:"1px solid rgba(255,255,255,.1)",borderRadius:20,padding:24,width:"100%",maxWidth:400}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"#fff",marginBottom:6,textAlign:"center"}}>🌴 WHICH ZONE?</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:20,textAlign:"center"}}>Pick the color of your zone area</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+              {OUTDOOR_ZONES.map(z => (
+                <button key={z.id} onClick={()=>{ setOutdoorZone(z); setShowZonePicker(false); }}
+                  style={{padding:"18px 8px",background:z.bg,border:`2px solid ${z.color}`,borderRadius:12,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,transition:"transform .15s",fontFamily:"'Anton',sans-serif"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:z.color,boxShadow:`0 0 12px ${z.color}`}}/>
+                  <span style={{fontSize:11,letterSpacing:2,color:z.color}}>{z.name}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>{ setShowZonePicker(false); setIsOutside(false); setShowLocationModal(false); }}
+              style={{width:"100%",padding:"12px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",cursor:"pointer"}}>
+              ← Go inside instead
+            </button>
           </div>
         </div>
       )}
@@ -8933,7 +9049,9 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   payGroupShareCredits, hostPayAllCredits,
   calcMyGroupShare,
   resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "",
-  gifts = [], pendingGiftItems = [], onClearPendingGifts = () => {} }) {
+  gifts = [], pendingGiftItems = [], onClearPendingGifts = () => {},
+  isOutside = false, outdoorZone = null, onChangeLocation = ()=>{}, onChangeZone = ()=>{},
+  outdoorZones = [], printOutdoorReceipt = ()=>{} }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [cartNotes,   setCartNotes]   = useState({}); // { [itemId]: noteString }
@@ -9055,13 +9173,15 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   }, [tab, activeSection, allActiveCats.length]);
 
   const openOrderModal = (payMethod) => {
-    if (!table.trim()) {
+    if (!isOutside && !table.trim()) {
       setTableErr("Please select your table");
       onToast?.("⚠ Please scan a table QR code first", false);
       tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" });
       return;
     }
+    if (isOutside && !outdoorZone) { onChangeZone(); return; }
     setPendingPayMethod(payMethod);
+    if (isOutside) { if (payMethod === "credits") handleOrder(); else handleStripeOrder(); return; }
     setShowOrderTypeModal(true);
   };
 
@@ -9074,6 +9194,35 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
   const tableRef = useRef(null);
   const handleOrder = async () => {
+    // Outdoor: use zone as table, skip table validation
+    if (isOutside) {
+      if (!outdoorZone) { onChangeZone(); return; }
+      if (placingRef.current) return;
+      placingRef.current = true;
+      setPlacing(true);
+      try {
+        const allItems = [
+          ...cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+          ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
+        ];
+        const total = +cartTotal.toFixed(2);
+        const ok = await onPlaceOrder({
+          tableNumber: `OUT-${outdoorZone.name}`,
+          items: allItems,
+          total,
+          paymentMethod: total === 0 ? "sponsor_gift" : "credits",
+        });
+        if (ok) {
+          if (giftCartItems.length > 0) {
+            try { await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id }).in("id", giftCartItems.map(g => g.giftId)); } catch(e) {}
+          }
+          // Auto-print outdoor receipt immediately
+          printOutdoorReceipt({ items: allItems, total, created_at: new Date().toISOString() }, outdoorZone);
+          clearCart(); setGiftCart([]); setTab("orders");
+        }
+      } finally { placingRef.current = false; setPlacing(false); }
+      return;
+    }
     if (!table.trim()) { setTableErr("Please select your table"); onToast?.("⚠ Please select your table first"); tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
     const tableNum = parseInt(table.trim());
     if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
@@ -9110,6 +9259,37 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
   const handleStripeOrder = async () => {
     if (+cartTotal.toFixed(2) === 0) { handleOrder(); return; }
+    if (isOutside) {
+      if (!outdoorZone) { onChangeZone(); return; }
+      if (placingRef.current) return;
+      placingRef.current = true;
+      setPlacing(true);
+      let newOrder = null;
+      try {
+        const allItems = [
+          ...cartItems.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, category:i.category||"", ...(cartNotes[i.id]?{note:cartNotes[i.id]}:{}) })),
+          ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
+        ];
+        const { data: ord, error } = await supabase.from("orders").insert({
+          user_id: user.id, user_name: user.name,
+          table_number: `OUT-${outdoorZone.name}`,
+          items: allItems, total: +cartTotal.toFixed(2),
+          payment_method: "card_pending", status: "pending",
+        }).select().single();
+        if (error || !ord) { onToast("Error creating order", false); return; }
+        newOrder = ord;
+        if (giftCartItems.length > 0) {
+          try { await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id })
+            .in("id", giftCartItems.map(g => g.giftId)); } catch(e) {}
+        }
+      } catch(e) { onToast("Error creating order", false); return; }
+      finally { placingRef.current = false; setPlacing(false); }
+      clearCart(); setGiftCart([]);
+      stripeCheckout({ type:"order", orderId:newOrder.id, userId:user.id, userEmail:user.email,
+        items:cartItems.map(i=>({name:i.name,qty:i.qty,price:i.price})), total:+cartTotal.toFixed(2) });
+      setCartNotes({}); setNoteOpen({});
+      return;
+    }
     if (!table.trim()) { setTableErr("Please select your table"); onToast?.("⚠ Please select your table first"); tableRef.current?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
     const tableNum = parseInt(table.trim());
     if (isNaN(tableNum) || !VALID_TABLES.includes(tableNum)) {
@@ -9212,6 +9392,21 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
               </button>
             ))}
           </div>
+
+          {/* ── Outdoor zone banner ── */}
+          {isOutside && (
+            <div style={{padding:"11px 18px",background: outdoorZone ? outdoorZone.bg : "rgba(255,255,255,.04)",borderTop:`1px solid ${outdoorZone ? outdoorZone.color+"44" : "rgba(255,255,255,.08)"}`,borderBottom:`1px solid ${outdoorZone ? outdoorZone.color+"44" : "rgba(255,255,255,.08)"}`,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
+              onClick={onChangeZone}>
+              <div style={{width:14,height:14,borderRadius:"50%",background: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.2)",boxShadow: outdoorZone ? `0 0 10px ${outdoorZone.color}88` : "none",flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.6)",textTransform:"uppercase"}}>
+                  {outdoorZone ? `🌴 OUTDOOR · ${outdoorZone.name} ZONE` : "🌴 OUTDOOR — TAP TO SELECT ZONE"}
+                </div>
+                {outdoorZone && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",marginTop:1}}>Tap to change zone</div>}
+              </div>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.3)"}}>CHANGE ›</span>
+            </div>
+          )}
 
           {/* ── Group order banner (only when the group is still assembling/paying) ── */}
           {activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled" && (
@@ -9405,6 +9600,34 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
               </div>
               <div style={{padding:"0 16px"}}>
                 {showQRScan && <QRTableScanner onScan={t=>{setTable(t);setTableErr("");}} onClose={()=>setShowQRScan(false)} />}
+                {isOutside ? (
+                  <div className="afield" style={{marginBottom:14}}>
+                    <label className="afield-lbl">🌴 OUTDOOR ZONE</label>
+                    {outdoorZone ? (
+                      <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",
+                        background: outdoorZone.bg, border:`1px solid ${outdoorZone.color}55`, borderRadius:10, cursor:"pointer"}}
+                        onClick={onChangeZone}>
+                        <div style={{width:16,height:16,borderRadius:"50%",background:outdoorZone.color,boxShadow:`0 0 12px ${outdoorZone.color}88`,flexShrink:0}}/>
+                        <div style={{flex:1}}>
+                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:outdoorZone.color,letterSpacing:2}}>{outdoorZone.name} ZONE</div>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Tap to change zone</div>
+                        </div>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",letterSpacing:1}}>CHANGE ›</span>
+                      </div>
+                    ) : (
+                      <button onClick={onChangeZone}
+                        style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,.04)",
+                          border:"1px dashed rgba(255,255,255,.2)",borderRadius:10,cursor:"pointer",
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                        <span style={{fontSize:22}}>🌴</span>
+                        <div style={{textAlign:"left"}}>
+                          <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"rgba(255,255,255,.7)"}}>SELECT YOUR ZONE</div>
+                          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:1}}>Choose your outdoor seating area</div>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                ) : (
                 <div className="afield" ref={tableRef} style={{marginBottom:14}}>
                   <label className="afield-lbl">{t('selectTable')}</label>
                   {table ? (
@@ -9438,6 +9661,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                   )}
                   {tableErr && <div style={{color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:12,marginTop:8}}>{tableErr}</div>}
                 </div>
+                )}
                 <div className="afield" style={{marginBottom:20}}>
                   <label className="afield-lbl">{t('payment')}</label>
                   <div className="cart-pay-options">

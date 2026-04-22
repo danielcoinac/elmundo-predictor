@@ -529,7 +529,19 @@ const FP_DEFAULT = [
   { id:26, x:366, y:582, w:72, h:72, shape:"round" },
 ];
 
-// Plan #2 — Outdoor bar area (tables 101–115)
+// Plan #2 — Outdoor zones (color-based)
+const OUTDOOR_ZONES = [
+  { id:1, name:"RED",    color:"#ef4444", bg:"rgba(239,68,68,.15)"   },
+  { id:2, name:"ORANGE", color:"#f97316", bg:"rgba(249,115,22,.15)"  },
+  { id:3, name:"YELLOW", color:"#eab308", bg:"rgba(234,179,8,.15)"   },
+  { id:4, name:"GREEN",  color:"#22c55e", bg:"rgba(34,197,94,.15)"   },
+  { id:5, name:"TEAL",   color:"#14b8a6", bg:"rgba(20,184,166,.15)"  },
+  { id:6, name:"BLUE",   color:"#3b82f6", bg:"rgba(59,130,246,.15)"  },
+  { id:7, name:"PURPLE", color:"#a855f7", bg:"rgba(168,85,247,.15)"  },
+  { id:8, name:"PINK",   color:"#ec4899", bg:"rgba(236,72,153,.15)"  },
+  { id:9, name:"WHITE",  color:"#f1f5f9", bg:"rgba(241,245,249,.08)" },
+];
+
 const FP_DEFAULT_P2 = [
   { id:101, x:80,  y:100, w:80, h:64, shape:"rect"  },
   { id:102, x:200, y:100, w:80, h:64, shape:"rect"  },
@@ -600,8 +612,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
   // Get active (non-completed) orders grouped by table
   const allActiveOrders = allOrders.filter(o => o.status !== "completed" && o.status !== "delivered");
-  // Filter orders by plan: plan 1 = tables 1-99, plan 2 = tables 100+
-  const activeOrders = allActiveOrders.filter(o => isP2 ? +o.table_number >= 100 : +o.table_number < 100);
+  // Filter orders by plan: plan 1 = numeric tables, plan 2 = OUT-ZONE strings
+  const activeOrders = allActiveOrders.filter(o => isP2 ? String(o.table_number).startsWith("OUT-") : !String(o.table_number).startsWith("OUT-"));
   const byTable = activeOrders.reduce((acc, o) => {
     const t = String(o.table_number);
     if (!acc[t]) acc[t] = [];
@@ -866,7 +878,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           {/* Header */}
           <div className="fp-detail-header">
             <div>
-              <div className="fp-detail-title">TABLE {selectedTable}</div>
+              <div className="fp-detail-title">{String(selectedTable).startsWith("OUT-") ? `🌴 ${String(selectedTable).replace("OUT-","")} ZONE` : `TABLE ${selectedTable}`}</div>
               <div className="fp-detail-sub">{orders.length} order{orders.length!==1?"s":""}</div>
             </div>
             <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} className="fp-detail-close">✕</button>
@@ -1035,18 +1047,44 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
         )}
-        {/* Plan 2 — ordering coming soon banner */}
-        {isP2 && (
-          <div style={{margin:"0 0 12px",padding:"12px 16px",background:"rgba(251,191,36,.08)",border:"1px solid rgba(251,191,36,.25)",borderRadius:8,display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:18}}>🌴</span>
-            <div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,color:"#fbbf24"}}>OUTDOOR BAR — ORDERING COMING SOON</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>Floor plan is editable. Live order routing will be enabled once the outdoor bar is set up.</div>
+        {/* Plan 2 — zone grid */}
+        {isP2 ? (
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"0 4px 12px"}}>
+              {OUTDOOR_ZONES.map(z => {
+                const key = `OUT-${z.name}`;
+                const zOrders = byTable[key] || [];
+                const hasPending = zOrders.some(o => o.status === "pending");
+                const hasReady   = zOrders.some(o => o.status === "ready");
+                return (
+                  <div key={z.id}
+                    onClick={() => setSelectedTable(key)}
+                    style={{cursor:"pointer",borderRadius:12,padding:"16px 10px",textAlign:"center",
+                      background: zOrders.length > 0 ? z.bg : "rgba(255,255,255,.03)",
+                      border: `1.5px solid ${zOrders.length > 0 ? z.color+"88" : "rgba(255,255,255,.08)"}`,
+                      boxShadow: zOrders.length > 0 ? `0 0 18px ${z.color}22` : "none",
+                      transition:"all .2s",position:"relative"}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:z.color,margin:"0 auto 8px",
+                      boxShadow: zOrders.length > 0 ? `0 0 16px ${z.color}99` : "none",
+                      opacity: zOrders.length > 0 ? 1 : 0.35}}/>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,
+                      color: zOrders.length > 0 ? z.color : "rgba(255,255,255,.3)"}}>{z.name}</div>
+                    {zOrders.length > 0 && (
+                      <div style={{marginTop:6,fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.5)"}}>
+                        {zOrders.length} order{zOrders.length!==1?"s":""}
+                      </div>
+                    )}
+                    {hasPending && <div style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:"50%",background:"#fbbf24",boxShadow:"0 0 6px #fbbf24"}}/>}
+                    {hasReady && !hasPending && <div style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:"50%",background:"#fff",boxShadow:"0 0 6px #fff"}}/>}
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        )}
-
-        {/* Canvas */}
+            {selectedTable && !editMode && <TableDetail />}
+          </>
+        ) : (
+        <>
+        {/* Canvas (Plan 1 only) */}
         <div className="fp-canvas-scroll">
           <div
             ref={canvasRef}
@@ -1075,7 +1113,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
               onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
               onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
             >
-              <span className="fp-bar-label">{isP2 ? "OUTDOOR BAR" : "BAR"}</span>
+              <span className="fp-bar-label">BAR</span>
               {editMode && (
                 <div
                   onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = curBar.w; const startH = curBar.h;
@@ -1086,34 +1124,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                 />
               )}
             </div>
-            {/* Stairs — only on plan 1 */}
-            {!isP2 && (
-              <div className="fp-stairs">
-                <div className="fp-stairs-line"/>
-                <span className="fp-stairs-label">▼  STAIRS  ▼</span>
-                <div className="fp-stairs-line"/>
-              </div>
-            )}
-            {/* Plan 2 landmarks */}
-            {isP2 && (
-              <>
-                <div style={{position:"absolute",left:540,top:240,width:120,height:80,background:"rgba(34,197,94,.06)",border:"1px dashed rgba(34,197,94,.3)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:4,pointerEvents:"none"}}>
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(34,197,94,.5)"}}>TRIBUNE</span>
-                </div>
-                <div style={{position:"absolute",left:540,top:350,width:80,height:60,background:"rgba(251,191,36,.06)",border:"1px dashed rgba(251,191,36,.3)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(251,191,36,.5)"}}>DJ</span>
-                </div>
-                <div style={{position:"absolute",left:10,top:540,width:100,height:60,background:"rgba(239,68,68,.06)",border:"1px dashed rgba(239,68,68,.35)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,color:"rgba(239,68,68,.5)"}}>NOOD EXIT</span>
-                </div>
-              </>
-            )}
+            {/* Stairs */}
+            <div className="fp-stairs">
+              <div className="fp-stairs-line"/>
+              <span className="fp-stairs-label">▼  STAIRS  ▼</span>
+              <div className="fp-stairs-line"/>
+            </div>
             {/* Tables */}
             {curTables.map(t => <TableEl key={t.id} tbl={t} />)}
           </div>
         </div>
         {/* Table detail panel */}
         {selectedTable && !editMode && <TableDetail />}
+        </>
+        )}
 
         {/* ── PENDING ITEMS SUMMARY ── */}
         {!editMode && (() => {
