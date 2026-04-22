@@ -9418,7 +9418,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                 </button>
               ))}
             </div>
-            {isOutside && (
+            {isOutside ? (
               <button onClick={onChangeZone}
                 style={{flexShrink:0,display:"flex",alignItems:"center",gap:7,padding:"0 14px",
                   borderRadius:12,border:`1.5px solid ${outdoorZone ? outdoorZone.color+"77" : "rgba(255,255,255,.15)"}`,
@@ -9431,6 +9431,15 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                   color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.5)",whiteSpace:"nowrap"}}>
                   {outdoorZone ? outdoorZone.name : "ZONE?"}
                 </span>
+              </button>
+            ) : (
+              <button onClick={onChangeLocation}
+                style={{flexShrink:0,display:"flex",alignItems:"center",gap:7,padding:"0 14px",
+                  borderRadius:12,border:"1.5px solid rgba(255,255,255,.15)",
+                  background:"rgba(255,255,255,.05)",cursor:"pointer",minWidth:0}}>
+                <span style={{fontSize:12}}>🏠</span>
+                <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1.5,
+                  color:"rgba(255,255,255,.5)",whiteSpace:"nowrap"}}>INSIDE</span>
               </button>
             )}
           </div>
