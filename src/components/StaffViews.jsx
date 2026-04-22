@@ -1047,40 +1047,19 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
             <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
           </div>
         )}
-        {/* Plan 2 — zone grid */}
+        {/* Plan 2 — zone grid (visual reference only — orders auto-complete on receipt) */}
         {isP2 ? (
           <>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"0 4px 12px"}}>
-              {OUTDOOR_ZONES.map(z => {
-                const key = `OUT-${z.name}`;
-                const zOrders = byTable[key] || [];
-                const hasPending = zOrders.some(o => o.status === "pending");
-                const hasReady   = zOrders.some(o => o.status === "ready");
-                return (
+              {OUTDOOR_ZONES.map(z => (
                   <div key={z.id}
-                    onClick={() => setSelectedTable(key)}
-                    style={{cursor:"pointer",borderRadius:12,padding:"16px 10px",textAlign:"center",
-                      background: zOrders.length > 0 ? z.bg : "rgba(255,255,255,.03)",
-                      border: `1.5px solid ${zOrders.length > 0 ? z.color+"88" : "rgba(255,255,255,.08)"}`,
-                      boxShadow: zOrders.length > 0 ? `0 0 18px ${z.color}22` : "none",
-                      transition:"all .2s",position:"relative"}}>
-                    <div style={{width:28,height:28,borderRadius:"50%",background:z.color,margin:"0 auto 8px",
-                      boxShadow: zOrders.length > 0 ? `0 0 16px ${z.color}99` : "none",
-                      opacity: zOrders.length > 0 ? 1 : 0.35}}/>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:2,
-                      color: zOrders.length > 0 ? z.color : "rgba(255,255,255,.3)"}}>{z.name}</div>
-                    {zOrders.length > 0 && (
-                      <div style={{marginTop:6,fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.5)"}}>
-                        {zOrders.length} order{zOrders.length!==1?"s":""}
-                      </div>
-                    )}
-                    {hasPending && <div style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:"50%",background:"#fbbf24",boxShadow:"0 0 6px #fbbf24"}}/>}
-                    {hasReady && !hasPending && <div style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:"50%",background:"#fff",boxShadow:"0 0 6px #fff"}}/>}
+                    style={{borderRadius:12,padding:"20px 10px",textAlign:"center",
+                      background: z.bg, border:`1.5px solid ${z.color}55`}}>
+                    <div style={{width:32,height:32,borderRadius:"50%",background:z.color,margin:"0 auto 10px"}}/>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:z.color}}>{z.name}</div>
                   </div>
-                );
-              })}
+              ))}
             </div>
-            {selectedTable && !editMode && <TableDetail />}
           </>
         ) : (
         <>

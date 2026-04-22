@@ -2250,13 +2250,12 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Outdoor Order</title>
 <style>
 @page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:80mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Arial Black',Arial,sans-serif;background:#fff;color:#000}
-.zone-block{width:100%;padding:22mm 0 18mm;background:${zone.color};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
-.zone-circle{width:40mm;height:40mm;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;margin-bottom:4mm}
-.zone-name{font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
-.zone-label{font-size:12px;font-weight:900;letter-spacing:4px;color:rgba(255,255,255,.8)}
-.brand{text-align:center;padding:10px 0 6px;border-bottom:3px solid #000}
-.brand-name{font-size:22px;font-weight:900;letter-spacing:5px}
-.brand-sub{font-size:10px;font-weight:900;letter-spacing:3px;margin-top:3px;opacity:.6}
+.zone-hdr{text-align:center;padding:14px 0 10px;border-bottom:3px solid #000;margin-bottom:6px}
+.zone-name{font-size:36px;font-weight:900;letter-spacing:8px;color:#000;line-height:1}
+.zone-label{font-size:10px;font-weight:900;letter-spacing:4px;color:#555;margin-top:4px}
+.brand{text-align:center;padding:8px 0 6px;border-bottom:2px solid #000}
+.brand-name{font-size:20px;font-weight:900;letter-spacing:5px}
+.brand-sub{font-size:9px;font-weight:900;letter-spacing:3px;margin-top:3px;opacity:.55}
 .items{padding:8px 10px}
 .row{display:flex;align-items:baseline;padding:6px 0;border-bottom:1px dashed #ccc;gap:4px}
 .qty{font-size:16px;font-weight:900;min-width:24px;opacity:.5}
@@ -2268,8 +2267,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 .footer{text-align:center;padding:8px 0 10px;font-size:10px;font-weight:700;opacity:.5}
 .time{text-align:center;font-size:11px;font-weight:700;padding:4px 0;border-top:1px dashed #ccc;opacity:.6}
 <\/style></head><body>
-<div class="zone-block">
-  <div class="zone-circle"><span style="font-size:32px">🌴</span></div>
+<div class="zone-hdr">
   <div class="zone-name">${zone.name}</div>
   <div class="zone-label">OUTDOOR ZONE</div>
 </div>
@@ -9205,20 +9203,36 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
           ...giftCartItems.map(i => ({ id:i.id, name:i.name, price:0, qty:1, category:"gift", note:"🎁 Gift redemption" })),
         ];
         const total = +cartTotal.toFixed(2);
-        const ok = await onPlaceOrder({
-          tableNumber: `OUT-${outdoorZone.name}`,
-          items: allItems,
-          total,
-          paymentMethod: total === 0 ? "sponsor_gift" : "credits",
-        });
-        if (ok) {
-          if (giftCartItems.length > 0) {
-            try { await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id }).in("id", giftCartItems.map(g => g.giftId)); } catch(e) {}
+        const paymentMethod = total === 0 ? "sponsor_gift" : "credits";
+        // Deduct credits first if needed
+        if (paymentMethod === "credits") {
+          const { data: newBal, error: deductErr } = await supabase.rpc("deduct_credits", { p_user_id: user.id, p_amount: total });
+          if (deductErr) {
+            onToast?.(deductErr.message?.includes("insufficient_balance") ? "Not enough credits" : "Payment error", false);
+            return;
           }
-          // Auto-print outdoor receipt immediately
-          printOutdoorReceipt({ items: allItems, total, created_at: new Date().toISOString() }, outdoorZone);
-          clearCart(); setGiftCart([]); setTab("orders");
+          setMyCredits(newBal);
         }
+        // Insert as completed immediately — no staff confirmation needed for outdoor
+        const { error } = await supabase.from("orders").insert({
+          user_id: user.id, user_name: user.name,
+          table_number: `OUT-${outdoorZone.name}`,
+          items: allItems, total, payment_method: paymentMethod, status: "completed",
+        });
+        if (error) {
+          if (paymentMethod === "credits") {
+            const { data: refundBal } = await supabase.rpc("add_credits", { p_user_id: user.id, p_amount: total });
+            if (refundBal != null) setMyCredits(refundBal);
+          }
+          onToast?.("Error placing order", false); return;
+        }
+        if (giftCartItems.length > 0) {
+          try { await supabase.from("gifts").update({ redeemed:true, redeemed_at:new Date().toISOString(), redeemed_by:user.id }).in("id", giftCartItems.map(g => g.giftId)); } catch(e) {}
+        }
+        printOutdoorReceipt({ items: allItems, total, created_at: new Date().toISOString() }, outdoorZone);
+        onToast?.("Order sent! 🍺");
+        try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
+        clearCart(); setGiftCart([]); setTab("orders");
       } finally { placingRef.current = false; setPlacing(false); }
       return;
     }
@@ -9362,7 +9376,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       <div className="admin-subtabs">
         {[
           {id:"menu",   label:`🍽 ${t('menuTab')}`},
-          {id:"group",  label:`👥 ${t('groupTab')}${(activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled")?" ·":""}`},
+          ...(!isOutside ? [{id:"group", label:`👥 ${t('groupTab')}${(activeGroup && activeGroup.status !== "placed" && activeGroup.status !== "cancelled")?" ·":""}`}] : []),
           {id:"cart",   label:`🛒 ${t('cartTab')}${cartCount>0?` · ${cartCount}`:""}`},
           {id:"orders", label:`📦 ${t('ordersTab')}`},
           {id:"wallet", label:`💳 ${t('walletTab')}`},
@@ -9394,16 +9408,23 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* ── Outdoor zone banner ── */}
           {isOutside && (
-            <div style={{padding:"11px 18px",background: outdoorZone ? outdoorZone.bg : "rgba(255,255,255,.04)",borderTop:`1px solid ${outdoorZone ? outdoorZone.color+"44" : "rgba(255,255,255,.08)"}`,borderBottom:`1px solid ${outdoorZone ? outdoorZone.color+"44" : "rgba(255,255,255,.08)"}`,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
-              onClick={onChangeZone}>
-              <div style={{width:14,height:14,borderRadius:"50%",background: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.2)",boxShadow: outdoorZone ? `0 0 10px ${outdoorZone.color}88` : "none",flexShrink:0}}/>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.6)",textTransform:"uppercase"}}>
-                  {outdoorZone ? `🌴 OUTDOOR · ${outdoorZone.name} ZONE` : "🌴 OUTDOOR — TAP TO SELECT ZONE"}
+            <div onClick={onChangeZone} style={{cursor:"pointer",margin:"0",padding:"14px 18px",
+              background: outdoorZone ? outdoorZone.bg : "rgba(255,255,255,.04)",
+              borderBottom:`2px solid ${outdoorZone ? outdoorZone.color+"55" : "rgba(255,255,255,.08)"}`,
+              display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:18,height:18,borderRadius:"50%",flexShrink:0,
+                background: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.15)",
+                boxShadow: outdoorZone ? `0 0 12px ${outdoorZone.color}` : "none"}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2.5,
+                  color: outdoorZone ? outdoorZone.color : "rgba(255,255,255,.55)"}}>
+                  {outdoorZone ? `${outdoorZone.name} ZONE` : "SELECT YOUR ZONE"}
                 </div>
-                {outdoorZone && <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",marginTop:1}}>Tap to change zone</div>}
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",marginTop:1}}>
+                  🌴 Outdoor · tap to change
+                </div>
               </div>
-              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.3)"}}>CHANGE ›</span>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.25)",flexShrink:0}}>CHANGE ›</span>
             </div>
           )}
 
