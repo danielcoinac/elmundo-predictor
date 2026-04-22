@@ -1129,11 +1129,7 @@ export default function App() {
   const EPOS_CUT_SCRIPT = `
 <script>
 window.onafterprint=()=>{
-  fetch('http://192.168.1.82:8008/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000',{
-    method:'POST',
-    headers:{'Content-Type':'text/xml; charset=utf-8','SOAPAction':'""'},
-    body:'<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"><feed unit="mm" amount="15"/><cut type="feed"/></epos-print></s:Body></s:Envelope>'
-  }).catch(e=>console.warn('ePOS cut:',e)).finally(()=>window.close());
+  fetch('http://localhost:9200/cut').catch(()=>{}).finally(()=>window.close());
 };
 <\/script>`;
 
