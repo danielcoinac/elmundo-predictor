@@ -2331,7 +2331,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     ...(appSettings.showMenu !== false ? [{ id:"menu", label:t('menu'), ico:<MenuIco /> }] : []),
     { id:"profile", label:t('profile'), ico:<PersonIco /> },
     ...(user?.sponsor_tier ? [{ id:"vip", label:"PERKS", ico:<span style={{fontSize:16}}>⭐</span> }] : []),
-    ...(user?.floorplan_access ? [{ id:"floorplan", label:"SERVICE", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
+    ...(user?.floorplan_access ? [{ id:"floorplan", label:"FLOOR", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> }] : []),
     ...(user?.keepups_access ? [{ id:"keepups", label:"KEEP-UPS", ico:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2c0 0-4 4-4 10s4 10 4 10"/><path d="M12 2c0 0 4 4 4 10s-4 10-4 10"/><path d="M2 12h20"/><path d="M4.93 7h14.14M4.93 17h14.14"/></svg> }] : []),
     ...(isAdmin ? [{ id:"admin", label:t('admin'), ico:<AdminIco /> }] : []),
   ];
@@ -2411,7 +2411,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
           {appTab === "floorplan" && user?.floorplan_access && (
-            <ErrorBoundary name="floorplan"><OrderFeed allOrders={allOrders} menuItems={menuItems} onToggleSoldOut={toggleMenuItemSoldOut} /></ErrorBoundary>
+            <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
           )}
           {appTab === "keepups" && user?.keepups_access && (
             <ErrorBoundary name="keepups"><KeepupsView user={user} users={users} /></ErrorBoundary>
