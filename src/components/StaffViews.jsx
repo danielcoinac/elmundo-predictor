@@ -7,8 +7,8 @@ function printReceipt(ord) {
   const timeStr = date.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   const items = (ord.items || []).map(it => `
     <tr>
-      <td style="padding:6px 0;font-size:15px;font-weight:700;">${it.qty}x ${it.name.toUpperCase()}</td>
-      <td style="padding:6px 0;font-size:15px;font-weight:700;text-align:right;">$${(it.price*it.qty).toFixed(2)}</td>
+      <td style="padding:7px 0;font-size:20px;font-weight:900;line-height:1.2;">${it.qty}× ${it.name.toUpperCase()}</td>
+      <td style="padding:7px 0;font-size:12px;font-weight:600;text-align:right;color:#555;vertical-align:bottom;">${(it.price*it.qty).toFixed(2)}</td>
     </tr>`).join("");
   const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "COMPLIMENTARY" : ord.payment_method?.startsWith("group") ? "GROUP ORDER" : "CASH";
 
@@ -31,8 +31,8 @@ function printReceipt(ord) {
     .section-hdr { font-size: 9px; font-weight: 900; letter-spacing: 3px; padding: 7px 0 3px; border-bottom: 2px solid #000; margin-bottom: 2px; }
     .divider { border: none; border-top: 2px solid #000; margin: 8px 0; }
     table { width: 100%; border-collapse: collapse; }
-    td { font-size: 13px; padding: 5px 0; font-weight: 700; }
-    .total-row td { font-size: 17px; font-weight: 900; letter-spacing: 1px; padding-top: 8px; border-top: 3px solid #000; }
+    td { font-size: 17px; padding: 6px 0; font-weight: 800; }
+    .total-row td { font-size: 14px; font-weight: 900; letter-spacing: 1px; padding-top: 8px; border-top: 3px solid #000; }
     .pay-row { display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; font-weight: 700; }
     .footer { text-align: center; margin-top: 12px; padding-top: 8px; border-top: 3px double #000; }
     .thanks { font-size: 14px; font-weight: 900; letter-spacing: 3px; margin-bottom: 4px; }
@@ -50,7 +50,7 @@ function printReceipt(ord) {
 
     <div class="meta-row"><span class="meta-lbl">Date</span><span class="meta-val">${dateStr}</span></div>
     <div class="meta-row"><span class="meta-lbl">Time</span><span class="meta-val">${timeStr}</span></div>
-    <div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${ord.table_number}</span></div>
+    <div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${String(ord.table_number).startsWith("OUT-") ? "ZONE " + String(ord.table_number).replace("OUT-","") : ord.table_number}</span></div>
     ${ord.order_number ? `<div class="meta-row"><span class="meta-lbl">Order #</span><span class="meta-val">${ord.order_number}</span></div>` : ""}
 
     <div class="divider"></div>
