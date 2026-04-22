@@ -608,6 +608,11 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         .in("status", ["open", "ordering", "awaiting_payment"]);
       setActiveGroupSessions(gs || []);
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      // Auto-complete any non-card orders stuck as pending (old system zombies)
+      await supabase.from("orders")
+        .update({ status: "completed" })
+        .eq("status", "pending")
+        .neq("payment_method", "card_pending");
       // Cancel card_pending orders unpaid for 10+ min
       await supabase.from("orders")
         .update({ status: "cancelled" })
