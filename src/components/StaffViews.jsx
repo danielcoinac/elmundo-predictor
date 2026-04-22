@@ -580,6 +580,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
   const [savedBarP2,setSavedBarP2] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
   const [barDrag,   setBarDrag  ] = useState(null);
+  const [activeGroupSessions, setActiveGroupSessions] = useState([]); // group_orders with status open/ordering/awaiting_payment
   const canvasRef = useRef(null);
 
   // Plan-aware aliases
@@ -601,6 +602,11 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const refresh = async () => {
       await onLoad();
       setNow(Date.now());
+      // Fetch active group sessions for table color
+      const { data: gs } = await supabase.from("group_orders")
+        .select("table_number,status")
+        .in("status", ["open", "ordering", "awaiting_payment"]);
+      setActiveGroupSessions(gs || []);
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       // Cancel card_pending orders unpaid for 10+ min
       await supabase.from("orders")
@@ -693,7 +699,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const tableStatus = (num) => {
     const key = isP2 ? `OUT-${num}` : String(num);
     const today = todayByTable[key] || [];
-    if (today.some(o => o.payment_method?.startsWith("group") && o.status !== "completed" && o.status !== "cancelled")) return "group";
+    if (activeGroupSessions.some(g => String(g.table_number) === key)) return "group";
     if (today.length > 0) return "active_today";
     return "empty";
   };
