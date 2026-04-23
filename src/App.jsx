@@ -5936,26 +5936,28 @@ function TVAdSlideC() {
       else {
         beamAngle += 0.0012;
         const maxD = Math.sqrt(W * W + H * H);
-        // Rotating beams
+        // Rotating light beams — use "screen" blend so they ADD light, not darken
+        ctx.globalCompositeOperation = "screen";
         beams.forEach(b => {
           const a = b.angle + beamAngle;
           ctx.save();
           ctx.translate(CX, CY);
           ctx.rotate(a);
-          const bg = ctx.createLinearGradient(0, 0, maxD, 0);
-          bg.addColorStop(0, `rgba(240,192,64,${b.alpha * 0.8})`);
-          bg.addColorStop(0.5, `rgba(255,240,160,${b.alpha})`);
-          bg.addColorStop(1, "rgba(240,192,64,0)");
+          const bg = ctx.createLinearGradient(0, 0, maxD * 0.75, 0);
+          bg.addColorStop(0, `rgba(255,230,120,${b.alpha * 1.4})`);
+          bg.addColorStop(0.35, `rgba(255,210,80,${b.alpha * 0.9})`);
+          bg.addColorStop(1, "rgba(200,160,40,0)");
           ctx.beginPath();
           ctx.moveTo(0, -b.width * maxD);
-          ctx.lineTo(maxD, -b.width * maxD * 0.3);
-          ctx.lineTo(maxD, b.width * maxD * 0.3);
+          ctx.lineTo(maxD, -b.width * maxD * 0.2);
+          ctx.lineTo(maxD, b.width * maxD * 0.2);
           ctx.lineTo(0, b.width * maxD);
           ctx.closePath();
           ctx.fillStyle = bg;
           ctx.fill();
           ctx.restore();
         });
+        ctx.globalCompositeOperation = "source-over";
         // Orbital embers
         orbits.forEach(o => {
           o.angle += o.speed;
@@ -5986,9 +5988,8 @@ function TVAdSlideC() {
       <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(16px,2.8vw,30px)"}}>
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:12,color:"rgba(240,192,64,.8)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.6s both"}}>WELCOME TO</div>
         <div style={{position:"relative"}}>
-          {/* Glow halo rings behind logo */}
-          <div style={{position:"absolute",inset:-40,borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.18) 0%,rgba(240,192,64,.06) 40%,transparent 70%)",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.4s both",pointerEvents:"none"}} />
-          <div style={{position:"absolute",inset:-50,borderRadius:"50%",border:"1px solid rgba(240,192,64,.2)",pointerEvents:"none",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.6s both"}}><div style={{width:"100%",height:"100%",borderRadius:"50%",border:"1px solid rgba(240,192,64,.12)",animation:"tvadRotateRing 12s linear infinite"}} /></div>
+          {/* Soft glow halo — no hard ring border */}
+          <div style={{position:"absolute",inset:"-20%",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.15) 0%,rgba(240,192,64,.05) 45%,transparent 72%)",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.4s both",pointerEvents:"none"}} />
           <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) 2.4s both"}}>
             <Logo w={logoW} />
           </div>
