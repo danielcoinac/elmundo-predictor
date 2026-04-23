@@ -5831,172 +5831,20 @@ function AdminDashboard({ allOrders, users, board }) {
 
 /* C — LOGO LIGHT BURST (cinematic reveal) */
 function TVAdSlideC() {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const W = canvas.width = window.innerWidth * dpr;
-    const H = canvas.height = window.innerHeight * dpr;
-    canvas.style.width = window.innerWidth + "px";
-    canvas.style.height = window.innerHeight + "px";
-    const CX = W / 2, CY = H / 2;
-
-    // Wide light beams (rotate slowly in phase 3)
-    const beams = Array.from({ length: 8 }, (_, i) => ({
-      angle: (i / 8) * Math.PI * 2,
-      width: 0.04 + Math.random() * 0.06,
-      alpha: 0.04 + Math.random() * 0.08,
-    }));
-    let beamAngle = 0;
-
-    // Dense orbital embers
-    const orbits = Array.from({ length: 80 }, () => ({
-      angle: Math.random() * Math.PI * 2,
-      radius: (80 + Math.random() * 480) * dpr,
-      speed: (0.0005 + Math.random() * 0.0025) * (Math.random() > 0.5 ? 1 : -1),
-      size: (Math.random() * 2 + 0.6) * dpr,
-      alpha: 0.12 + Math.random() * 0.5,
-      phase: Math.random() * Math.PI * 2,
-    }));
-
-    // Radial burst spokes
-    const spokes = Array.from({ length: 36 }, (_, i) => ({
-      angle: (i / 36) * Math.PI * 2 + (Math.random() - 0.5) * 0.1,
-      len: 0,
-      maxLen: (220 + Math.random() * 200) * dpr,
-      width: (Math.random() * 1.8 + 0.4) * dpr,
-    }));
-
-    let raf, start = null;
-    function draw(t) {
-      if (!start) start = t;
-      const elapsed = t - start;
-      ctx.clearRect(0, 0, W, H);
-
-      // Persistent radial glow
-      const wash = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.65);
-      wash.addColorStop(0, "rgba(240,192,64,0.12)");
-      wash.addColorStop(0.45, "rgba(240,192,64,0.04)");
-      wash.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = wash;
-      ctx.fillRect(0, 0, W, H);
-
-      // Phase 1 (0-1000ms): pulsing dot
-      if (elapsed < 1000) {
-        const p = elapsed / 1000;
-        const pulse = 0.5 + 0.5 * Math.sin(p * Math.PI * 6);
-        const r = (6 + pulse * 8) * dpr;
-        const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, r * 8);
-        g.addColorStop(0, `rgba(255,250,200,1)`);
-        g.addColorStop(0.2, `rgba(240,192,64,${0.6 + pulse * 0.3})`);
-        g.addColorStop(1, "rgba(240,192,64,0)");
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(CX, CY, r * 8, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2);
-        ctx.fillStyle = "#fffadc"; ctx.fill();
-      }
-      // Phase 2 (1000-2800ms): explosion — rings + spokes
-      else if (elapsed < 2800) {
-        const p = (elapsed - 1000) / 1800;
-        const ease = 1 - Math.pow(1 - p, 3);
-        // 3 expanding rings at different speeds
-        [0.42, 0.62, 0.82].forEach((factor, ri) => {
-          const ringR = ease * Math.min(W, H) * factor;
-          ctx.beginPath(); ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(240,192,64,${(1 - p) * (0.7 - ri * 0.18)})`;
-          ctx.lineWidth = (3.5 - ri * 0.8) * (1 - p * 0.5) * dpr;
-          ctx.stroke();
-        });
-        // Spokes
-        spokes.forEach(s => {
-          s.len = ease * s.maxLen;
-          const x1 = CX + Math.cos(s.angle) * (12 * dpr);
-          const y1 = CY + Math.sin(s.angle) * (12 * dpr);
-          const x2 = CX + Math.cos(s.angle) * (12 * dpr + s.len);
-          const y2 = CY + Math.sin(s.angle) * (12 * dpr + s.len);
-          const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-          grad.addColorStop(0, `rgba(255,245,180,${(1 - p) * 0.95})`);
-          grad.addColorStop(0.6, `rgba(240,192,64,${(1 - p) * 0.4})`);
-          grad.addColorStop(1, "rgba(240,192,64,0)");
-          ctx.strokeStyle = grad;
-          ctx.lineWidth = s.width;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        });
-        // White flash center
-        const fr = (18 + (1 - p) * 36) * dpr;
-        const fg = ctx.createRadialGradient(CX, CY, 0, CX, CY, fr * 2.5);
-        fg.addColorStop(0, `rgba(255,250,200,${1 - p})`);
-        fg.addColorStop(1, "rgba(240,192,64,0)");
-        ctx.fillStyle = fg;
-        ctx.beginPath(); ctx.arc(CX, CY, fr * 2.5, 0, Math.PI * 2); ctx.fill();
-      }
-      // Phase 3 (2800+): rotating light beams + dense orbital embers
-      else {
-        beamAngle += 0.0012;
-        const maxD = Math.sqrt(W * W + H * H);
-        // Rotating light beams — use "screen" blend so they ADD light, not darken
-        ctx.globalCompositeOperation = "screen";
-        beams.forEach(b => {
-          const a = b.angle + beamAngle;
-          ctx.save();
-          ctx.translate(CX, CY);
-          ctx.rotate(a);
-          const bg = ctx.createLinearGradient(0, 0, maxD * 0.75, 0);
-          bg.addColorStop(0, `rgba(255,230,120,${b.alpha * 1.4})`);
-          bg.addColorStop(0.35, `rgba(255,210,80,${b.alpha * 0.9})`);
-          bg.addColorStop(1, "rgba(200,160,40,0)");
-          ctx.beginPath();
-          ctx.moveTo(0, -b.width * maxD);
-          ctx.lineTo(maxD, -b.width * maxD * 0.2);
-          ctx.lineTo(maxD, b.width * maxD * 0.2);
-          ctx.lineTo(0, b.width * maxD);
-          ctx.closePath();
-          ctx.fillStyle = bg;
-          ctx.fill();
-          ctx.restore();
-        });
-        ctx.globalCompositeOperation = "source-over";
-        // Orbital embers
-        orbits.forEach(o => {
-          o.angle += o.speed;
-          const flick = 0.65 + 0.35 * Math.sin(elapsed * 0.0018 + o.phase);
-          const x = CX + Math.cos(o.angle) * o.radius;
-          const y = CY + Math.sin(o.angle) * o.radius;
-          ctx.beginPath();
-          ctx.arc(x, y, o.size * flick, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(240,192,64,${o.alpha * flick})`;
-          ctx.shadowColor = "#F0C040";
-          ctx.shadowBlur = 10 * dpr;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        });
-      }
-
-      raf = requestAnimationFrame(draw);
-    }
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
   const logoW = Math.min(380, Math.round(window.innerWidth * 0.30));
   return (
-    <div className="tvad-slide" style={{padding:0}}>
-      <canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%"}} />
+    <div className="tvad-slide">
+      {/* Deep gold radial glow behind logo */}
+      <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"70vw",height:"70vw",maxWidth:900,maxHeight:900,borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.14) 0%,rgba(240,192,64,.05) 40%,transparent 70%)",pointerEvents:"none"}} />
       <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(16px,2.8vw,30px)"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:12,color:"rgba(240,192,64,.8)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.6s both"}}>WELCOME TO</div>
-        <div style={{position:"relative"}}>
-          {/* Soft glow halo — no hard ring border */}
-          <div style={{position:"absolute",inset:"-20%",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.15) 0%,rgba(240,192,64,.05) 45%,transparent 72%)",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.4s both",pointerEvents:"none"}} />
-          <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) 2.4s both"}}>
-            <Logo w={logoW} />
-          </div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:12,color:"rgba(240,192,64,.8)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) .3s both"}}>WELCOME TO</div>
+        <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) .6s both"}}>
+          <Logo w={logoW} />
         </div>
-        <div style={{width:"clamp(180px,32vw,380px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.4s cubic-bezier(.16,1,.3,1) 4.0s forwards"}} />
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,6vw,64px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 32px rgba(240,192,64,.5))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 4.4s both"}}>WORLD CUP 2026</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.2vw,18px)",letterSpacing:12,color:"rgba(255,255,255,.45)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 5.2s both"}}>THE PREDICTION GAME</div>
+        <div style={{width:"clamp(180px,32vw,380px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.4s cubic-bezier(.16,1,.3,1) 2.2s forwards"}} />
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,6vw,64px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 32px rgba(240,192,64,.5))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.6s both"}}>WORLD CUP 2026</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.2vw,18px)",letterSpacing:12,color:"rgba(255,255,255,.45)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 3.4s both"}}>THE PREDICTION GAME</div>
       </div>
     </div>
   );
