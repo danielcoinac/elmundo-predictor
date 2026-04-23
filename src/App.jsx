@@ -2384,7 +2384,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         <div className="body-inner page-anim" key={animKey}>
           {appTab === "matches" && <ErrorBoundary name="matches"><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></ErrorBoundary>}
           {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} sendPush={sendPush} /></ErrorBoundary>}
-          {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} /></ErrorBoundary>}
+          {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} preds={preds} /></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             onCancelOrder={cancelOrder}
             activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
@@ -4277,21 +4277,100 @@ function PlayerSearchView({ allUsers, currentUser, matches }) {
   );
 }
 
-function LeaderView({ board, user, allUsers = [], matches = [] }) {
+function PlayerProfileModal({ player, rank, matches, preds, onClose }) {
+  const finishedMatches = matches.filter(m => m.status === "finished");
+  const stats = finishedMatches.reduce((acc, m) => {
+    const p = preds[`${player.id}__${m.id}`];
+    if (!p) return acc;
+    const score = calcPts(p, m.hs ?? m.home_score, m.as ?? m.away_score);
+    acc.total++;
+    if (score === 5) acc.exact++;
+    else if (score === 1) acc.winner++;
+    return acc;
+  }, { total: 0, exact: 0, winner: 0 });
+
+  const visaId = `EM-2026-${player.id.slice(0,8).toUpperCase()}`;
+  const MEDALS = ["🥇","🥈","🥉"];
+  const METAL_STYLE = [
+    {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
+    {background:"linear-gradient(135deg,#e8e8e8,#b0b0b0,#fff,#888)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
+    {background:"linear-gradient(135deg,#e0a060,#CD7F32,#f0c080,#8B5E3C)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"20px"}} onClick={onClose}>
+      <div style={{background:"linear-gradient(160deg,#131008 0%,#0a0800 100%)",border:"1px solid rgba(240,192,64,.22)",borderRadius:18,padding:"32px 24px 24px",width:"100%",maxWidth:320,position:"relative",animation:"modalPop .22s cubic-bezier(.4,0,.2,1) both"}} onClick={e=>e.stopPropagation()}>
+        <button onClick={onClose} style={{position:"absolute",top:12,right:16,background:"none",border:"none",color:"rgba(255,255,255,.35)",fontSize:22,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+
+        {/* Rank icon */}
+        <div style={{textAlign:"center",marginBottom:12}}>
+          {rank <= 3
+            ? <span style={{fontSize:52,lineHeight:1,filter:"drop-shadow(0 0 14px rgba(240,192,64,.65))"}}>{MEDALS[rank-1]}</span>
+            : <span style={{fontFamily:"'Anton',sans-serif",fontSize:36,color:"rgba(255,255,255,.25)",letterSpacing:2}}>#{rank}</span>
+          }
+        </div>
+
+        {/* Name */}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(20px,5vw,28px)",textAlign:"center",textTransform:"uppercase",letterSpacing:2,marginBottom:4,...(rank<=3?METAL_STYLE[rank-1]:{color:"#fff"})}}>{player.name}</div>
+
+        {/* Points */}
+        <div style={{textAlign:"center",marginBottom:22}}>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:52,lineHeight:1,color:"#F0C040",filter:"drop-shadow(0 0 12px rgba(240,192,64,.4))"}}>{player.pts}</span>
+          <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.3)",marginLeft:7}}>PTS</span>
+        </div>
+
+        <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.28),transparent)",marginBottom:20}} />
+
+        {/* Stats */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:22}}>
+          {[
+            {label:"EXACT",value:stats.exact,color:"#4ade80"},
+            {label:"WINNER",value:stats.winner,color:"#F0C040"},
+            {label:"PLAYED",value:stats.total,color:"rgba(255,255,255,.45)"},
+          ].map(s => (
+            <div key={s.label} style={{textAlign:"center",background:"rgba(255,255,255,.04)",borderRadius:10,padding:"12px 4px"}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:30,color:s.color,lineHeight:1}}>{s.value}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.28)",marginTop:5}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Visa ID */}
+        <div style={{textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3.5,color:"rgba(255,255,255,.18)",borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:14}}>
+          {visaId}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
   const top3 = filtered.slice(0, 3);
   const rest = filtered.slice(3);
   const myRank = filtered.findIndex(u => u.id === user.id) + 1;
   const myEntry = filtered.find(u => u.id === user.id);
+  const [profilePlayer, setProfilePlayer] = useState(null);
+  const profileRank = profilePlayer ? filtered.findIndex(u => u.id === profilePlayer.id) + 1 : 0;
 
   return (
     <div className="lb-root">
+      {profilePlayer && (
+        <PlayerProfileModal
+          player={profilePlayer}
+          rank={profileRank}
+          matches={matches}
+          preds={preds}
+          onClose={() => setProfilePlayer(null)}
+        />
+      )}
+
       {/* ── TOP 3 PODIUM ── */}
       {top3.length >= 3 && (
         <div className="lb-podium">
           {/* 2nd */}
           {top3[1] ? (
-            <div className="lb-pod lb-pod-2">
+            <div className="lb-pod lb-pod-2" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[1])}>
               <div className="lb-pod-medal">🥈</div>
               <div className="lb-pod-name">{top3[1].name}</div>
               <div className="lb-pod-pts">{top3[1].pts}<span className="lb-pod-pts-u">pts</span></div>
@@ -4301,7 +4380,7 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
           ) : <div className="lb-pod" />}
 
           {/* 1st — tallest */}
-          <div className="lb-pod lb-pod-1">
+          <div className="lb-pod lb-pod-1" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[0])}>
             <div className="lb-pod-crown">👑</div>
             <div className="lb-pod-medal lb-pod-medal-1">🥇</div>
             <div className="lb-pod-name lb-pod-name-1">{top3[0].name}</div>
@@ -4312,7 +4391,7 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
 
           {/* 3rd */}
           {top3[2] ? (
-            <div className="lb-pod lb-pod-3">
+            <div className="lb-pod lb-pod-3" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[2])}>
               <div className="lb-pod-medal">🥉</div>
               <div className="lb-pod-name">{top3[2].name}</div>
               <div className="lb-pod-pts">{top3[2].pts}<span className="lb-pod-pts-u">pts</span></div>
@@ -4332,7 +4411,7 @@ function LeaderView({ board, user, allUsers = [], matches = [] }) {
             <span className="lb-th-pts">PTS</span>
           </div>
           {rest.map((u, i) => (
-            <div key={u.id} className={`lb-row ${u.id===user.id?"lb-row-me":""}`}>
+            <div key={u.id} className={`lb-row ${u.id===user.id?"lb-row-me":""}`} style={{cursor:"pointer"}} onClick={() => setProfilePlayer(u)}>
               <span className="lb-row-rank">#{i + 4}</span>
               <span className="lb-row-name">
                 {u.name}
