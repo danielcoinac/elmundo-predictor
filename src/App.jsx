@@ -5829,135 +5829,122 @@ function AdminDashboard({ allOrders, users, board }) {
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
 /* ═══ TV ADVERTISEMENT SLIDES ═══════════════════════════════════════════════ */
 
-/* C — PARTICLE EXPLOSION CANVAS */
+/* C — LOGO LIGHT BURST (cinematic reveal) */
 function TVAdSlideC() {
   const canvasRef = useRef(null);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    let raf, startTime = null;
-    const W = canvas.width = window.innerWidth;
-    const H = canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = canvas.width = window.innerWidth * dpr;
+    const H = canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + "px";
+    canvas.style.height = window.innerHeight + "px";
     const CX = W / 2, CY = H / 2;
 
-    // Sample text pixels
-    const PHRASE = "PREDICT · COMPETE · WIN";
-    const offscreen = document.createElement("canvas");
-    offscreen.width = W; offscreen.height = H;
-    const oc = offscreen.getContext("2d");
-    oc.fillStyle = "#fff";
-    const fs = Math.round(W * 0.055);
-    oc.font = `900 ${fs}px Anton, sans-serif`;
-    oc.textAlign = "center"; oc.textBaseline = "middle";
-    oc.fillText(PHRASE, CX, CY);
-    const pixels = oc.getImageData(0, 0, W, H).data;
-    const targets = [];
-    const step = 5;
-    for (let y = 0; y < H; y += step) {
-      for (let x = 0; x < W; x += step) {
-        const idx = (y * W + x) * 4;
-        if (pixels[idx + 3] > 128) targets.push({ x, y });
-      }
-    }
-
-    // Build particles
-    const TOTAL = Math.min(targets.length, 800);
-    const sampled = targets.sort(() => Math.random() - 0.5).slice(0, TOTAL);
-    const particles = sampled.map(t => ({
-      tx: t.x, ty: t.y,
-      x: CX + (Math.random() - 0.5) * 8,
-      y: CY + (Math.random() - 0.5) * 8,
-      vx: (Math.random() - 0.5) * 18,
-      vy: (Math.random() - 0.5) * 18,
-      size: Math.random() * 2.5 + 1,
-      alpha: 1,
-      gold: Math.random() > 0.35,
+    // Orbital embers — gentle ambient luxury feel
+    const orbits = Array.from({ length: 44 }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      radius: (120 + Math.random() * 360) * dpr,
+      speed: (0.0008 + Math.random() * 0.0022) * (Math.random() > 0.5 ? 1 : -1),
+      size: (Math.random() * 1.4 + 0.5) * dpr,
+      alpha: 0.15 + Math.random() * 0.45,
+      phase: Math.random() * Math.PI * 2,
     }));
 
-    const PHASE_DUR = [1200, 800, 2800, 2000, 1200];
-    const PHASES = PHASE_DUR.reduce((a, d, i) => { a.push((a[i - 1] || 0) + d); return a; }, []);
+    // Radial burst spokes (for the explosion moment)
+    const spokes = Array.from({ length: 28 }, (_, i) => ({
+      angle: (i / 28) * Math.PI * 2 + (Math.random() - 0.5) * 0.15,
+      len: 0,
+      maxLen: (180 + Math.random() * 140) * dpr,
+      width: (Math.random() * 1.2 + 0.6) * dpr,
+    }));
 
-    function draw(ts) {
-      if (!startTime) startTime = ts;
-      const elapsed = ts - startTime;
+    let raf, start = null;
+    function draw(t) {
+      if (!start) start = t;
+      const elapsed = t - start;
       ctx.clearRect(0, 0, W, H);
 
-      // phase 0: pulsing origin dot
-      if (elapsed < PHASES[0]) {
-        const p = elapsed / PHASE_DUR[0];
-        const r = 6 + Math.sin(p * Math.PI * 8) * 4;
-        ctx.beginPath();
-        ctx.arc(CX, CY, r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(240,192,64,${0.6 + Math.sin(p * Math.PI * 6) * 0.4})`;
-        ctx.fill();
-        ctx.shadowColor = "#F0C040"; ctx.shadowBlur = 30;
-        ctx.fill(); ctx.shadowBlur = 0;
+      // Background radial wash
+      const wash = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.7);
+      wash.addColorStop(0, "rgba(240,192,64,0.10)");
+      wash.addColorStop(0.5, "rgba(240,192,64,0.03)");
+      wash.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = wash;
+      ctx.fillRect(0, 0, W, H);
+
+      // Phase 1 (0-1200ms): pulsing dot
+      if (elapsed < 1200) {
+        const p = elapsed / 1200;
+        const pulse = 0.5 + 0.5 * Math.sin(p * Math.PI * 5);
+        const r = (5 + pulse * 5) * dpr;
+        const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, r * 7);
+        g.addColorStop(0, `rgba(255,240,180,${0.9})`);
+        g.addColorStop(0.3, `rgba(240,192,64,${0.5 + pulse * 0.2})`);
+        g.addColorStop(1, "rgba(240,192,64,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(CX, CY, r * 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff8e0"; ctx.fill();
       }
-      // phase 1: explosion burst
-      else if (elapsed < PHASES[1]) {
-        const p = (elapsed - PHASES[0]) / PHASE_DUR[1];
-        particles.forEach(pt => {
-          pt.x += pt.vx * 0.5;
-          pt.y += pt.vy * 0.5;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${1 - p * 0.3})` : `rgba(255,255,255,${1 - p * 0.4})`;
-          ctx.fill();
-        });
-      }
-      // phase 2: converge to text
-      else if (elapsed < PHASES[2]) {
-        const p = Math.min(1, (elapsed - PHASES[1]) / PHASE_DUR[2]);
+      // Phase 2 (1200-2600ms): explosion spokes + expanding ring
+      else if (elapsed < 2600) {
+        const p = (elapsed - 1200) / 1400;
         const ease = 1 - Math.pow(1 - p, 3);
-        particles.forEach(pt => {
-          pt.x = pt.x + (pt.tx - pt.x) * ease * 0.06;
-          pt.y = pt.y + (pt.ty - pt.y) * ease * 0.06;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, pt.size * (1 - p * 0.3 + 0.3), 0, Math.PI * 2);
-          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${0.7 + ease * 0.3})` : `rgba(255,220,120,${0.5 + ease * 0.5})`;
-          ctx.fill();
+        // Expanding ring
+        const ringR = ease * Math.min(W, H) * 0.42;
+        ctx.beginPath(); ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(240,192,64,${(1 - p) * 0.7})`;
+        ctx.lineWidth = (3 * (1 - p) + 0.4) * dpr;
+        ctx.stroke();
+        // Second softer ring
+        ctx.beginPath(); ctx.arc(CX, CY, ringR * 0.7, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,240,180,${(1 - p) * 0.35})`;
+        ctx.lineWidth = 1 * dpr;
+        ctx.stroke();
+        // Spokes
+        spokes.forEach(s => {
+          s.len = ease * s.maxLen;
+          const x1 = CX + Math.cos(s.angle) * (20 * dpr);
+          const y1 = CY + Math.sin(s.angle) * (20 * dpr);
+          const x2 = CX + Math.cos(s.angle) * (20 * dpr + s.len);
+          const y2 = CY + Math.sin(s.angle) * (20 * dpr + s.len);
+          const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+          grad.addColorStop(0, `rgba(255,240,180,${(1 - p) * 0.9})`);
+          grad.addColorStop(1, "rgba(240,192,64,0)");
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = s.width;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
         });
+        // Center flash
+        const flashR = (15 + (1 - p) * 30) * dpr;
+        const fg = ctx.createRadialGradient(CX, CY, 0, CX, CY, flashR * 2);
+        fg.addColorStop(0, `rgba(255,240,180,${1 - p})`);
+        fg.addColorStop(1, "rgba(240,192,64,0)");
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(CX, CY, flashR * 2, 0, Math.PI * 2); ctx.fill();
       }
-      // phase 3: shimmer hold
-      else if (elapsed < PHASES[3]) {
-        const p = (elapsed - PHASES[2]) / PHASE_DUR[3];
-        particles.forEach((pt, i) => {
-          const flicker = 0.7 + Math.sin((elapsed * 0.005 + i * 0.3)) * 0.3;
-          ctx.beginPath();
-          ctx.arc(pt.tx, pt.ty, pt.size, 0, Math.PI * 2);
-          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${flicker})` : `rgba(255,220,120,${flicker * 0.8})`;
-          if (pt.gold) { ctx.shadowColor = "#F0C040"; ctx.shadowBlur = 6; }
-          ctx.fill(); ctx.shadowBlur = 0;
-        });
-        // EL MUNDO overlay text
-        const ta = Math.min(1, (elapsed - PHASES[2]) / 400);
-        ctx.globalAlpha = ta;
-        ctx.fillStyle = "rgba(240,192,64,0.12)";
-        ctx.font = `900 ${Math.round(W * 0.18)}px Anton, sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("EL MUNDO", CX, CY * 0.55);
-        ctx.globalAlpha = 1;
-      }
-      // phase 4: collapse + logo burst
+      // Phase 3 (2600+): ambient orbital embers around logo
       else {
-        const p = Math.min(1, (elapsed - PHASES[3]) / PHASE_DUR[4]);
-        particles.forEach(pt => {
+        orbits.forEach(o => {
+          o.angle += o.speed;
+          const flick = 0.7 + 0.3 * Math.sin(elapsed * 0.002 + o.phase);
+          const x = CX + Math.cos(o.angle) * o.radius;
+          const y = CY + Math.sin(o.angle) * o.radius;
           ctx.beginPath();
-          ctx.arc(pt.tx + (CX - pt.tx) * p, pt.ty + (CY - pt.ty) * p, pt.size * (1 - p), 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(240,192,64,${1 - p})`;
+          ctx.arc(x, y, o.size * flick, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(240,192,64,${o.alpha * flick})`;
+          ctx.shadowColor = "#F0C040";
+          ctx.shadowBlur = 8 * dpr;
           ctx.fill();
+          ctx.shadowBlur = 0;
         });
-        const burst = p;
-        ctx.beginPath();
-        ctx.arc(CX, CY, burst * 120, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(240,192,64,${(1 - burst) * 0.25})`;
-        ctx.fill();
       }
 
-      if (elapsed < PHASES[4]) raf = requestAnimationFrame(draw);
+      raf = requestAnimationFrame(draw);
     }
-
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, []);
@@ -5966,10 +5953,14 @@ function TVAdSlideC() {
   return (
     <div className="tvad-slide" style={{padding:0}}>
       <canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%"}} />
-      <div style={{position:"absolute",bottom:"12%",left:0,right:0,display:"flex",flexDirection:"column",alignItems:"center",zIndex:2,animation:"tvadWordIn 1s cubic-bezier(.16,1,.3,1) 4.5s both"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,15px)",letterSpacing:7,color:"rgba(255,255,255,.3)",marginBottom:8}}>WORLD CUP 2026</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(32px,8vw,86px)",letterSpacing:8,...G,filter:"drop-shadow(0 0 40px rgba(240,192,64,.6))"}}>EL MUNDO</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"rgba(255,255,255,.22)",marginTop:6}}>BONAIRE · NETHERLANDS ANTILLES</div>
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(14px,2.5vw,26px)"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:10,color:"rgba(240,192,64,.7)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.8s both"}}>WELCOME TO</div>
+        <div style={{filter:"drop-shadow(0 0 50px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.6s cubic-bezier(.16,1,.3,1) 2.6s both"}}>
+          <Logo w={Math.min(260, Math.round(window.innerWidth * 0.22))} />
+        </div>
+        <div style={{width:"clamp(140px,26vw,280px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.2s cubic-bezier(.16,1,.3,1) 4.0s forwards"}} />
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,52px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 28px rgba(240,192,64,.45))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 4.4s both"}}>WORLD CUP 2026</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:10,color:"rgba(255,255,255,.42)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 5.2s both"}}>THE PREDICTION GAME</div>
       </div>
     </div>
   );
@@ -5984,6 +5975,8 @@ function TVAdClockUnit({ val, lbl }) {
     </div>
   );
 }
+const WC2026_KICKOFF = new Date("2026-06-11T20:00:00Z").getTime();
+
 function TVAdSlideD({ matches = [] }) {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
   const nextMatch = useMemo(() => {
@@ -5991,52 +5984,74 @@ function TVAdSlideD({ matches = [] }) {
     return [...matches].filter(m => new Date(m.kickoff).getTime() > now).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff))[0] || null;
   }, [matches]);
 
+  const target = nextMatch ? new Date(nextMatch.kickoff).getTime() : WC2026_KICKOFF;
+  const mode = nextMatch ? "match" : (Date.now() < WC2026_KICKOFF ? "tournament" : "live");
+
   const calcRemaining = () => {
-    if (!nextMatch) return null;
-    const diff = Math.max(0, Math.floor((new Date(nextMatch.kickoff).getTime() - Date.now()) / 1000));
+    const diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
     return { d: Math.floor(diff / 86400), h: Math.floor((diff % 86400) / 3600), m: Math.floor((diff % 3600) / 60), s: diff % 60, total: diff };
   };
   const [tl, setTl] = useState(calcRemaining);
   useEffect(() => {
     const id = setInterval(() => setTl(calcRemaining()), 1000);
     return () => clearInterval(id);
-  }, [nextMatch]);
+  }, [target]);
 
-  const urgent = tl && tl.total < 600;
+  const urgent = mode === "match" && tl.total < 600;
+  const heading = mode === "match" ? "NEXT MATCH STARTS IN" : mode === "tournament" ? "WORLD CUP 2026 KICKS OFF IN" : "THE TOURNAMENT IS LIVE";
 
   return (
     <div className="tvad-slide">
-      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:700}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.8vw,13px)",letterSpacing:7,color:"rgba(240,192,64,.65)",marginBottom:12,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .1s both"}}>NEXT MATCH STARTS IN</div>
-        {tl ? (
-          <>
-            <div style={{display:"flex",alignItems:"center",gap:"clamp(8px,3vw,32px)",marginBottom:14,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
-              {tl.d > 0 && <><TVAdClockUnit val={tl.d} lbl="DAYS" /><div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div></>}
-              <TVAdClockUnit val={tl.h} lbl="HRS" />
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div>
-              <TVAdClockUnit val={tl.m} lbl="MIN" />
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div>
-              <TVAdClockUnit val={tl.s} lbl="SEC" />
-            </div>
-            {nextMatch && (
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.8vw,22px)",color:"rgba(255,255,255,.5)",letterSpacing:3,marginBottom:28,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .6s both"}}>
-                {nextMatch.home} vs {nextMatch.away}
-              </div>
-            )}
-            {urgent && <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.5vw,18px)",letterSpacing:4,color:"#ff4444",animation:"tvadNeonFlicker 0.4s linear infinite",marginBottom:16}}>⚡ SUBMIT YOUR PREDICTION NOW ⚡</div>}
-          </>
-        ) : (
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,7vw,72px)",color:"rgba(255,255,255,.18)",letterSpacing:4,marginBottom:28}}>STAY TUNED</div>
-        )}
-        <div style={{width:"100%",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",marginBottom:28,animation:"tvadLineGrow 1s ease .8s both"}} />
-        <div style={{display:"flex",alignItems:"center",gap:24,animation:"tvadWordIn .8s cubic-bezier(.16,1,.3,1) 1s both"}}>
-          <div style={{padding:10,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.4)",borderRadius:12,animation:"tvadQRGlow 2.5s ease-in-out infinite"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(80px,12vw,140px)",height:"clamp(80px,12vw,140px)",display:"block"}} />
+      {/* Soft radial glow behind logo */}
+      <div style={{position:"absolute",top:"18%",left:"50%",transform:"translateX(-50%)",width:"60%",height:"45%",background:"radial-gradient(ellipse at center,rgba(240,192,64,.08) 0%,rgba(240,192,64,0) 60%)",pointerEvents:"none"}} />
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:780,gap:"clamp(10px,2vw,20px)"}}>
+        {/* Logo seal at top */}
+        <div style={{filter:"drop-shadow(0 0 28px rgba(240,192,64,.38))",opacity:0,animation:"tvadLogoReveal 1.2s cubic-bezier(.16,1,.3,1) .1s both"}}>
+          <Logo w={Math.min(140, Math.round(window.innerWidth * 0.11))} />
+        </div>
+        <div style={{width:"clamp(100px,20vw,260px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.5),transparent)",opacity:0,animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) .7s both"}} />
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.9vw,14px)",letterSpacing:8,color:"rgba(240,192,64,.75)",opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) .9s both"}}>{heading}</div>
+
+        {/* Countdown OR "LIVE NOW" */}
+        {mode !== "live" ? (
+          <div style={{display:"flex",alignItems:"flex-start",gap:"clamp(8px,3vw,28px)",opacity:0,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) 1.2s both"}}>
+            {tl.d > 0 && <><TVAdClockUnit val={tl.d} lbl="DAYS" /><div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingTop:"clamp(6px,1.2vw,14px)"}}>:</div></>}
+            <TVAdClockUnit val={tl.h} lbl="HRS" />
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingTop:"clamp(6px,1.2vw,14px)"}}>:</div>
+            <TVAdClockUnit val={tl.m} lbl="MIN" />
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingTop:"clamp(6px,1.2vw,14px)"}}>:</div>
+            <TVAdClockUnit val={tl.s} lbl="SEC" />
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:6,textAlign:"left"}}>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,40px)",letterSpacing:2,...G,lineHeight:1}}>PREDICT</div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,40px)",letterSpacing:2,...G,lineHeight:1}}>EVERY MATCH</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",color:"rgba(255,255,255,.3)",marginTop:6,letterSpacing:1}}>elmundo-world-cup.com</div>
+        ) : (
+          <div style={{display:"flex",alignItems:"center",gap:14,opacity:0,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) 1.2s both"}}>
+            <div style={{width:14,height:14,borderRadius:"50%",background:"#F0C040",boxShadow:"0 0 24px rgba(240,192,64,.7)",animation:"tvadLivePulse 1s ease-in-out infinite"}} />
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(32px,7vw,72px)",letterSpacing:6,...G,lineHeight:1,filter:"drop-shadow(0 0 20px rgba(240,192,64,.5))"}}>NOW LIVE</div>
+          </div>
+        )}
+
+        {/* Match info or tournament tag */}
+        {mode === "match" && (
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,3vw,24px)",color:"rgba(255,255,255,.6)",letterSpacing:4,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 1.5s both"}}>
+            {nextMatch.home.toUpperCase()} <span style={{color:"rgba(240,192,64,.5)",margin:"0 10px"}}>vs</span> {nextMatch.away.toUpperCase()}
+          </div>
+        )}
+        {mode === "tournament" && (
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.4vw,18px)",color:"rgba(255,255,255,.45)",letterSpacing:6,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 1.5s both"}}>JUNE 11 · 2026 · OPENING MATCH</div>
+        )}
+
+        {urgent && <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.5vw,18px)",letterSpacing:4,color:"#ff4444",animation:"tvadNeonFlicker .4s linear infinite"}}>⚡ LOCK IN YOUR PREDICTION ⚡</div>}
+
+        <div style={{width:"clamp(120px,24vw,300px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 1.7s both"}} />
+
+        {/* QR + CTA block */}
+        <div style={{display:"flex",alignItems:"center",gap:"clamp(18px,3vw,30px)",opacity:0,animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) 1.9s both"}}>
+          <div style={{padding:10,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.45)",borderRadius:12,animation:"tvadQRGlow 2.5s ease-in-out infinite"}}>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(70px,10vw,120px)",height:"clamp(70px,10vw,120px)",display:"block"}} />
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,textAlign:"left"}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,3.6vw,36px)",letterSpacing:2,...G,lineHeight:1}}>PREDICT</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,3.6vw,36px)",letterSpacing:2,...G,lineHeight:1}}>EVERY MATCH</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.6vw,12px)",color:"rgba(255,255,255,.35)",marginTop:6,letterSpacing:1.5}}>elmundo-world-cup.com</div>
           </div>
         </div>
       </div>
@@ -6099,7 +6114,7 @@ function TVAdSlideB() {
   );
 }
 
-/* A — CINEMATIC TITLE REVEAL */
+/* A — CINEMATIC LOGO REVEAL → REGISTER CTA */
 function TVAdSlideA() {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
   const [phase, setPhase] = useState(0);
@@ -6107,27 +6122,30 @@ function TVAdSlideA() {
     const id = setTimeout(() => setPhase(1), 5400);
     return () => clearTimeout(id);
   }, []);
-  const letters = "EL MUNDO".split("");
 
   return (
     <div className="tvad-slide">
       {phase === 0 ? (
-        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center"}}>
-          <div style={{display:"flex",gap:"clamp(2px,1vw,8px)",marginBottom:20,overflow:"hidden"}}>
-            {letters.map((l, i) => (
-              <div key={i} style={{
-                fontFamily:"'Anton',sans-serif",
-                fontSize:"clamp(48px,12vw,128px)",
-                letterSpacing:2,lineHeight:1,
-                ...G,
-                filter:"drop-shadow(0 0 32px rgba(240,192,64,.45))",
-                animation:`tvadLetterIn .5s cubic-bezier(.16,1,.3,1) ${.2 + i * .08}s both`,
-              }}>{l === " " ? "\u00A0" : l}</div>
-            ))}
+        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%"}}>
+          {/* Gold light-sweep that passes over the logo */}
+          <div className="tvad-a-sweep" />
+          {/* Top frame line */}
+          <div style={{width:"clamp(160px,40vw,560px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent)",marginBottom:"clamp(18px,3vw,30px)",opacity:0,animation:"tvadDividerGrow 1.1s cubic-bezier(.16,1,.3,1) .3s forwards"}} />
+          {/* Ambient halo behind logo */}
+          <div style={{position:"relative",display:"flex",justifyContent:"center",alignItems:"center"}}>
+            <div style={{position:"absolute",width:"clamp(320px,42vw,520px)",height:"clamp(320px,42vw,520px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.14) 0%,rgba(240,192,64,.04) 45%,transparent 70%)",opacity:0,animation:"tvadFadeUp 1.2s cubic-bezier(.16,1,.3,1) .6s both",pointerEvents:"none"}} />
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) .8s forwards",pointerEvents:"none"}}>
+              <div style={{width:"clamp(280px,38vw,460px)",height:"clamp(280px,38vw,460px)",borderRadius:"50%",border:"1px solid rgba(240,192,64,.15)",animation:"tvadRotateRing 18s linear infinite"}} />
+            </div>
+            <div style={{filter:"drop-shadow(0 0 44px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.6s cubic-bezier(.16,1,.3,1) .9s both"}}>
+              <Logo w={Math.min(280, Math.round(window.innerWidth * 0.23))} />
+            </div>
           </div>
-          <div style={{width:"clamp(80px,18vw,200px)",height:2,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",marginBottom:18,animation:"tvadLineGrow .8s ease 1.0s both"}} />
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,3vw,28px)",letterSpacing:8,color:"rgba(255,255,255,.0)",marginBottom:6,animation:"tvadNeonFlicker .08s linear 1.2s 1 forwards, tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1.2s both",WebkitTextFillColor:"rgba(255,255,255,.55)"}}>WORLD CUP 2026</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:6,color:"rgba(255,255,255,.2)",animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1.8s both"}}>THE ULTIMATE PREDICTION GAME</div>
+          {/* Bottom frame line */}
+          <div style={{width:"clamp(160px,40vw,560px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent)",marginTop:"clamp(18px,3vw,30px)",marginBottom:"clamp(20px,3vw,32px)",opacity:0,animation:"tvadDividerGrow 1.1s cubic-bezier(.16,1,.3,1) .5s forwards"}} />
+          {/* WORLD CUP 2026 neon */}
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,52px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 28px rgba(240,192,64,.45))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.4s both,tvadNeonFlicker 2s linear 3.4s 1"}}>WORLD CUP 2026</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,15px)",letterSpacing:10,color:"rgba(255,255,255,.5)",marginTop:"clamp(8px,1.4vw,14px)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 3.2s both"}}>THE ULTIMATE PREDICTION GAME</div>
         </div>
       ) : (
         <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:580,animation:"tvadSlideIn .6s cubic-bezier(.16,1,.3,1) both"}}>
