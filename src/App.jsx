@@ -4285,59 +4285,57 @@ function PlayerProfileModal({ player, rank, matches, preds, onClose }) {
     const score = calcPts(p, m.hs ?? m.home_score, m.as ?? m.away_score);
     acc.total++;
     if (score === 5) acc.exact++;
-    else if (score === 1) acc.winner++;
     return acc;
-  }, { total: 0, exact: 0, winner: 0 });
+  }, { total: 0, exact: 0 });
 
-  const visaId = `EM-2026-${player.id.slice(0,8).toUpperCase()}`;
+  const acc = stats.total > 0 ? Math.round(stats.exact / stats.total * 100) : null;
   const MEDALS = ["🥇","🥈","🥉"];
-  const METAL_STYLE = [
-    {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
-    {background:"linear-gradient(135deg,#e8e8e8,#b0b0b0,#fff,#888)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
-    {background:"linear-gradient(135deg,#e0a060,#CD7F32,#f0c080,#8B5E3C)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"},
-  ];
+  const RANK_COLORS = ["#F0C040","#C0C0C0","#CD7F32"];
+  const isTop3 = rank <= 3;
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"20px"}} onClick={onClose}>
-      <div style={{background:"linear-gradient(160deg,#131008 0%,#0a0800 100%)",border:"1px solid rgba(240,192,64,.22)",borderRadius:18,padding:"32px 24px 24px",width:"100%",maxWidth:320,position:"relative",animation:"modalPop .22s cubic-bezier(.4,0,.2,1) both"}} onClick={e=>e.stopPropagation()}>
-        <button onClick={onClose} style={{position:"absolute",top:12,right:16,background:"none",border:"none",color:"rgba(255,255,255,.35)",fontSize:22,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+    <div className="psearch-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
+      <div className="psearch-popup" style={{height:"auto",maxHeight:"88vh"}}>
+        <button className="psearch-close" onClick={onClose}>✕</button>
 
-        {/* Rank icon */}
-        <div style={{textAlign:"center",marginBottom:12}}>
-          {rank <= 3
-            ? <span style={{fontSize:52,lineHeight:1,filter:"drop-shadow(0 0 14px rgba(240,192,64,.65))"}}>{MEDALS[rank-1]}</span>
-            : <span style={{fontFamily:"'Anton',sans-serif",fontSize:36,color:"rgba(255,255,255,.25)",letterSpacing:2}}>#{rank}</span>
-          }
+        {/* Premium rank badge */}
+        <div style={{textAlign:"center",paddingTop:8,marginBottom:6}}>
+          <span style={{
+            display:"inline-flex",alignItems:"center",gap:7,
+            background: isTop3 ? `linear-gradient(135deg,rgba(${isTop3?[
+              "240,192,64","192,192,192","205,127,50"
+            ][rank-1]:"255,255,255"},.14),rgba(${isTop3?[
+              "240,192,64","192,192,192","205,127,50"
+            ][rank-1]:"255,255,255"},.06))` : "rgba(255,255,255,.05)",
+            border:`1px solid rgba(${isTop3?["240,192,64","192,192,192","205,127,50"][rank-1]:"255,255,255"},.${isTop3?"35":"1"})`,
+            borderRadius:24,padding:"6px 16px",
+            fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,
+            color: isTop3 ? RANK_COLORS[rank-1] : "rgba(255,255,255,.35)",
+          }}>
+            {isTop3 && <span style={{fontSize:16,filter:`drop-shadow(0 0 6px ${RANK_COLORS[rank-1]})`}}>{MEDALS[rank-1]}</span>}
+            RANK #{rank}
+          </span>
         </div>
 
-        {/* Name */}
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(20px,5vw,28px)",textAlign:"center",textTransform:"uppercase",letterSpacing:2,marginBottom:4,...(rank<=3?METAL_STYLE[rank-1]:{color:"#fff"})}}>{player.name}</div>
-
-        {/* Points */}
-        <div style={{textAlign:"center",marginBottom:22}}>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:52,lineHeight:1,color:"#F0C040",filter:"drop-shadow(0 0 12px rgba(240,192,64,.4))"}}>{player.pts}</span>
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.3)",marginLeft:7}}>PTS</span>
+        {/* Avatar + name + badge */}
+        <div className="psearch-profile">
+          <Av u={player} size={88} fontSize={36}/>
+          <div className="psearch-pname">{player.name}</div>
+          {getPlayerBadge(player) && <div className="psearch-badge-glow"><PlayerBadge u={player}/></div>}
         </div>
-
-        <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.28),transparent)",marginBottom:20}} />
 
         {/* Stats */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:22}}>
+        <div className="psearch-stats">
           {[
-            {label:"EXACT",value:stats.exact,color:"#4ade80"},
-            {label:"WINNER",value:stats.winner,color:"#F0C040"},
-            {label:"PLAYED",value:stats.total,color:"rgba(255,255,255,.45)"},
+            {l:"POINTS",  v: player.pts},
+            {l:"CORRECT", v: stats.total > 0 ? `${stats.exact}/${stats.total}` : "—"},
+            {l:"ACCURACY",v: acc != null ? `${acc}%` : "—"},
           ].map(s => (
-            <div key={s.label} style={{textAlign:"center",background:"rgba(255,255,255,.04)",borderRadius:10,padding:"12px 4px"}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:30,color:s.color,lineHeight:1}}>{s.value}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:1.5,color:"rgba(255,255,255,.28)",marginTop:5}}>{s.label}</div>
+            <div key={s.l} className="psearch-stat">
+              <div className="psearch-stat-val">{s.v}</div>
+              <div className="psearch-stat-lbl">{s.l}</div>
             </div>
           ))}
-        </div>
-
-        {/* Visa ID */}
-        <div style={{textAlign:"center",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3.5,color:"rgba(255,255,255,.18)",borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:14}}>
-          {visaId}
         </div>
       </div>
     </div>
