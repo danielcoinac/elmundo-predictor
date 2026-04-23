@@ -1871,7 +1871,8 @@ function StadiumSky() {
 function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, publicBoard, appSettings = {} }) {
   const { t } = useLang();
   const evLabel = `${appSettings.eventName||"WORLD CUP"} ${appSettings.eventYear||2026}`;
-  const [showTV,  setShowTV]  = useState(false);
+  const [showTV,    setShowTV   ] = useState(false);
+  const [showTVAds, setShowTVAds] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [phase,   setPhase]   = useState(0); // 0=hidden 1=logo-in 2=text-neon 3=settle 4=done
   const timersRef = useRef([]);
@@ -1894,7 +1895,8 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
   const isLogin = tab === "login";
   const introActive = phase < 3;
 
-  if (showTV) return <TVLeaderboard board={publicBoard} onBack={() => setShowTV(false)} />;
+  if (showTV)    return <TVLeaderboard board={publicBoard} onBack={() => setShowTV(false)} />;
+  if (showTVAds) return <TVAdView onBack={() => setShowTVAds(false)} matches={[]} />;
 
   return (
     <div className="auth-root">
@@ -2006,6 +2008,13 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
           <div className="tv-lb-btn-inner">
             <span className="tv-lb-btn-text">VIEW LEADERBOARD</span>
             <span className="tv-lb-btn-sub">TV / Big screen display</span>
+          </div>
+        </button>
+        <button className="tv-lb-btn" style={{animation: phase >= 3 ? "fadeUp .7s cubic-bezier(.16,1,.3,1) .6s both" : "none"}} onClick={() => setShowTVAds(true)}>
+          <span className="tv-lb-btn-ico">🎬</span>
+          <div className="tv-lb-btn-inner">
+            <span className="tv-lb-btn-text">TV ADVERTISEMENTS</span>
+            <span className="tv-lb-btn-sub">Run on big screens</span>
           </div>
         </button>
       </div>
@@ -6210,7 +6219,6 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
       tabs: [
         { id:"dashboard", label:"Dashboard" },
-        { id:"tvads",     label:"📺 TV Ads"  },
       ]
     },
     {
@@ -6307,7 +6315,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
       {/* ── Content ── */}
       {section === "dashboard"  && <AdminDashboard allOrders={allOrders} users={users} board={board} />}
-      {section === "tvads"      && <AdminTVAds onLaunch={onLaunchTVAd} />}
+
 
       {section === "matches"    && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
       {section === "rules"      && <AdminRules    rules={rules}       onSave={onSaveRules} />}
