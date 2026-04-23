@@ -2222,6 +2222,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
   const [animKey, setAnimKey] = useState(appTab);
+  const [showTVAd, setShowTVAd] = useState(false);
 
   // "Add to Home Screen" prompt
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -2347,6 +2348,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     }
   }, [appTab, appSettings.noEventMode, appSettings.showMatches, appSettings.showLeaderboard, appSettings.showMundogram, appSettings.showMenu]);
 
+  if (showTVAd) return <TVAdView onBack={() => setShowTVAd(false)} matches={matches} />;
+
   return (
     <div className="shell">
       <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
@@ -2439,6 +2442,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               appSettings={appSettings}
               onSaveAppSettings={onSaveAppSettings}
               sendPush={sendPush}
+              onLaunchTVAd={() => setShowTVAd(true)}
               onAnnounceWinner={async () => {
                 const winner = board[0] || null;
                 setWinnerData(winner);
@@ -5823,7 +5827,457 @@ function AdminDashboard({ allOrders, users, board }) {
 }
 
 /* ═══ ADMIN VIEW ════════════════════════════════════════════════════════════ */
-function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, onSetKeepupsAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{}, sendPush = ()=>{} }) {
+/* ═══ TV ADVERTISEMENT SLIDES ═══════════════════════════════════════════════ */
+
+/* C — PARTICLE EXPLOSION CANVAS */
+function TVAdSlideC() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let raf, startTime = null;
+    const W = canvas.width = window.innerWidth;
+    const H = canvas.height = window.innerHeight;
+    const CX = W / 2, CY = H / 2;
+
+    // Sample text pixels
+    const PHRASE = "PREDICT · COMPETE · WIN";
+    const offscreen = document.createElement("canvas");
+    offscreen.width = W; offscreen.height = H;
+    const oc = offscreen.getContext("2d");
+    oc.fillStyle = "#fff";
+    const fs = Math.round(W * 0.055);
+    oc.font = `900 ${fs}px Anton, sans-serif`;
+    oc.textAlign = "center"; oc.textBaseline = "middle";
+    oc.fillText(PHRASE, CX, CY);
+    const pixels = oc.getImageData(0, 0, W, H).data;
+    const targets = [];
+    const step = 5;
+    for (let y = 0; y < H; y += step) {
+      for (let x = 0; x < W; x += step) {
+        const idx = (y * W + x) * 4;
+        if (pixels[idx + 3] > 128) targets.push({ x, y });
+      }
+    }
+
+    // Build particles
+    const TOTAL = Math.min(targets.length, 800);
+    const sampled = targets.sort(() => Math.random() - 0.5).slice(0, TOTAL);
+    const particles = sampled.map(t => ({
+      tx: t.x, ty: t.y,
+      x: CX + (Math.random() - 0.5) * 8,
+      y: CY + (Math.random() - 0.5) * 8,
+      vx: (Math.random() - 0.5) * 18,
+      vy: (Math.random() - 0.5) * 18,
+      size: Math.random() * 2.5 + 1,
+      alpha: 1,
+      gold: Math.random() > 0.35,
+    }));
+
+    const PHASE_DUR = [1200, 800, 2800, 2000, 1200];
+    const PHASES = PHASE_DUR.reduce((a, d, i) => { a.push((a[i - 1] || 0) + d); return a; }, []);
+
+    function draw(ts) {
+      if (!startTime) startTime = ts;
+      const elapsed = ts - startTime;
+      ctx.clearRect(0, 0, W, H);
+
+      // phase 0: pulsing origin dot
+      if (elapsed < PHASES[0]) {
+        const p = elapsed / PHASE_DUR[0];
+        const r = 6 + Math.sin(p * Math.PI * 8) * 4;
+        ctx.beginPath();
+        ctx.arc(CX, CY, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(240,192,64,${0.6 + Math.sin(p * Math.PI * 6) * 0.4})`;
+        ctx.fill();
+        ctx.shadowColor = "#F0C040"; ctx.shadowBlur = 30;
+        ctx.fill(); ctx.shadowBlur = 0;
+      }
+      // phase 1: explosion burst
+      else if (elapsed < PHASES[1]) {
+        const p = (elapsed - PHASES[0]) / PHASE_DUR[1];
+        particles.forEach(pt => {
+          pt.x += pt.vx * 0.5;
+          pt.y += pt.vy * 0.5;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${1 - p * 0.3})` : `rgba(255,255,255,${1 - p * 0.4})`;
+          ctx.fill();
+        });
+      }
+      // phase 2: converge to text
+      else if (elapsed < PHASES[2]) {
+        const p = Math.min(1, (elapsed - PHASES[1]) / PHASE_DUR[2]);
+        const ease = 1 - Math.pow(1 - p, 3);
+        particles.forEach(pt => {
+          pt.x = pt.x + (pt.tx - pt.x) * ease * 0.06;
+          pt.y = pt.y + (pt.ty - pt.y) * ease * 0.06;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, pt.size * (1 - p * 0.3 + 0.3), 0, Math.PI * 2);
+          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${0.7 + ease * 0.3})` : `rgba(255,220,120,${0.5 + ease * 0.5})`;
+          ctx.fill();
+        });
+      }
+      // phase 3: shimmer hold
+      else if (elapsed < PHASES[3]) {
+        const p = (elapsed - PHASES[2]) / PHASE_DUR[3];
+        particles.forEach((pt, i) => {
+          const flicker = 0.7 + Math.sin((elapsed * 0.005 + i * 0.3)) * 0.3;
+          ctx.beginPath();
+          ctx.arc(pt.tx, pt.ty, pt.size, 0, Math.PI * 2);
+          ctx.fillStyle = pt.gold ? `rgba(240,192,64,${flicker})` : `rgba(255,220,120,${flicker * 0.8})`;
+          if (pt.gold) { ctx.shadowColor = "#F0C040"; ctx.shadowBlur = 6; }
+          ctx.fill(); ctx.shadowBlur = 0;
+        });
+        // EL MUNDO overlay text
+        const ta = Math.min(1, (elapsed - PHASES[2]) / 400);
+        ctx.globalAlpha = ta;
+        ctx.fillStyle = "rgba(240,192,64,0.12)";
+        ctx.font = `900 ${Math.round(W * 0.18)}px Anton, sans-serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("EL MUNDO", CX, CY * 0.55);
+        ctx.globalAlpha = 1;
+      }
+      // phase 4: collapse + logo burst
+      else {
+        const p = Math.min(1, (elapsed - PHASES[3]) / PHASE_DUR[4]);
+        particles.forEach(pt => {
+          ctx.beginPath();
+          ctx.arc(pt.tx + (CX - pt.tx) * p, pt.ty + (CY - pt.ty) * p, pt.size * (1 - p), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(240,192,64,${1 - p})`;
+          ctx.fill();
+        });
+        const burst = p;
+        ctx.beginPath();
+        ctx.arc(CX, CY, burst * 120, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(240,192,64,${(1 - burst) * 0.25})`;
+        ctx.fill();
+      }
+
+      if (elapsed < PHASES[4]) raf = requestAnimationFrame(draw);
+    }
+
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  return (
+    <div className="tvad-slide" style={{padding:0}}>
+      <canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%"}} />
+      <div style={{position:"absolute",bottom:"12%",left:0,right:0,display:"flex",flexDirection:"column",alignItems:"center",zIndex:2,animation:"tvadWordIn 1s cubic-bezier(.16,1,.3,1) 4.5s both"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,15px)",letterSpacing:7,color:"rgba(255,255,255,.3)",marginBottom:8}}>WORLD CUP 2026</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(32px,8vw,86px)",letterSpacing:8,...G,filter:"drop-shadow(0 0 40px rgba(240,192,64,.6))"}}>EL MUNDO</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"rgba(255,255,255,.22)",marginTop:6}}>BONAIRE · NETHERLANDS ANTILLES</div>
+      </div>
+    </div>
+  );
+}
+
+/* D — COUNTDOWN URGENCY SLIDE */
+function TVAdClockUnit({ val, lbl }) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:"clamp(60px,10vw,100px)"}}>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(40px,9vw,90px)",letterSpacing:2,lineHeight:1,color:"#F0C040",filter:"drop-shadow(0 0 20px rgba(240,192,64,.5))",animation:"tvadLivePulse 1s ease-in-out infinite"}}>{String(val).padStart(2,"0")}</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",letterSpacing:4,color:"rgba(255,255,255,.3)",marginTop:4}}>{lbl}</div>
+    </div>
+  );
+}
+function TVAdSlideD({ matches = [] }) {
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const nextMatch = useMemo(() => {
+    const now = Date.now();
+    return [...matches].filter(m => new Date(m.kickoff).getTime() > now).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff))[0] || null;
+  }, [matches]);
+
+  const calcRemaining = () => {
+    if (!nextMatch) return null;
+    const diff = Math.max(0, Math.floor((new Date(nextMatch.kickoff).getTime() - Date.now()) / 1000));
+    return { d: Math.floor(diff / 86400), h: Math.floor((diff % 86400) / 3600), m: Math.floor((diff % 3600) / 60), s: diff % 60, total: diff };
+  };
+  const [tl, setTl] = useState(calcRemaining);
+  useEffect(() => {
+    const id = setInterval(() => setTl(calcRemaining()), 1000);
+    return () => clearInterval(id);
+  }, [nextMatch]);
+
+  const urgent = tl && tl.total < 600;
+
+  return (
+    <div className="tvad-slide">
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:700}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.8vw,13px)",letterSpacing:7,color:"rgba(240,192,64,.65)",marginBottom:12,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .1s both"}}>NEXT MATCH STARTS IN</div>
+        {tl ? (
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:"clamp(8px,3vw,32px)",marginBottom:14,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
+              {tl.d > 0 && <><TVAdClockUnit val={tl.d} lbl="DAYS" /><div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div></>}
+              <TVAdClockUnit val={tl.h} lbl="HRS" />
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div>
+              <TVAdClockUnit val={tl.m} lbl="MIN" />
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,60px)",color:"rgba(240,192,64,.35)",lineHeight:1,paddingBottom:16}}>:</div>
+              <TVAdClockUnit val={tl.s} lbl="SEC" />
+            </div>
+            {nextMatch && (
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.8vw,22px)",color:"rgba(255,255,255,.5)",letterSpacing:3,marginBottom:28,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .6s both"}}>
+                {nextMatch.home} vs {nextMatch.away}
+              </div>
+            )}
+            {urgent && <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.5vw,18px)",letterSpacing:4,color:"#ff4444",animation:"tvadNeonFlicker 0.4s linear infinite",marginBottom:16}}>⚡ SUBMIT YOUR PREDICTION NOW ⚡</div>}
+          </>
+        ) : (
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,7vw,72px)",color:"rgba(255,255,255,.18)",letterSpacing:4,marginBottom:28}}>STAY TUNED</div>
+        )}
+        <div style={{width:"100%",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",marginBottom:28,animation:"tvadLineGrow 1s ease .8s both"}} />
+        <div style={{display:"flex",alignItems:"center",gap:24,animation:"tvadWordIn .8s cubic-bezier(.16,1,.3,1) 1s both"}}>
+          <div style={{padding:10,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.4)",borderRadius:12,animation:"tvadQRGlow 2.5s ease-in-out infinite"}}>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(80px,12vw,140px)",height:"clamp(80px,12vw,140px)",display:"block"}} />
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,textAlign:"left"}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,40px)",letterSpacing:2,...G,lineHeight:1}}>PREDICT</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,40px)",letterSpacing:2,...G,lineHeight:1}}>EVERY MATCH</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",color:"rgba(255,255,255,.3)",marginTop:6,letterSpacing:1}}>elmundo-world-cup.com</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* B — LIVE SCORE TICKER */
+function TVAdSlideB() {
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const [minute, setMinute] = useState(67);
+  const [score, setScore]   = useState({h:1, a:0});
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMinute(m => Math.min(m + 1, 90));
+    }, 3500);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="tvad-slide" style={{padding:0}}>
+      <div className="tvad-scanline-overlay" />
+      <div style={{position:"relative",zIndex:2,display:"flex",width:"100%",height:"100%",alignItems:"stretch"}}>
+        {/* LEFT — live match */}
+        <div style={{flex:"0 0 55%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(24px,5vw,60px)",borderRight:"1px solid rgba(240,192,64,.15)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .1s both"}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:"#ff3333",animation:"tvadLivePulse .8s ease-in-out infinite"}} />
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"#ff4444"}}>LIVE</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:2,color:"rgba(255,255,255,.35)",marginLeft:4}}>{minute}'</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(12px,4vw,36px)",width:"100%",marginBottom:20,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{fontSize:"clamp(32px,7vw,64px)"}}>🇧🇷</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:2,color:"rgba(255,255,255,.4)"}}>BRAZIL</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(44px,10vw,100px)",letterSpacing:8,color:"#fff",lineHeight:1,filter:"drop-shadow(0 0 24px rgba(255,255,255,.25))"}}>{score.h} – {score.a}</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{fontSize:"clamp(32px,7vw,64px)"}}>🇦🇷</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:2,color:"rgba(255,255,255,.4)"}}>ARGENTINA</div>
+            </div>
+          </div>
+          <div style={{width:"70%",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",marginBottom:16,animation:"tvadScanlineBar 3s linear infinite"}} />
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",letterSpacing:4,color:"rgba(255,255,255,.2)",animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .7s both"}}>GROUP A · MATCHDAY 2</div>
+        </div>
+        {/* RIGHT — prediction CTA */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(20px,4vw,48px)"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:6,color:"rgba(240,192,64,.6)",marginBottom:10,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .2s both"}}>DID YOU PREDICT</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(24px,5.5vw,52px)",letterSpacing:3,color:"#fff",lineHeight:1,marginBottom:8,animation:"tvadWordIn .8s cubic-bezier(.16,1,.3,1) .4s both"}}>THIS<br/>SCORE?</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,44px)",letterSpacing:2,...G,marginBottom:24,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .6s both",filter:"drop-shadow(0 0 16px rgba(240,192,64,.4))"}}>+5 PTS</div>
+          <div style={{padding:12,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.4)",borderRadius:14,marginBottom:14,animation:"tvadQRGlow 2.5s ease-in-out infinite, tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .8s both"}}>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(70px,11vw,120px)",height:"clamp(70px,11vw,120px)",display:"block"}} />
+          </div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:3,...G,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1s both"}}>PREDICT FREE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,11px)",color:"rgba(255,255,255,.22)",marginTop:4,letterSpacing:1,animation:"tvadWordIn .5s cubic-bezier(.16,1,.3,1) 1.1s both"}}>elmundo-world-cup.com</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* A — CINEMATIC TITLE REVEAL */
+function TVAdSlideA() {
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const id = setTimeout(() => setPhase(1), 5400);
+    return () => clearTimeout(id);
+  }, []);
+  const letters = "EL MUNDO".split("");
+
+  return (
+    <div className="tvad-slide">
+      {phase === 0 ? (
+        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center"}}>
+          <div style={{display:"flex",gap:"clamp(2px,1vw,8px)",marginBottom:20,overflow:"hidden"}}>
+            {letters.map((l, i) => (
+              <div key={i} style={{
+                fontFamily:"'Anton',sans-serif",
+                fontSize:"clamp(48px,12vw,128px)",
+                letterSpacing:2,lineHeight:1,
+                ...G,
+                filter:"drop-shadow(0 0 32px rgba(240,192,64,.45))",
+                animation:`tvadLetterIn .5s cubic-bezier(.16,1,.3,1) ${.2 + i * .08}s both`,
+              }}>{l === " " ? "\u00A0" : l}</div>
+            ))}
+          </div>
+          <div style={{width:"clamp(80px,18vw,200px)",height:2,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",marginBottom:18,animation:"tvadLineGrow .8s ease 1.0s both"}} />
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,3vw,28px)",letterSpacing:8,color:"rgba(255,255,255,.0)",marginBottom:6,animation:"tvadNeonFlicker .08s linear 1.2s 1 forwards, tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1.2s both",WebkitTextFillColor:"rgba(255,255,255,.55)"}}>WORLD CUP 2026</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:6,color:"rgba(255,255,255,.2)",animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1.8s both"}}>THE ULTIMATE PREDICTION GAME</div>
+        </div>
+      ) : (
+        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:580,animation:"tvadSlideIn .6s cubic-bezier(.16,1,.3,1) both"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.7vw,13px)",letterSpacing:7,color:"rgba(240,192,64,.6)",marginBottom:14,animation:"tvadWordIn .5s cubic-bezier(.16,1,.3,1) .1s both"}}>JOIN THE GAME</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(24px,6vw,60px)",letterSpacing:3,color:"#fff",lineHeight:1.1,marginBottom:8,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .2s both"}}>REGISTER NOW</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,3vw,26px)",letterSpacing:2,color:"rgba(255,255,255,.45)",lineHeight:1.2,marginBottom:26,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .35s both"}}>& TAKE PART IN EVERY MATCH</div>
+          <div style={{display:"flex",alignItems:"center",gap:24,animation:"tvadScoreReveal .7s cubic-bezier(.16,1,.3,1) .5s both"}}>
+            <div style={{padding:14,background:"#0d0b00",border:"2px solid rgba(240,192,64,.5)",borderRadius:16,animation:"tvadQRGlow 2.2s ease-in-out infinite"}}>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,16vw,160px)",height:"clamp(100px,16vw,160px)",display:"block"}} />
+            </div>
+            <div style={{textAlign:"left",display:"flex",flexDirection:"column",gap:10}}>
+              {[{ico:"⚡",t:"PREDICT SCORES",s:"Exact score = 5 pts"},{ico:"🏆",t:"CLIMB THE BOARD",s:"Beat every guest"},{ico:"🎁",t:"WIN PRIZES",s:"Top predictors rewarded"}].map((r,i)=>(
+                <div key={r.t} style={{animation:`tvadWordIn .5s cubic-bezier(.16,1,.3,1) ${.6+i*.12}s both`,display:"flex",alignItems:"flex-start",gap:10}}>
+                  <div style={{fontSize:"clamp(14px,2.5vw,20px)",marginTop:1}}>{r.ico}</div>
+                  <div>
+                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:2,color:"rgba(255,255,255,.75)"}}>{r.t}</div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",color:"rgba(255,255,255,.28)",marginTop:1}}>{r.s}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.5vw,18px)",letterSpacing:3,...G,marginTop:20,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1s both"}}>elmundo-world-cup.com</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* F — LUXURY HOTEL MENU STYLE */
+function TVAdSlideF() {
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const words = [
+    {text:"EL MUNDO", fs:"clamp(44px,11vw,116px)", ls:10, g:true, delay:1.5},
+    {text:"BAR · RESTAURANT · BONAIRE", fs:"clamp(10px,2vw,16px)", ls:6, g:false, col:"rgba(255,255,255,.35)", delay:3.3},
+    {text:"WORLD CUP 2026", fs:"clamp(18px,4vw,40px)", ls:5, g:true, delay:4.9},
+    {text:"PREDICTION GAME", fs:"clamp(14px,3vw,28px)", ls:4, g:false, col:"rgba(255,255,255,.55)", delay:6.4},
+  ];
+  return (
+    <div className="tvad-slide">
+      <div style={{position:"absolute",top:"50%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.18),transparent)",transform:"translateY(-0px)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) .8s both"}} />
+      <div style={{position:"absolute",bottom:"50%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.12),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) 1.2s both"}} />
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(8px,2vw,18px)"}}>
+        {words.map((w,i)=>(
+          <div key={i} style={{
+            fontFamily:"'Anton',sans-serif",
+            fontSize:w.fs, letterSpacing:w.ls, lineHeight:1,
+            ...(w.g ? {...G, filter:"drop-shadow(0 0 24px rgba(240,192,64,.3))"} : {color:w.col}),
+            animation:`tvadWordIn .8s cubic-bezier(.16,1,.3,1) ${w.delay}s both`,
+          }}>{w.text}</div>
+        ))}
+        <div style={{width:"clamp(60px,12vw,140px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.4),transparent)",margin:"clamp(8px,2vw,18px) 0",animation:"tvadLineGrow 1s ease 8.2s both"}} />
+        <div style={{position:"relative",animation:`tvadWordIn .8s cubic-bezier(.16,1,.3,1) 8.8s both`}}>
+          <div style={{position:"absolute",inset:-20,borderRadius:"50%",border:"1px solid rgba(240,192,64,.2)",animation:"tvadRotateRing 8s linear infinite",pointerEvents:"none"}} />
+          <div style={{position:"absolute",inset:-20,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.1)",animation:"tvadRotateRing 14s linear infinite reverse",pointerEvents:"none"}} />
+          <div style={{padding:14,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.45)",borderRadius:14,animation:"tvadQRGlow 3s ease-in-out infinite"}}>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://elmundobonaire.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(80px,12vw,130px)",height:"clamp(80px,12vw,130px)",display:"block"}} />
+          </div>
+        </div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",color:"rgba(255,255,255,.22)",letterSpacing:2,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 9.4s both"}}>elmundobonaire.com</div>
+      </div>
+    </div>
+  );
+}
+
+const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000];
+const TVAD_COUNT = TVAD_DURATIONS.length;
+
+function TVAdView({ onBack, matches = [] }) {
+  const [slide, setSlide] = useState(0);
+  const [tick,  setTick]  = useState(0);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setSlide(s => { const next = (s + 1) % TVAD_COUNT; return next; });
+      setTick(t => t + 1);
+    }, TVAD_DURATIONS[slide]);
+    return () => clearTimeout(id);
+  }, [slide]);
+
+  const goTo = (i) => { setSlide(i); setTick(t => t + 1); };
+
+  return (
+    <div className="tvad-root">
+      <TVParticles />
+      <div className="tv-vignette" />
+      <button className="tv-back-btn" onClick={onBack} style={{position:"fixed",top:16,left:16,zIndex:30}}>← EXIT</button>
+      <div className="tvad-progress">
+        {Array.from({length:TVAD_COUNT}).map((_,i) => (
+          <div key={i} className={`tvad-prog-seg${i<slide?" tvad-seg-done":""}`} onClick={()=>goTo(i)}>
+            {i===slide && <div key={tick} className="tvad-seg-fill" style={{animationDuration:`${TVAD_DURATIONS[slide]}ms`}} />}
+          </div>
+        ))}
+      </div>
+      {slide===0 && <TVAdSlideC key={`c-${tick}`} />}
+      {slide===1 && <TVAdSlideD key={`d-${tick}`} matches={matches} />}
+      {slide===2 && <TVAdSlideB key={`b-${tick}`} />}
+      {slide===3 && <TVAdSlideA key={`a-${tick}`} />}
+      {slide===4 && <TVAdSlideF key={`f-${tick}`} />}
+    </div>
+  );
+}
+
+function AdminTVAds({ onLaunch }) {
+  const slides = [
+    {n:"C",title:"PARTICLE EXPLOSION",desc:"Canvas firework burst → text forms from gold particles"},
+    {n:"D",title:"COUNTDOWN URGENCY",desc:"Live countdown to next match + QR code"},
+    {n:"B",title:"LIVE SCORE TICKER",desc:"Split screen — live match + predict CTA"},
+    {n:"A",title:"CINEMATIC REVEAL",desc:"Letter-by-letter title → Register Now + QR"},
+    {n:"F",title:"LUXURY MINIMAL",desc:"Hotel-menu word reveals · rotating ring · elmundobonaire.com"},
+  ];
+  return (
+    <div style={{padding:"28px 20px"}}>
+      <div style={{maxWidth:520,margin:"0 auto"}}>
+        <div style={{background:"rgba(240,192,64,.05)",border:"1px solid rgba(240,192,64,.18)",borderRadius:16,padding:"28px 24px",textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:36,marginBottom:10}}>📺</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:15,letterSpacing:3,color:"#fff",marginBottom:6}}>TV ADVERTISEMENT MODE</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",lineHeight:1.7,marginBottom:22}}>
+            5 premium animated slides · Per-slide durations<br/>Story-style progress bar · Gold particles background
+          </div>
+          <button onClick={onLaunch} style={{
+            width:"100%",padding:"15px 0",
+            background:"linear-gradient(135deg,rgba(240,192,64,.18),rgba(240,192,64,.08))",
+            border:"1px solid rgba(240,192,64,.45)",color:"#F0C040",
+            fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:3,
+            cursor:"pointer",borderRadius:10,transition:"all .2s",
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background="linear-gradient(135deg,rgba(240,192,64,.28),rgba(240,192,64,.14))"}
+          onMouseLeave={e=>e.currentTarget.style.background="linear-gradient(135deg,rgba(240,192,64,.18),rgba(240,192,64,.08))"}>
+            🎬  LAUNCH TV ADS — FULL SCREEN
+          </button>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.18)",marginTop:10}}>Opens full screen — click EXIT to return</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {slides.map(s=>(
+            <div key={s.n} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:10}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(240,192,64,.4)",minWidth:24}}>{s.n}</div>
+              <div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"rgba(255,255,255,.7)"}}>{s.title}</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSaveRules, onSaveSponsors, menuItems, users, onSaveMenuItem, onDeleteMenuItem, onToggleAvail, onToggleSoldOut, onAddCredits, onUpdateOrderStatus, onDeleteOrder, onLoadAllOrders, allOrders, sponsorGifts, onSetSponsorTier, onSaveSponsorGifts, onBanUsers, onAnnounceWinner, board, onSetFloorplanAccess = ()=>{}, onSetKeepupsAccess = ()=>{}, appSettings = {}, onSaveAppSettings = ()=>{}, sendPush = ()=>{}, onLaunchTVAd = ()=>{} }) {
   const [section, setSection] = useState("dashboard");
 
   const GROUPS = [
@@ -5833,6 +6287,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
       tabs: [
         { id:"dashboard", label:"Dashboard" },
+        { id:"tvads",     label:"📺 TV Ads"  },
       ]
     },
     {
@@ -5929,6 +6384,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
 
       {/* ── Content ── */}
       {section === "dashboard"  && <AdminDashboard allOrders={allOrders} users={users} board={board} />}
+      {section === "tvads"      && <AdminTVAds onLaunch={onLaunchTVAd} />}
 
       {section === "matches"    && <AdminMatches  matches={matches}   onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} />}
       {section === "rules"      && <AdminRules    rules={rules}       onSave={onSaveRules} />}

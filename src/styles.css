@@ -597,6 +597,28 @@
   .tv-pod-block-3{height:clamp(36px,6vw,64px);background:linear-gradient(180deg,#C07830 0%,#7A4310 55%,#200e00 100%);box-shadow:0 -4px 14px rgba(192,120,48,.25),inset 0 1px 0 rgba(255,180,80,.3)}
   .tv-footer{margin-top:auto;padding-top:36px;font-family:'Outfit',sans-serif;font-size:clamp(11px,1.8vw,14px);color:rgba(255,255,255,.18);text-align:center;letter-spacing:.5px;z-index:2}
 
+  /* ── TV AD SCREEN ── */
+  .tvad-root{min-height:100vh;background:radial-gradient(ellipse at 50% 15%,#170f00 0%,#0a0800 45%,#000 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  .tvad-progress{position:fixed;top:16px;left:80px;right:20px;display:flex;gap:5px;z-index:20}
+  .tvad-prog-seg{flex:1;height:3px;background:rgba(255,255,255,.15);border-radius:2px;cursor:pointer;overflow:hidden;position:relative}
+  .tvad-prog-seg.tvad-seg-done{background:rgba(240,192,64,.55)}
+  .tvad-seg-fill{position:absolute;top:0;left:0;height:100%;background:#F0C040;animation:tvadSegFill linear forwards;border-radius:2px}
+  @keyframes tvadSegFill{from{width:0}to{width:100%}}
+  .tvad-slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(40px,8vw,80px) clamp(24px,6vw,80px);text-align:center;animation:tvadSlideIn .7s cubic-bezier(.16,1,.3,1) both}
+  .tvad-scanline-overlay{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 4px);pointer-events:none;z-index:1}
+  @keyframes tvadSlideIn{from{opacity:0;transform:scale(.97) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes tvadWordIn{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes tvadLetterIn{from{opacity:0;transform:translateY(40px) scaleY(1.3)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+  @keyframes tvadLineGrow{from{width:0;opacity:0}to{opacity:1}}
+  @keyframes tvadScoreReveal{from{opacity:0;transform:scale(.6) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes tvadBarGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  @keyframes tvadQRGlow{0%,100%{box-shadow:0 0 0 2px rgba(240,192,64,.35),0 0 30px rgba(240,192,64,.12)}50%{box-shadow:0 0 0 4px rgba(240,192,64,.65),0 0 60px rgba(240,192,64,.28)}}
+  @keyframes tvadFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  @keyframes tvadNeonFlicker{0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}20%,22%,24%,55%{opacity:.3}}
+  @keyframes tvadScanlineBar{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+  @keyframes tvadLivePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.06)}}
+  @keyframes tvadRotateRing{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
   /* ══════════════════════════════════════
      SPLASH — BALL + ROPE SIGN + NEON
   ══════════════════════════════════════ */
