@@ -624,9 +624,9 @@ export default function App() {
       const reminderDelay = koMs - 60 * 60 * 1000 - now;
       if (reminderDelay > 0 && reminderDelay < 24 * 60 * 60 * 1000) {
         notifTimersRef.current.push(setTimeout(() => {
-          sendNotif("📢 Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — place your prediction!`, `match-reminder-${m.id}`);
+          sendNotif("📢 Match starting soon!", `${m.home} vs ${m.away} kicks off in 1 hour — place your prediction! Community stats are live in the Matches tab.`, `match-reminder-${m.id}`);
           toast$(`⚽ ${m.home} vs ${m.away} starts in 1 hour!`);
-          if (isAdminRef.current) sendPush({ title: "⚠️ Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict!`, tag: `reminder-${m.id}` });
+          if (isAdminRef.current) sendPush({ title: "⚠️ Match in 1 hour", body: `${m.home} vs ${m.away} — time to predict! Community stats are live in the Matches tab.`, tag: `reminder-${m.id}` });
         }, reminderDelay));
       }
       // At kickoff
