@@ -582,6 +582,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const [activeGroupSessions, setActiveGroupSessions] = useState([]); // group_orders with status open/ordering/awaiting_payment
   const canvasRef = useRef(null);
 
+  // ── Printer zone routing ────────────────────────────────────────────────
+  const PZ_KEY = "em-printer-zone"; // "inside" | "outside" | null
+  const [printerZone,   setPrinterZone  ] = useState(() => localStorage.getItem(PZ_KEY));
+  const [showZoneModal, setShowZoneModal] = useState(() => !localStorage.getItem(PZ_KEY));
+  const saveZone = (z) => { localStorage.setItem(PZ_KEY, z); setPrinterZone(z); setShowZoneModal(false); };
+
   // Plan-aware aliases
   const curTables    = isP2 ? tablesP2    : tables;
   const setCurTables = isP2 ? setTablesP2 : setTables;
@@ -652,8 +658,15 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       }
     });
     if (newEntries.length === 0) return;
-    // Print receipt on the bar device for each new order
-    newEntries.forEach(({ ord }) => { if (ord) try { printReceipt(ord); } catch(e) {} });
+    // Print receipt — only print orders that match this device's zone
+    newEntries.forEach(({ ord }) => {
+      if (!ord) return;
+      const zone = localStorage.getItem("em-printer-zone");
+      const orderIsOutside = String(ord.table_number).startsWith("OUT-");
+      if (zone === "inside"  &&  orderIsOutside) return; // outside order → skip on inside device
+      if (zone === "outside" && !orderIsOutside) return; // inside order  → skip on outside device
+      try { printReceipt(ord); } catch(e) {}
+    });
     const ts = Date.now();
     // Flash + toasts — timers stored in ref so effect cleanup never cancels them
     setFlashTables(prev => {
@@ -1036,8 +1049,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="fp-header">
 
-        {/* Plan selector */}
-        <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {/* Plan selector + printer zone badge */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
           {[{id:"1",label:"🏠 FLOOR PLAN #1"},{id:"2",label:"🌴 FLOOR PLAN #2 · OUTDOOR"}].map(p => (
             <button key={p.id} onClick={()=>switchPlan(p.id)}
               style={{padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",border:"none",borderRadius:4,transition:"all .2s",
@@ -1046,7 +1059,51 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                 boxShadow: activePlan===p.id ? "0 0 16px rgba(255,255,255,.15)" : "none",
               }}>{p.label}</button>
           ))}
+          {/* Printer zone indicator — always visible */}
+          <button onClick={()=>setShowZoneModal(true)} style={{
+            marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
+            padding:"6px 14px",borderRadius:20,cursor:"pointer",
+            border:`1.5px solid ${printerZone ? (printerZone==="inside"?"rgba(99,179,237,.55)":"rgba(104,211,145,.55)") : "rgba(240,192,64,.5)"}`,
+            background: printerZone ? (printerZone==="inside"?"rgba(99,179,237,.08)":"rgba(104,211,145,.08)") : "rgba(240,192,64,.08)",
+            color: printerZone ? (printerZone==="inside"?"#63b3ed":"#68d391") : "#F0C040",
+            fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,
+          }}>
+            🖨️ {printerZone ? (printerZone==="inside"?"INSIDE PRINTER":"OUTSIDE PRINTER") : "SET PRINTER ZONE"}
+            <span style={{opacity:.5,fontSize:9}}>⚙</span>
+          </button>
         </div>
+
+        {/* Printer zone modal */}
+        {showZoneModal && (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={printerZone?()=>setShowZoneModal(false):undefined}>
+            <div style={{background:"#111",border:"1px solid rgba(255,255,255,.12)",borderRadius:16,padding:"36px 32px",maxWidth:420,width:"90%",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:36,marginBottom:14}}>🖨️</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:3,color:"#fff",marginBottom:8}}>WHICH BAR IS THIS DEVICE?</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",marginBottom:28,lineHeight:1.6}}>
+                This device will only auto-print receipts for the selected zone.<br/>USB-connected printer routes orders automatically.
+              </div>
+              <div style={{display:"flex",gap:12}}>
+                <button onClick={()=>saveZone("inside")} style={{
+                  flex:1,padding:"18px 12px",borderRadius:10,cursor:"pointer",
+                  border:`2px solid ${printerZone==="inside"?"#63b3ed":"rgba(99,179,237,.3)"}`,
+                  background: printerZone==="inside"?"rgba(99,179,237,.15)":"rgba(99,179,237,.05)",
+                  color:"#63b3ed",fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,
+                }}>
+                  🏠<br/>INSIDE BAR<br/><span style={{fontSize:10,opacity:.6,letterSpacing:1}}>Tables 1–26</span>
+                </button>
+                <button onClick={()=>saveZone("outside")} style={{
+                  flex:1,padding:"18px 12px",borderRadius:10,cursor:"pointer",
+                  border:`2px solid ${printerZone==="outside"?"#68d391":"rgba(104,211,145,.3)"}`,
+                  background: printerZone==="outside"?"rgba(104,211,145,.15)":"rgba(104,211,145,.05)",
+                  color:"#68d391",fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,
+                }}>
+                  🌴<br/>OUTSIDE BAR<br/><span style={{fontSize:10,opacity:.6,letterSpacing:1}}>Outdoor Zones</span>
+                </button>
+              </div>
+              {printerZone && <button onClick={()=>setShowZoneModal(false)} style={{marginTop:16,background:"none",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer"}}>Cancel</button>}
+            </div>
+          </div>
+        )}
 
         {/* Row 1: title + view toggle */}
         <div className="fp-header-row1">
