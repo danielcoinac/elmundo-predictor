@@ -2064,22 +2064,24 @@ function useBalls() {
   return balls;
 }
 
-function TVBalls() {
-  const balls = useBalls();
+const TV_PARTICLES = [
+  {l:5,d:0,h:7,s:2},{l:10,d:2.1,h:9,s:3},{l:18,d:.5,h:6,s:2},{l:25,d:3.2,h:10,s:3},
+  {l:33,d:1.4,h:8,s:2},{l:40,d:4.0,h:6,s:3},{l:48,d:.8,h:11,s:2},{l:55,d:2.7,h:7,s:4},
+  {l:62,d:1.1,h:9,s:2},{l:70,d:3.5,h:8,s:3},{l:77,d:.3,h:6,s:2},{l:84,d:2.3,h:10,s:3},
+  {l:91,d:4.5,h:7,s:2},{l:8,d:5.2,h:8,s:4},{l:22,d:1.8,h:9,s:2},{l:44,d:3.8,h:6,s:3},
+  {l:66,d:4.8,h:11,s:2},{l:88,d:.6,h:7,s:3},{l:35,d:2.9,h:8,s:2},{l:60,d:5.5,h:9,s:3},
+];
+function TVParticles() {
   return (
-    <div style={{position:"fixed",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:0}}>
-      {balls.map(b => (
-        <div key={b.id} style={{
-          position:"absolute",
-          left:`${b.x}%`, top:`${b.y}%`,
-          fontSize:`${b.size}px`,
-          transform:`translate(-50%,-50%) rotate(${b.rot}deg)`,
-          opacity: b.opacity,
-          filter: b.blur ? `blur(${b.blur}px)` : "none",
-          transition:"none",
-          userSelect:"none",
-          lineHeight:1,
-        }}>⚽</div>
+    <div className="tv-particles">
+      {TV_PARTICLES.map((p, i) => (
+        <div key={i} className="tv-particle" style={{
+          left:`${p.l}%`,
+          animationDuration:`${p.h}s`,
+          animationDelay:`-${p.d}s`,
+          width:`${p.s}px`,
+          height:`${p.s}px`,
+        }} />
       ))}
     </div>
   );
@@ -2088,7 +2090,6 @@ function TVBalls() {
 function TVLeaderboard({ board, onBack }) {
   const [mode,   setMode]   = useState("scroll");
   const [visIdx, setVisIdx] = useState(0);
-  const M = ["🥇","🥈","🥉"];
 
   // Auto-cycle scroll ↔ podium every 12s with smooth fade
   useEffect(() => {
@@ -2108,80 +2109,77 @@ function TVLeaderboard({ board, onBack }) {
 
   const top3 = board.slice(0, 3);
 
+  const MEDAL_GLOW = ["gold","silver","bronze"];
+
   return (
     <div className="tv-root">
-      {/* Animated soccer balls */}
-      <TVBalls />
-
-      {/* Scanline overlay for TV effect */}
-      <div className="tv-scanlines" />
-
-      {/* Back */}
+      <TVParticles />
+      <div className="tv-vignette" />
       <button className="tv-back-btn" onClick={onBack}>← BACK TO LOGIN</button>
 
-      {/* Header */}
-      <div className="tv-header" style={{position:"relative",zIndex:2}}>
-        <Logo w={80} />
+      <div className="tv-header">
+        <Logo w={72} />
         <div className="tv-header-text">
           <div className="tv-title">WORLD CUP 2026</div>
           <div className="tv-subtitle">EL MUNDO BAR · BONAIRE</div>
         </div>
       </div>
 
-      {/* Mode dots */}
-      <div className="tv-mode-dots" style={{position:"relative",zIndex:2}}>
+      <div className="tv-header-divider" />
+
+      <div className="tv-mode-dots">
         <span className={`tv-dot ${mode==="scroll"?"tv-dot-on":""}`} />
         <span className={`tv-dot ${mode==="podium"?"tv-dot-on":""}`} />
       </div>
 
-      {/* SCROLL MODE */}
       {mode === "scroll" && (
-        <div key="scroll" className="tv-scroll-wrap tv-mode-fade" style={{position:"relative",zIndex:2}}>
+        <div key="scroll" className="tv-scroll-wrap tv-mode-fade">
           <div className="tv-section-label">LEADERBOARD — TOP 10</div>
           {board.length === 0 && <div className="tv-empty">No players yet — be the first to register!</div>}
           {board.map((u, i) => (
-            <div key={u.id} className={`tv-row ${visIdx===i?"tv-row-lit":""}`}>
+            <div key={u.id} className={`tv-row tv-row-rank-${Math.min(i,3)} ${visIdx===i?"tv-row-lit":""}`}>
               <div className="tv-rank">
-                {i<3 ? <span className="tv-medal">{M[i]}</span> : <span className="tv-rank-n">#{i+1}</span>}
+                {i < 3
+                  ? <span className={`tv-medal tv-medal-${MEDAL_GLOW[i]}`}>{["🥇","🥈","🥉"][i]}</span>
+                  : <span className="tv-rank-n">#{i+1}</span>
+                }
               </div>
-              <div className="tv-name">{u.name}</div>
+              <div className={`tv-name${i<3?" tv-"+["gold","silver","bronze"][i]:""}`}>{u.name}</div>
               <div className="tv-pts-wrap">
-                <span className="tv-pts">{u.pts}</span>
+                <span className={`tv-pts${i<3?" tv-"+["gold","silver","bronze"][i]:""}`}>{u.pts}</span>
                 <span className="tv-pts-u">PTS</span>
               </div>
-              {visIdx===i && <div className="tv-row-ball" style={{display:"none"}}>⚽</div>}
             </div>
           ))}
         </div>
       )}
 
-      {/* PODIUM MODE */}
       {mode === "podium" && (
-        <div key="podium" className="tv-podium-wrap tv-mode-fade" style={{position:"relative",zIndex:2}}>
+        <div key="podium" className="tv-podium-wrap tv-mode-fade">
           <div className="tv-section-label">TOP 3 PODIUM</div>
           <div className="tv-podium">
             {top3[1] && (
-              <div className="tv-pod tv-pod-2">
-                <div className="tv-pod-medal">🥈</div>
-                <div className="tv-pod-name">{top3[1].name}</div>
-                <div className="tv-pod-pts">{top3[1].pts}<span className="tv-pod-pts-u">pts</span></div>
+              <div className="tv-pod">
+                <div className="tv-pod-medal tv-pod-medal-silver">🥈</div>
+                <div className="tv-pod-name tv-silver">{top3[1].name}</div>
+                <div className="tv-pod-pts tv-silver">{top3[1].pts}<span className="tv-pod-pts-u">pts</span></div>
                 <div className="tv-pod-block tv-pod-block-2" />
               </div>
             )}
             {top3[0] && (
-              <div className="tv-pod tv-pod-1">
+              <div className="tv-pod">
                 <div className="tv-pod-crown">👑</div>
-                <div className="tv-pod-medal">🥇</div>
-                <div className="tv-pod-name tv-pod-name-1">{top3[0].name}</div>
-                <div className="tv-pod-pts tv-pod-pts-1">{top3[0].pts}<span className="tv-pod-pts-u">pts</span></div>
+                <div className="tv-pod-medal tv-pod-medal-gold">🥇</div>
+                <div className="tv-pod-name tv-pod-name-1 tv-gold">{top3[0].name}</div>
+                <div className="tv-pod-pts tv-pod-pts-1 tv-gold">{top3[0].pts}<span className="tv-pod-pts-u">pts</span></div>
                 <div className="tv-pod-block tv-pod-block-1" />
               </div>
             )}
             {top3[2] && (
-              <div className="tv-pod tv-pod-3">
-                <div className="tv-pod-medal">🥉</div>
-                <div className="tv-pod-name">{top3[2].name}</div>
-                <div className="tv-pod-pts">{top3[2].pts}<span className="tv-pod-pts-u">pts</span></div>
+              <div className="tv-pod">
+                <div className="tv-pod-medal tv-pod-medal-bronze">🥉</div>
+                <div className="tv-pod-name tv-bronze">{top3[2].name}</div>
+                <div className="tv-pod-pts tv-bronze">{top3[2].pts}<span className="tv-pod-pts-u">pts</span></div>
                 <div className="tv-pod-block tv-pod-block-3" />
               </div>
             )}
@@ -2190,8 +2188,7 @@ function TVLeaderboard({ board, onBack }) {
         </div>
       )}
 
-      {/* Footer */}
-      <div className="tv-footer" style={{position:"relative",zIndex:2}}>⚽ Exact score = 5 pts · Correct winner = 1 pt · Most points wins</div>
+      <div className="tv-footer">Exact score = 5 pts · Correct winner = 1 pt · Most points wins</div>
     </div>
   );
 }
