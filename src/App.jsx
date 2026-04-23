@@ -5843,22 +5843,30 @@ function TVAdSlideC() {
     canvas.style.height = window.innerHeight + "px";
     const CX = W / 2, CY = H / 2;
 
-    // Orbital embers — gentle ambient luxury feel
-    const orbits = Array.from({ length: 44 }, () => ({
+    // Wide light beams (rotate slowly in phase 3)
+    const beams = Array.from({ length: 8 }, (_, i) => ({
+      angle: (i / 8) * Math.PI * 2,
+      width: 0.04 + Math.random() * 0.06,
+      alpha: 0.04 + Math.random() * 0.08,
+    }));
+    let beamAngle = 0;
+
+    // Dense orbital embers
+    const orbits = Array.from({ length: 80 }, () => ({
       angle: Math.random() * Math.PI * 2,
-      radius: (120 + Math.random() * 360) * dpr,
-      speed: (0.0008 + Math.random() * 0.0022) * (Math.random() > 0.5 ? 1 : -1),
-      size: (Math.random() * 1.4 + 0.5) * dpr,
-      alpha: 0.15 + Math.random() * 0.45,
+      radius: (80 + Math.random() * 480) * dpr,
+      speed: (0.0005 + Math.random() * 0.0025) * (Math.random() > 0.5 ? 1 : -1),
+      size: (Math.random() * 2 + 0.6) * dpr,
+      alpha: 0.12 + Math.random() * 0.5,
       phase: Math.random() * Math.PI * 2,
     }));
 
-    // Radial burst spokes (for the explosion moment)
-    const spokes = Array.from({ length: 28 }, (_, i) => ({
-      angle: (i / 28) * Math.PI * 2 + (Math.random() - 0.5) * 0.15,
+    // Radial burst spokes
+    const spokes = Array.from({ length: 36 }, (_, i) => ({
+      angle: (i / 36) * Math.PI * 2 + (Math.random() - 0.5) * 0.1,
       len: 0,
-      maxLen: (180 + Math.random() * 140) * dpr,
-      width: (Math.random() * 1.2 + 0.6) * dpr,
+      maxLen: (220 + Math.random() * 200) * dpr,
+      width: (Math.random() * 1.8 + 0.4) * dpr,
     }));
 
     let raf, start = null;
@@ -5867,77 +5875,98 @@ function TVAdSlideC() {
       const elapsed = t - start;
       ctx.clearRect(0, 0, W, H);
 
-      // Background radial wash
-      const wash = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.7);
-      wash.addColorStop(0, "rgba(240,192,64,0.10)");
-      wash.addColorStop(0.5, "rgba(240,192,64,0.03)");
+      // Persistent radial glow
+      const wash = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.65);
+      wash.addColorStop(0, "rgba(240,192,64,0.12)");
+      wash.addColorStop(0.45, "rgba(240,192,64,0.04)");
       wash.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = wash;
       ctx.fillRect(0, 0, W, H);
 
-      // Phase 1 (0-1200ms): pulsing dot
-      if (elapsed < 1200) {
-        const p = elapsed / 1200;
-        const pulse = 0.5 + 0.5 * Math.sin(p * Math.PI * 5);
-        const r = (5 + pulse * 5) * dpr;
-        const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, r * 7);
-        g.addColorStop(0, `rgba(255,240,180,${0.9})`);
-        g.addColorStop(0.3, `rgba(240,192,64,${0.5 + pulse * 0.2})`);
+      // Phase 1 (0-1000ms): pulsing dot
+      if (elapsed < 1000) {
+        const p = elapsed / 1000;
+        const pulse = 0.5 + 0.5 * Math.sin(p * Math.PI * 6);
+        const r = (6 + pulse * 8) * dpr;
+        const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, r * 8);
+        g.addColorStop(0, `rgba(255,250,200,1)`);
+        g.addColorStop(0.2, `rgba(240,192,64,${0.6 + pulse * 0.3})`);
         g.addColorStop(1, "rgba(240,192,64,0)");
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(CX, CY, r * 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(CX, CY, r * 8, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff8e0"; ctx.fill();
+        ctx.fillStyle = "#fffadc"; ctx.fill();
       }
-      // Phase 2 (1200-2600ms): explosion spokes + expanding ring
-      else if (elapsed < 2600) {
-        const p = (elapsed - 1200) / 1400;
+      // Phase 2 (1000-2800ms): explosion — rings + spokes
+      else if (elapsed < 2800) {
+        const p = (elapsed - 1000) / 1800;
         const ease = 1 - Math.pow(1 - p, 3);
-        // Expanding ring
-        const ringR = ease * Math.min(W, H) * 0.42;
-        ctx.beginPath(); ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(240,192,64,${(1 - p) * 0.7})`;
-        ctx.lineWidth = (3 * (1 - p) + 0.4) * dpr;
-        ctx.stroke();
-        // Second softer ring
-        ctx.beginPath(); ctx.arc(CX, CY, ringR * 0.7, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,240,180,${(1 - p) * 0.35})`;
-        ctx.lineWidth = 1 * dpr;
-        ctx.stroke();
+        // 3 expanding rings at different speeds
+        [0.42, 0.62, 0.82].forEach((factor, ri) => {
+          const ringR = ease * Math.min(W, H) * factor;
+          ctx.beginPath(); ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(240,192,64,${(1 - p) * (0.7 - ri * 0.18)})`;
+          ctx.lineWidth = (3.5 - ri * 0.8) * (1 - p * 0.5) * dpr;
+          ctx.stroke();
+        });
         // Spokes
         spokes.forEach(s => {
           s.len = ease * s.maxLen;
-          const x1 = CX + Math.cos(s.angle) * (20 * dpr);
-          const y1 = CY + Math.sin(s.angle) * (20 * dpr);
-          const x2 = CX + Math.cos(s.angle) * (20 * dpr + s.len);
-          const y2 = CY + Math.sin(s.angle) * (20 * dpr + s.len);
+          const x1 = CX + Math.cos(s.angle) * (12 * dpr);
+          const y1 = CY + Math.sin(s.angle) * (12 * dpr);
+          const x2 = CX + Math.cos(s.angle) * (12 * dpr + s.len);
+          const y2 = CY + Math.sin(s.angle) * (12 * dpr + s.len);
           const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-          grad.addColorStop(0, `rgba(255,240,180,${(1 - p) * 0.9})`);
+          grad.addColorStop(0, `rgba(255,245,180,${(1 - p) * 0.95})`);
+          grad.addColorStop(0.6, `rgba(240,192,64,${(1 - p) * 0.4})`);
           grad.addColorStop(1, "rgba(240,192,64,0)");
           ctx.strokeStyle = grad;
           ctx.lineWidth = s.width;
           ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
         });
-        // Center flash
-        const flashR = (15 + (1 - p) * 30) * dpr;
-        const fg = ctx.createRadialGradient(CX, CY, 0, CX, CY, flashR * 2);
-        fg.addColorStop(0, `rgba(255,240,180,${1 - p})`);
+        // White flash center
+        const fr = (18 + (1 - p) * 36) * dpr;
+        const fg = ctx.createRadialGradient(CX, CY, 0, CX, CY, fr * 2.5);
+        fg.addColorStop(0, `rgba(255,250,200,${1 - p})`);
         fg.addColorStop(1, "rgba(240,192,64,0)");
         ctx.fillStyle = fg;
-        ctx.beginPath(); ctx.arc(CX, CY, flashR * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(CX, CY, fr * 2.5, 0, Math.PI * 2); ctx.fill();
       }
-      // Phase 3 (2600+): ambient orbital embers around logo
+      // Phase 3 (2800+): rotating light beams + dense orbital embers
       else {
+        beamAngle += 0.0012;
+        const maxD = Math.sqrt(W * W + H * H);
+        // Rotating beams
+        beams.forEach(b => {
+          const a = b.angle + beamAngle;
+          ctx.save();
+          ctx.translate(CX, CY);
+          ctx.rotate(a);
+          const bg = ctx.createLinearGradient(0, 0, maxD, 0);
+          bg.addColorStop(0, `rgba(240,192,64,${b.alpha * 0.8})`);
+          bg.addColorStop(0.5, `rgba(255,240,160,${b.alpha})`);
+          bg.addColorStop(1, "rgba(240,192,64,0)");
+          ctx.beginPath();
+          ctx.moveTo(0, -b.width * maxD);
+          ctx.lineTo(maxD, -b.width * maxD * 0.3);
+          ctx.lineTo(maxD, b.width * maxD * 0.3);
+          ctx.lineTo(0, b.width * maxD);
+          ctx.closePath();
+          ctx.fillStyle = bg;
+          ctx.fill();
+          ctx.restore();
+        });
+        // Orbital embers
         orbits.forEach(o => {
           o.angle += o.speed;
-          const flick = 0.7 + 0.3 * Math.sin(elapsed * 0.002 + o.phase);
+          const flick = 0.65 + 0.35 * Math.sin(elapsed * 0.0018 + o.phase);
           const x = CX + Math.cos(o.angle) * o.radius;
           const y = CY + Math.sin(o.angle) * o.radius;
           ctx.beginPath();
           ctx.arc(x, y, o.size * flick, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(240,192,64,${o.alpha * flick})`;
           ctx.shadowColor = "#F0C040";
-          ctx.shadowBlur = 8 * dpr;
+          ctx.shadowBlur = 10 * dpr;
           ctx.fill();
           ctx.shadowBlur = 0;
         });
@@ -5950,17 +5979,23 @@ function TVAdSlideC() {
   }, []);
 
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const logoW = Math.min(380, Math.round(window.innerWidth * 0.30));
   return (
     <div className="tvad-slide" style={{padding:0}}>
       <canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%"}} />
-      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(14px,2.5vw,26px)"}}>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:10,color:"rgba(240,192,64,.7)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.8s both"}}>WELCOME TO</div>
-        <div style={{filter:"drop-shadow(0 0 50px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.6s cubic-bezier(.16,1,.3,1) 2.6s both"}}>
-          <Logo w={Math.min(260, Math.round(window.innerWidth * 0.22))} />
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(16px,2.8vw,30px)"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:12,color:"rgba(240,192,64,.8)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.6s both"}}>WELCOME TO</div>
+        <div style={{position:"relative"}}>
+          {/* Glow halo rings behind logo */}
+          <div style={{position:"absolute",inset:-40,borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.18) 0%,rgba(240,192,64,.06) 40%,transparent 70%)",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.4s both",pointerEvents:"none"}} />
+          <div style={{position:"absolute",inset:-50,borderRadius:"50%",border:"1px solid rgba(240,192,64,.2)",pointerEvents:"none",opacity:0,animation:"tvadFadeUp 1.4s cubic-bezier(.16,1,.3,1) 2.6s both"}}><div style={{width:"100%",height:"100%",borderRadius:"50%",border:"1px solid rgba(240,192,64,.12)",animation:"tvadRotateRing 12s linear infinite"}} /></div>
+          <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) 2.4s both"}}>
+            <Logo w={logoW} />
+          </div>
         </div>
-        <div style={{width:"clamp(140px,26vw,280px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.2s cubic-bezier(.16,1,.3,1) 4.0s forwards"}} />
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,52px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 28px rgba(240,192,64,.45))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 4.4s both"}}>WORLD CUP 2026</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,16px)",letterSpacing:10,color:"rgba(255,255,255,.42)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 5.2s both"}}>THE PREDICTION GAME</div>
+        <div style={{width:"clamp(180px,32vw,380px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.4s cubic-bezier(.16,1,.3,1) 4.0s forwards"}} />
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,6vw,64px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 32px rgba(240,192,64,.5))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 4.4s both"}}>WORLD CUP 2026</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.2vw,18px)",letterSpacing:12,color:"rgba(255,255,255,.45)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 5.2s both"}}>THE PREDICTION GAME</div>
       </div>
     </div>
   );
@@ -5969,9 +6004,9 @@ function TVAdSlideC() {
 /* D — COUNTDOWN URGENCY SLIDE */
 function TVAdClockUnit({ val, lbl }) {
   return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:"clamp(60px,10vw,100px)"}}>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(40px,9vw,90px)",letterSpacing:2,lineHeight:1,color:"#F0C040",filter:"drop-shadow(0 0 20px rgba(240,192,64,.5))",animation:"tvadLivePulse 1s ease-in-out infinite"}}>{String(val).padStart(2,"0")}</div>
-      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",letterSpacing:4,color:"rgba(255,255,255,.3)",marginTop:4}}>{lbl}</div>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:"clamp(72px,12vw,124px)"}}>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(52px,11vw,110px)",letterSpacing:2,lineHeight:1,color:"#F0C040",filter:"drop-shadow(0 0 28px rgba(240,192,64,.6))",animation:"tvadLivePulse 1s ease-in-out infinite"}}>{String(val).padStart(2,"0")}</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",letterSpacing:5,color:"rgba(255,255,255,.35)",marginTop:6}}>{lbl}</div>
     </div>
   );
 }
@@ -6006,8 +6041,8 @@ function TVAdSlideD({ matches = [] }) {
       <div style={{position:"absolute",top:"18%",left:"50%",transform:"translateX(-50%)",width:"60%",height:"45%",background:"radial-gradient(ellipse at center,rgba(240,192,64,.08) 0%,rgba(240,192,64,0) 60%)",pointerEvents:"none"}} />
       <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:780,gap:"clamp(10px,2vw,20px)"}}>
         {/* Logo seal at top */}
-        <div style={{filter:"drop-shadow(0 0 28px rgba(240,192,64,.38))",opacity:0,animation:"tvadLogoReveal 1.2s cubic-bezier(.16,1,.3,1) .1s both"}}>
-          <Logo w={Math.min(140, Math.round(window.innerWidth * 0.11))} />
+        <div style={{filter:"drop-shadow(0 0 40px rgba(240,192,64,.5))",opacity:0,animation:"tvadLogoReveal 1.2s cubic-bezier(.16,1,.3,1) .1s both"}}>
+          <Logo w={Math.min(200, Math.round(window.innerWidth * 0.16))} />
         </div>
         <div style={{width:"clamp(100px,20vw,260px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.5),transparent)",opacity:0,animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) .7s both"}} />
         <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.9vw,14px)",letterSpacing:8,color:"rgba(240,192,64,.75)",opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) .9s both"}}>{heading}</div>
@@ -6074,7 +6109,13 @@ function TVAdSlideB() {
   return (
     <div className="tvad-slide" style={{padding:0}}>
       <div className="tvad-scanline-overlay" />
-      <div style={{position:"relative",zIndex:2,display:"flex",width:"100%",height:"100%",alignItems:"stretch"}}>
+      {/* Header logo bar */}
+      <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"clamp(14px,2.5vw,28px) 0",borderBottom:"1px solid rgba(240,192,64,.1)",zIndex:4,background:"linear-gradient(180deg,rgba(0,0,0,.6) 0%,transparent 100%)",animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) .1s both"}}>
+        <div style={{filter:"drop-shadow(0 0 18px rgba(240,192,64,.35))"}}>
+          <Logo w={Math.min(90, Math.round(window.innerWidth * 0.07))} />
+        </div>
+      </div>
+      <div style={{position:"relative",zIndex:2,display:"flex",width:"100%",height:"100%",alignItems:"stretch",paddingTop:"clamp(80px,14vw,160px)"}}>
         {/* LEFT — live match */}
         <div style={{flex:"0 0 55%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(24px,5vw,60px)",borderRight:"1px solid rgba(240,192,64,.15)"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .1s both"}}>
@@ -6082,17 +6123,17 @@ function TVAdSlideB() {
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"#ff4444"}}>LIVE</div>
             <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:2,color:"rgba(255,255,255,.35)",marginLeft:4}}>{minute}'</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(12px,4vw,36px)",width:"100%",marginBottom:20,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{fontSize:"clamp(32px,7vw,64px)"}}>🇧🇷</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:2,color:"rgba(255,255,255,.4)"}}>BRAZIL</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(16px,5vw,44px)",width:"100%",marginBottom:20,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+              <div style={{fontSize:"clamp(42px,9vw,82px)",filter:"drop-shadow(0 0 12px rgba(255,255,255,.2))"}}>🇧🇷</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:3,color:"rgba(255,255,255,.45)"}}>BRAZIL</div>
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(44px,10vw,100px)",letterSpacing:8,color:"#fff",lineHeight:1,filter:"drop-shadow(0 0 24px rgba(255,255,255,.25))"}}>{score.h} – {score.a}</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(52px,12vw,120px)",letterSpacing:8,color:"#fff",lineHeight:1,filter:"drop-shadow(0 0 32px rgba(255,255,255,.3))",animation:"tvadLivePulse 2s ease-in-out infinite"}}>{score.h} – {score.a}</div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{fontSize:"clamp(32px,7vw,64px)"}}>🇦🇷</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:2,color:"rgba(255,255,255,.4)"}}>ARGENTINA</div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+              <div style={{fontSize:"clamp(42px,9vw,82px)",filter:"drop-shadow(0 0 12px rgba(255,255,255,.2))"}}>🇦🇷</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:3,color:"rgba(255,255,255,.45)"}}>ARGENTINA</div>
             </div>
           </div>
           <div style={{width:"70%",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",marginBottom:16,animation:"tvadScanlineBar 3s linear infinite"}} />
@@ -6131,14 +6172,22 @@ function TVAdSlideA() {
           <div className="tvad-a-sweep" />
           {/* Top frame line */}
           <div style={{width:"clamp(160px,40vw,560px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent)",marginBottom:"clamp(18px,3vw,30px)",opacity:0,animation:"tvadDividerGrow 1.1s cubic-bezier(.16,1,.3,1) .3s forwards"}} />
-          {/* Ambient halo behind logo */}
+          {/* Ambient halo + beams behind logo */}
           <div style={{position:"relative",display:"flex",justifyContent:"center",alignItems:"center"}}>
-            <div style={{position:"absolute",width:"clamp(320px,42vw,520px)",height:"clamp(320px,42vw,520px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.14) 0%,rgba(240,192,64,.04) 45%,transparent 70%)",opacity:0,animation:"tvadFadeUp 1.2s cubic-bezier(.16,1,.3,1) .6s both",pointerEvents:"none"}} />
+            {/* Wide radial glow */}
+            <div style={{position:"absolute",width:"clamp(420px,55vw,680px)",height:"clamp(420px,55vw,680px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.16) 0%,rgba(240,192,64,.05) 40%,transparent 68%)",opacity:0,animation:"tvadFadeUp 1.2s cubic-bezier(.16,1,.3,1) .6s both",pointerEvents:"none"}} />
+            {/* Outer slow-rotating ring */}
             <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) .8s forwards",pointerEvents:"none"}}>
-              <div style={{width:"clamp(280px,38vw,460px)",height:"clamp(280px,38vw,460px)",borderRadius:"50%",border:"1px solid rgba(240,192,64,.15)",animation:"tvadRotateRing 18s linear infinite"}} />
+              <div style={{width:"clamp(360px,48vw,580px)",height:"clamp(360px,48vw,580px)",borderRadius:"50%",border:"1px solid rgba(240,192,64,.18)",animation:"tvadRotateRing 22s linear infinite"}} />
             </div>
-            <div style={{filter:"drop-shadow(0 0 44px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.6s cubic-bezier(.16,1,.3,1) .9s both"}}>
-              <Logo w={Math.min(280, Math.round(window.innerWidth * 0.23))} />
+            {/* Inner counter-rotating ring */}
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 1.0s forwards",pointerEvents:"none"}}>
+              <div style={{width:"clamp(300px,40vw,500px)",height:"clamp(300px,40vw,500px)",borderRadius:"50%",border:"1px dashed rgba(240,192,64,.1)",animation:"tvadRotateRing 16s linear infinite reverse"}} />
+            </div>
+            {/* Light sweep */}
+            <div className="tvad-a-sweep" />
+            <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) .9s both"}}>
+              <Logo w={Math.min(360, Math.round(window.innerWidth * 0.30))} />
             </div>
           </div>
           {/* Bottom frame line */}
@@ -6178,34 +6227,41 @@ function TVAdSlideA() {
 /* F — LUXURY HOTEL MENU STYLE */
 function TVAdSlideF() {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
-  const words = [
-    {text:"EL MUNDO", fs:"clamp(44px,11vw,116px)", ls:10, g:true, delay:1.5},
-    {text:"BAR · RESTAURANT · BONAIRE", fs:"clamp(10px,2vw,16px)", ls:6, g:false, col:"rgba(255,255,255,.35)", delay:3.3},
-    {text:"WORLD CUP 2026", fs:"clamp(18px,4vw,40px)", ls:5, g:true, delay:4.9},
-    {text:"PREDICTION GAME", fs:"clamp(14px,3vw,28px)", ls:4, g:false, col:"rgba(255,255,255,.55)", delay:6.4},
-  ];
+  const logoW = Math.min(320, Math.round(window.innerWidth * 0.26));
   return (
     <div className="tvad-slide">
-      <div style={{position:"absolute",top:"50%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.18),transparent)",transform:"translateY(-0px)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) .8s both"}} />
-      <div style={{position:"absolute",bottom:"50%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.12),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) 1.2s both"}} />
-      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(8px,2vw,18px)"}}>
-        {words.map((w,i)=>(
-          <div key={i} style={{
-            fontFamily:"'Anton',sans-serif",
-            fontSize:w.fs, letterSpacing:w.ls, lineHeight:1,
-            ...(w.g ? {...G, filter:"drop-shadow(0 0 24px rgba(240,192,64,.3))"} : {color:w.col}),
-            animation:`tvadWordIn .8s cubic-bezier(.16,1,.3,1) ${w.delay}s both`,
-          }}>{w.text}</div>
-        ))}
-        <div style={{width:"clamp(60px,12vw,140px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.4),transparent)",margin:"clamp(8px,2vw,18px) 0",animation:"tvadLineGrow 1s ease 8.2s both"}} />
-        <div style={{position:"relative",animation:`tvadWordIn .8s cubic-bezier(.16,1,.3,1) 8.8s both`}}>
-          <div style={{position:"absolute",inset:-20,borderRadius:"50%",border:"1px solid rgba(240,192,64,.2)",animation:"tvadRotateRing 8s linear infinite",pointerEvents:"none"}} />
-          <div style={{position:"absolute",inset:-20,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.1)",animation:"tvadRotateRing 14s linear infinite reverse",pointerEvents:"none"}} />
-          <div style={{padding:14,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.45)",borderRadius:14,animation:"tvadQRGlow 3s ease-in-out infinite"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://elmundobonaire.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(80px,12vw,130px)",height:"clamp(80px,12vw,130px)",display:"block"}} />
+      {/* Horizontal framing lines */}
+      <div style={{position:"absolute",top:"30%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.15),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) .8s both"}} />
+      <div style={{position:"absolute",bottom:"20%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.1),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) 1.2s both"}} />
+
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(6px,1.6vw,16px)"}}>
+        {/* LOGO — main hero element */}
+        <div style={{filter:"drop-shadow(0 0 50px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) 1.5s both"}}>
+          <Logo w={logoW} />
+        </div>
+
+        <div style={{width:"clamp(100px,20vw,260px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.45),transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.2s ease 3.4s forwards"}} />
+
+        {/* Subtitle lines */}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,42px)",letterSpacing:5,...G,lineHeight:1,filter:"drop-shadow(0 0 22px rgba(240,192,64,.35))",opacity:0,animation:"tvadFadeUp .9s cubic-bezier(.16,1,.3,1) 3.8s both"}}>WORLD CUP 2026</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.4vw,22px)",letterSpacing:6,color:"rgba(255,255,255,.5)",opacity:0,animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) 4.8s both"}}>PREDICTION GAME</div>
+
+        <div style={{width:"clamp(60px,10vw,100px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.35),transparent)",opacity:0,animation:"tvadDividerGrow 1s ease 6.4s forwards"}} />
+
+        {/* QR with 4 orbit rings */}
+        <div style={{position:"relative",opacity:0,animation:"tvadFadeUp .9s cubic-bezier(.16,1,.3,1) 7.0s both"}}>
+          {/* Ring 1 */}
+          <div style={{position:"absolute",inset:-32,borderRadius:"50%",border:"1px solid rgba(240,192,64,.22)",animation:"tvadRotateRing 9s linear infinite",pointerEvents:"none"}} />
+          {/* Ring 2 */}
+          <div style={{position:"absolute",inset:-48,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.14)",animation:"tvadRotateRing 18s linear infinite reverse",pointerEvents:"none"}} />
+          {/* Ring 3 */}
+          <div style={{position:"absolute",inset:-64,borderRadius:"50%",border:"1px solid rgba(240,192,64,.08)",animation:"tvadRotateRing 28s linear infinite",pointerEvents:"none"}} />
+          <div style={{padding:"clamp(14px,2vw,20px)",background:"#0d0b00",border:"2px solid rgba(240,192,64,.5)",borderRadius:16,animation:"tvadQRGlow 3s ease-in-out infinite"}}>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundobonaire.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,14vw,170px)",height:"clamp(100px,14vw,170px)",display:"block"}} />
           </div>
         </div>
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",color:"rgba(255,255,255,.22)",letterSpacing:2,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 9.4s both"}}>elmundobonaire.com</div>
+
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(11px,2vw,14px)",color:"rgba(255,255,255,.28)",letterSpacing:3,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 8.4s both"}}>elmundobonaire.com</div>
       </div>
     </div>
   );
