@@ -6219,52 +6219,58 @@ function TVAdSlideWin() {
 
 /* ── NEW SLIDE: THE PRIZES ───────────────────────────────────────────────── */
 function TVAdSlidePrizes() {
-  const others = [
-    {rank:"2ND",ico:"🥈",name:"TROPHY",    desc:"Official tournament trophy",col:"rgba(192,192,192,.75)",delay:3.2},
-    {rank:"3RD",ico:"🥉",name:"CREDITS",   desc:"Order credits at El Mundo", col:"rgba(205,127,50,.75)", delay:4.0},
-    {rank:"4TH+",ico:"🎁",name:"SURPRISE", desc:"Mystery gifts for top players",col:"rgba(240,192,64,.45)",delay:4.8},
+  const possibles = [
+    {ico:"🍽️", name:"FREE ITEMS",     desc:"Food & drinks on the house",     col:"rgba(240,192,64,.7)",  delay:3.4},
+    {ico:"💳",  name:"CREDITS",        desc:"Order credits at El Mundo",       col:"rgba(200,200,200,.6)", delay:4.1},
+    {ico:"🎁",  name:"PHYSICAL GIFT",  desc:"Real prizes, wrapped surprises",  col:"rgba(205,127,50,.7)", delay:4.8},
+    {ico:"✨",  name:"MYSTERY PRIZE",  desc:"You won't know until you open it",col:"rgba(180,180,255,.55)",delay:5.5},
   ];
   return (
     <div className="tvad-slide" style={{gap:0,overflow:"hidden"}}>
       <div style={{position:"absolute",top:"40%",left:"50%",transform:"translateX(-50%)",width:"90vw",height:"60vh",background:"radial-gradient(ellipse,rgba(240,192,64,.07) 0%,transparent 65%)",pointerEvents:"none"}}/>
-      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:0,width:"100%",maxWidth:780}}>
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:0,width:"100%",maxWidth:800}}>
         <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:8,color:"rgba(240,192,64,.65)",opacity:0,animation:"tvadFadeUp .6s ease .2s both",marginBottom:8}}>THIS TOURNAMENT</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,5vw,58px)",letterSpacing:3,color:"#fff",opacity:0,animation:"tvadFadeUp .8s ease .4s both",marginBottom:"clamp(14px,2.4vw,24px)"}}>THE PRIZES</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,5vw,58px)",letterSpacing:3,color:"#fff",opacity:0,animation:"tvadFadeUp .8s ease .4s both",marginBottom:"clamp(14px,2.4vw,22px)"}}>THE PRIZES</div>
 
         {/* 1st place hero card */}
-        <div style={{position:"relative",width:"100%",background:"linear-gradient(135deg,rgba(240,192,64,.14),rgba(240,192,64,.04),rgba(240,192,64,.1))",border:"1px solid rgba(240,192,64,.45)",borderRadius:16,padding:"clamp(16px,2.8vw,28px) clamp(20px,3.5vw,36px)",display:"flex",alignItems:"center",gap:"clamp(16px,3vw,30px)",marginBottom:"clamp(8px,1.5vw,14px)",opacity:0,animation:"tvadFlipIn .9s cubic-bezier(.16,1,.3,1) .8s both",boxShadow:"0 0 80px rgba(240,192,64,.1),inset 0 1px 0 rgba(240,192,64,.2)"}}>
-          {/* Sparkles */}
-          {[[{top:"12%",right:"6%"},{top:"70%",right:"4%"},{top:"35%",right:"9%"}][0],[{top:"12%",right:"6%"},{top:"70%",right:"4%"},{top:"35%",right:"9%"}][1],[{top:"12%",right:"6%"},{top:"70%",right:"4%"},{top:"35%",right:"9%"}][2]].map((p,i)=>(
+        <div style={{position:"relative",width:"100%",background:"linear-gradient(135deg,rgba(240,192,64,.14),rgba(240,192,64,.04),rgba(240,192,64,.1))",border:"1px solid rgba(240,192,64,.45)",borderRadius:16,padding:"clamp(14px,2.4vw,24px) clamp(18px,3vw,32px)",display:"flex",alignItems:"center",gap:"clamp(14px,2.6vw,28px)",marginBottom:"clamp(10px,1.8vw,18px)",opacity:0,animation:"tvadFlipIn .9s cubic-bezier(.16,1,.3,1) .8s both",boxShadow:"0 0 80px rgba(240,192,64,.1),inset 0 1px 0 rgba(240,192,64,.2)"}}>
+          {[{top:"14%",right:"5%"},{top:"68%",right:"3%"},{top:"38%",right:"8%"}].map((p,i)=>(
             <div key={i} style={{position:"absolute",top:p.top,right:p.right,width:5,height:5,borderRadius:"50%",background:"#F0C040",animation:`tvadLivePulse ${1.4+i*.6}s ease-in-out ${i*.35}s infinite`,boxShadow:"0 0 10px 2px rgba(240,192,64,.9)"}}/>
           ))}
-          <div style={{fontSize:"clamp(44px,9vw,80px)",filter:"drop-shadow(0 0 24px rgba(240,192,64,.85))",animation:"tvadLivePulse 3s ease-in-out 2s infinite"}}>🥇</div>
+          <div style={{fontSize:"clamp(40px,8.5vw,76px)",filter:"drop-shadow(0 0 24px rgba(240,192,64,.85))",animation:"tvadLivePulse 3s ease-in-out 2s infinite"}}>🥇</div>
           <div style={{flex:1}}>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:6,color:"rgba(240,192,64,.6)",marginBottom:4}}>1ST PLACE WINS</div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,56px)",letterSpacing:3,background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",lineHeight:1,filter:"drop-shadow(0 0 24px rgba(240,192,64,.5))"}}>FOOSBALL TABLE</div>
-            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.6vw,14px)",color:"rgba(255,255,255,.4)",marginTop:6,letterSpacing:1}}>Take the ultimate prize home ⚽</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:6,color:"rgba(240,192,64,.6)",marginBottom:4}}>1ST PLACE — GUARANTEED</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(20px,4.5vw,52px)",letterSpacing:3,background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",lineHeight:1,filter:"drop-shadow(0 0 24px rgba(240,192,64,.5))"}}>FOOSBALL TABLE</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.6vw,14px)",color:"rgba(255,255,255,.4)",marginTop:5,letterSpacing:1}}>The player with most points takes it home ⚽</div>
           </div>
         </div>
 
-        {/* Other prizes row */}
-        <div style={{display:"flex",gap:"clamp(8px,1.4vw,14px)",width:"100%",marginBottom:"clamp(10px,1.8vw,18px)"}}>
-          {others.map((p,i)=>(
-            <div key={i} style={{flex:1,background:"rgba(255,255,255,.03)",border:`1px solid ${p.col.replace(".75",".2").replace(".45",".18")}`,borderRadius:12,padding:"clamp(12px,2vw,20px) clamp(10px,1.8vw,16px)",textAlign:"center",opacity:0,animation:`tvadFlipIn .7s cubic-bezier(.16,1,.3,1) ${p.delay}s both`}}>
-              <div style={{fontSize:"clamp(22px,4vw,38px)",marginBottom:6,filter:`drop-shadow(0 0 10px ${p.col})`}}>{p.ico}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.3vw,11px)",letterSpacing:4,color:p.col,marginBottom:4}}>{p.rank}</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,18px)",letterSpacing:2,color:"rgba(255,255,255,.8)"}}>{p.name}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.3vw,10px)",color:"rgba(255,255,255,.3)",marginTop:4,lineHeight:1.4}}>{p.desc}</div>
+        {/* Divider with label */}
+        <div style={{display:"flex",alignItems:"center",gap:12,width:"100%",marginBottom:"clamp(10px,1.8vw,16px)",opacity:0,animation:"tvadFadeUp .6s ease 3.0s both"}}>
+          <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,rgba(255,255,255,.12))"}}/>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",letterSpacing:5,color:"rgba(255,255,255,.35)",whiteSpace:"nowrap"}}>OTHER TOP FINISHERS MAY WIN</div>
+          <div style={{flex:1,height:1,background:"linear-gradient(90deg,rgba(255,255,255,.12),transparent)"}}/>
+        </div>
+
+        {/* Possible prizes grid */}
+        <div style={{display:"flex",gap:"clamp(6px,1.2vw,12px)",width:"100%",marginBottom:"clamp(8px,1.5vw,14px)"}}>
+          {possibles.map((p,i)=>(
+            <div key={i} style={{flex:1,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:"clamp(10px,1.8vw,16px) clamp(8px,1.4vw,12px)",textAlign:"center",opacity:0,animation:`tvadFlipIn .65s cubic-bezier(.16,1,.3,1) ${p.delay}s both`}}>
+              <div style={{fontSize:"clamp(20px,3.8vw,34px)",marginBottom:5,filter:`drop-shadow(0 0 8px ${p.col})`}}>{p.ico}</div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,15px)",letterSpacing:2,color:p.col}}>{p.name}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(7px,1.2vw,10px)",color:"rgba(255,255,255,.28)",marginTop:3,lineHeight:1.4}}>{p.desc}</div>
             </div>
           ))}
         </div>
 
-        {/* Claim hint */}
-        <div style={{display:"flex",alignItems:"center",gap:12,opacity:0,animation:"tvadFadeUp .7s ease 5.8s both"}}>
-          <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.25))"}}/>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",color:"rgba(255,255,255,.38)",letterSpacing:1.5,textAlign:"center",whiteSpace:"nowrap"}}>
-            Won a prize? Find it in{" "}
-            <span style={{color:"rgba(240,192,64,.8)",fontFamily:"'Anton',sans-serif",letterSpacing:2}}>MY PROFILE → GIFTS 🎁</span>
+        {/* Surprise note + claim hint */}
+        <div style={{display:"flex",alignItems:"center",gap:10,opacity:0,animation:"tvadFadeUp .7s ease 6.4s both"}}>
+          <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.2))"}}/>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",color:"rgba(255,255,255,.35)",letterSpacing:1.5,textAlign:"center"}}>
+            Prizes are a <span style={{color:"rgba(240,192,64,.7)"}}>surprise</span> — check{" "}
+            <span style={{color:"rgba(240,192,64,.85)",fontFamily:"'Anton',sans-serif",letterSpacing:2}}>MY PROFILE → GIFTS 🎁</span>
           </div>
-          <div style={{flex:1,height:1,background:"linear-gradient(90deg,rgba(240,192,64,.25),transparent)"}}/>
+          <div style={{flex:1,height:1,background:"linear-gradient(90deg,rgba(240,192,64,.2),transparent)"}}/>
         </div>
       </div>
     </div>
