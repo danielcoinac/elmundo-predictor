@@ -1896,7 +1896,7 @@ function Auth({ tab, setTab, form, setForm, err, setErr, onLogin, onRegister, pu
   const introActive = phase < 3;
 
   if (showTV)    return <TVLeaderboard board={publicBoard} onBack={() => setShowTV(false)} />;
-  if (showTVAds) return <TVAdView onBack={() => setShowTVAds(false)} matches={[]} />;
+  if (showTVAds) return <TVAdView onBack={() => setShowTVAds(false)} matches={[]} board={publicBoard} />;
 
   return (
     <div className="auth-root">
@@ -2096,7 +2096,7 @@ function TVParticles() {
   );
 }
 
-function TVLeaderboard({ board, onBack }) {
+function TVLeaderboard({ board, onBack, inAd = false }) {
   const [mode,   setMode]   = useState("scroll");
   const [visIdx, setVisIdx] = useState(0);
 
@@ -2120,11 +2120,11 @@ function TVLeaderboard({ board, onBack }) {
 
   const MEDAL_GLOW = ["gold","silver","bronze"];
 
-  return (
-    <div className="tv-root">
+  const inner = (
+    <div className={inAd ? "tvad-lb-inner" : "tv-root"}>
       <TVParticles />
       <div className="tv-vignette" />
-      <button className="tv-back-btn" onClick={onBack}>← BACK TO LOGIN</button>
+      {!inAd && <button className="tv-back-btn" onClick={onBack}>← BACK TO LOGIN</button>}
 
       <div className="tv-header">
         <Logo w={72} />
@@ -2200,6 +2200,7 @@ function TVLeaderboard({ board, onBack }) {
       <div className="tv-footer">Exact score = 5 pts · Correct winner = 1 pt · Most points wins</div>
     </div>
   );
+  return inner;
 }
 
 /* ═══ MAIN SHELL ════════════════════════════════════════════════════════════ */
@@ -6125,10 +6126,10 @@ function TVAdSlideF() {
   );
 }
 
-const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000];
+const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000, 24000];
 const TVAD_COUNT = TVAD_DURATIONS.length;
 
-function TVAdView({ onBack, matches = [] }) {
+function TVAdView({ onBack, matches = [], board = [] }) {
   const [slide, setSlide] = useState(0);
   const [tick,  setTick]  = useState(0);
 
@@ -6159,6 +6160,7 @@ function TVAdView({ onBack, matches = [] }) {
       {slide===2 && <TVAdSlideB key={`b-${tick}`} />}
       {slide===3 && <TVAdSlideA key={`a-${tick}`} />}
       {slide===4 && <TVAdSlideF key={`f-${tick}`} />}
+      {slide===5 && <TVLeaderboard key={`lb-${tick}`} board={board} inAd={true} onBack={null} />}
     </div>
   );
 }
