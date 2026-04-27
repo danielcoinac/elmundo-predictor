@@ -624,6 +624,10 @@
   @keyframes tvadDividerGrow{from{transform:scaleX(0);opacity:0}to{transform:scaleX(1);opacity:1}}
   .tvad-a-sweep{position:absolute;top:50%;left:-30%;width:40%;height:clamp(280px,42vw,480px);transform:translateY(-50%) skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(240,192,64,.0) 20%,rgba(255,240,180,.18) 50%,rgba(240,192,64,.0) 80%,transparent);pointer-events:none;opacity:0;animation:tvadASweep 1.8s cubic-bezier(.5,0,.2,1) 1.2s both;z-index:3}
   @keyframes tvadASweep{0%{opacity:0;left:-30%}15%{opacity:1}85%{opacity:1}100%{opacity:0;left:110%}}
+  @keyframes tvadSlideFromLeft{from{opacity:0;transform:translateX(-52px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes tvadScaleIn{0%{opacity:0;transform:scale(.25)}60%{opacity:1;transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
+  @keyframes tvadCrownDrop{0%{opacity:0;transform:translateY(-90px) scale(.4)}65%{opacity:1;transform:translateY(10px) scale(1.12)}100%{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes tvadShockwave{0%{opacity:.75;transform:scale(.15)}100%{opacity:0;transform:scale(3.8)}}
 
   /* ══════════════════════════════════════
      SPLASH — BALL + ROPE SIGN + NEON

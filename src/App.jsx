@@ -6126,7 +6126,98 @@ function TVAdSlideF() {
   );
 }
 
-const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000, 24000];
+/* ── NEW SLIDE: HOW IT WORKS ─────────────────────────────────────────────── */
+function TVAdSlideHowTo() {
+  const steps = [
+    {ico:"⚽",n:"01",t:"PREDICT THE SCORE",d:"Enter your exact score prediction for every World Cup 2026 match before kick-off",delay:1.0},
+    {ico:"🎯",n:"02",t:"EARN YOUR POINTS", d:"5 pts for exact score · 1 pt for correct winner — every match, every point",delay:2.8},
+    {ico:"🏆",n:"03",t:"CLIMB & WIN",       d:"Top the leaderboard by tournament end and claim the grand prize",delay:4.6},
+  ];
+  return (
+    <div className="tvad-slide" style={{gap:0}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:8,color:"rgba(240,192,64,.65)",opacity:0,animation:"tvadFadeUp .6s ease .2s both",marginBottom:6}}>HOW IT WORKS</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,5vw,58px)",letterSpacing:3,color:"#fff",opacity:0,animation:"tvadFadeUp .8s ease .4s both",marginBottom:"clamp(18px,3vw,36px)"}}>3 SIMPLE STEPS</div>
+      <div style={{display:"flex",flexDirection:"column",gap:"clamp(10px,1.8vw,18px)",width:"100%",maxWidth:700}}>
+        {steps.map((s,i) => (
+          <div key={i} style={{
+            display:"flex",alignItems:"center",gap:"clamp(14px,2.4vw,24px)",
+            background:"linear-gradient(135deg,rgba(240,192,64,.07),rgba(240,192,64,.02))",
+            border:"1px solid rgba(240,192,64,.18)",borderLeft:"3px solid rgba(240,192,64,.6)",
+            borderRadius:12,padding:"clamp(14px,2.4vw,22px) clamp(16px,2.6vw,26px)",
+            opacity:0,animation:`tvadSlideFromLeft .7s cubic-bezier(.16,1,.3,1) ${s.delay}s both`,
+          }}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(24px,5vw,48px)",color:"rgba(240,192,64,.18)",minWidth:"clamp(38px,5vw,54px)",lineHeight:1}}>{s.n}</div>
+            <div style={{fontSize:"clamp(22px,4vw,36px)",minWidth:"clamp(32px,4vw,44px)"}}>{s.ico}</div>
+            <div>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.2vw,20px)",letterSpacing:3,color:"#F0C040",marginBottom:4}}>{s.t}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.6vw,14px)",color:"rgba(255,255,255,.45)",lineHeight:1.5}}>{s.d}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── NEW SLIDE: SCORING SYSTEM ───────────────────────────────────────────── */
+function TVAdSlidePoints() {
+  return (
+    <div className="tvad-slide" style={{gap:0,overflow:"hidden"}}>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:8,color:"rgba(240,192,64,.6)",opacity:0,animation:"tvadFadeUp .6s ease .2s both",marginBottom:6}}>SCORING SYSTEM</div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.4vw,20px)",letterSpacing:5,color:"rgba(255,255,255,.5)",opacity:0,animation:"tvadFadeUp .7s ease .4s both",marginBottom:"clamp(16px,2.8vw,32px)"}}>YOUR PREDICTIONS EARN</div>
+      <div style={{display:"flex",alignItems:"center",gap:"clamp(20px,5vw,60px)"}}>
+        {/* 5 PTS */}
+        <div style={{textAlign:"center",opacity:0,animation:"tvadScaleIn .9s cubic-bezier(.34,1.56,.64,1) .9s both"}}>
+          <div style={{position:"relative",display:"inline-block"}}>
+            {[0,1,2].map(i => (
+              <div key={i} style={{position:"absolute",top:`${-(i+1)*22}px`,left:`${-(i+1)*22}px`,right:`${-(i+1)*22}px`,bottom:`${-(i+1)*22}px`,borderRadius:"50%",border:`1.5px solid rgba(240,192,64,${0.5-i*0.15})`,opacity:0,animation:`tvadShockwave 1.2s ease-out ${1.8+i*0.25}s both`}}/>
+            ))}
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(72px,16vw,160px)",lineHeight:1,background:"linear-gradient(135deg,#ffe97a,#F0C040,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",filter:"drop-shadow(0 0 50px rgba(240,192,64,.7))"}}>5</div>
+          </div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,2.5vw,24px)",letterSpacing:5,color:"#F0C040",marginTop:-4}}>POINTS</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",color:"rgba(255,255,255,.5)",marginTop:6,letterSpacing:2}}>EXACT SCORE</div>
+        </div>
+        {/* OR */}
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,opacity:0,animation:"tvadFadeUp .5s ease 2.4s both"}}>
+          <div style={{width:1,height:"clamp(40px,7vw,70px)",background:"rgba(240,192,64,.25)"}}/>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:3,color:"rgba(255,255,255,.22)"}}>OR</div>
+          <div style={{width:1,height:"clamp(40px,7vw,70px)",background:"rgba(240,192,64,.25)"}}/>
+        </div>
+        {/* 1 PT */}
+        <div style={{textAlign:"center",opacity:0,animation:"tvadScaleIn .9s cubic-bezier(.34,1.56,.64,1) 3.0s both"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(72px,16vw,160px)",lineHeight:1,color:"rgba(255,255,255,.55)",filter:"drop-shadow(0 0 20px rgba(255,255,255,.12))"}}>1</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,2.5vw,24px)",letterSpacing:5,color:"rgba(255,255,255,.45)",marginTop:-4}}>POINT</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",color:"rgba(255,255,255,.3)",marginTop:6,letterSpacing:2}}>CORRECT WINNER</div>
+        </div>
+      </div>
+      <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.2vw,20px)",letterSpacing:6,color:"rgba(255,255,255,.35)",marginTop:"clamp(20px,3.5vw,40px)",opacity:0,animation:"tvadFadeUp .8s ease 4.2s both"}}>EVERY MATCH · EVERY POINT · COUNTS</div>
+    </div>
+  );
+}
+
+/* ── NEW SLIDE: WIN THE GRAND PRIZE ──────────────────────────────────────── */
+function TVAdSlideWin() {
+  return (
+    <div className="tvad-slide" style={{gap:0,overflow:"hidden"}}>
+      {[280,420,580].map((s,i) => (
+        <div key={i} style={{position:"absolute",width:s,height:s,borderRadius:"50%",border:`1px solid rgba(240,192,64,${0.12-i*0.04})`,top:"50%",left:"50%",transform:"translate(-50%,-50%)",animation:`tvadRotateRing ${18+i*9}s linear infinite`,animationDirection:i%2?"reverse":"normal",pointerEvents:"none"}}/>
+      ))}
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(8px,1.6vw,16px)"}}>
+        <div style={{fontSize:"clamp(48px,9vw,86px)",opacity:0,animation:"tvadCrownDrop .9s cubic-bezier(.34,1.56,.64,1) .3s both",filter:"drop-shadow(0 0 28px rgba(240,192,64,.8))"}}>👑</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:8,color:"rgba(240,192,64,.6)",opacity:0,animation:"tvadFadeUp .6s ease 1.2s both"}}>THE ULTIMATE PREDICTOR</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(28px,6vw,70px)",letterSpacing:3,color:"#fff",lineHeight:1,opacity:0,animation:"tvadFadeUp .8s ease 1.7s both"}}>WINS THE</div>
+        <div style={{opacity:0,animation:"tvadScaleIn 1s cubic-bezier(.34,1.56,.64,1) 2.4s both"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(44px,9.5vw,110px)",letterSpacing:2,lineHeight:.95,background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#F0C040,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",filter:"drop-shadow(0 0 60px rgba(240,192,64,.55))"}}>GRAND PRIZE</div>
+        </div>
+        <div style={{width:"clamp(100px,18vw,220px)",height:1,background:"linear-gradient(90deg,transparent,#F0C040,transparent)",transform:"scaleX(0)",transformOrigin:"center",animation:"tvadDividerGrow 1s ease 3.6s forwards",marginTop:4}}/>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",color:"rgba(255,255,255,.45)",letterSpacing:4,textAlign:"center",maxWidth:480,opacity:0,animation:"tvadFadeUp .7s ease 4.2s both"}}>MOST POINTS AT END OF TOURNAMENT</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(16px,3.2vw,34px)",letterSpacing:8,color:"#F0C040",marginTop:4,opacity:0,animation:"tvadNeonFlicker .1s ease 5.0s both, tvadLivePulse 2.5s ease 5.3s infinite"}}>WILL IT BE YOU?</div>
+      </div>
+    </div>
+  );
+}
+
+const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000, 13000, 11000, 13000, 24000];
 const TVAD_COUNT = TVAD_DURATIONS.length;
 
 function TVAdView({ onBack, matches = [], board = [] }) {
@@ -6160,7 +6251,10 @@ function TVAdView({ onBack, matches = [], board = [] }) {
       {slide===2 && <TVAdSlideB key={`b-${tick}`} />}
       {slide===3 && <TVAdSlideA key={`a-${tick}`} />}
       {slide===4 && <TVAdSlideF key={`f-${tick}`} />}
-      {slide===5 && <TVLeaderboard key={`lb-${tick}`} board={board} inAd={true} onBack={null} />}
+      {slide===5 && <TVAdSlideHowTo key={`how-${tick}`} />}
+      {slide===6 && <TVAdSlidePoints key={`pts-${tick}`} />}
+      {slide===7 && <TVAdSlideWin key={`win-${tick}`} />}
+      {slide===8 && <TVLeaderboard key={`lb-${tick}`} board={board} inAd={true} onBack={null} />}
     </div>
   );
 }
