@@ -6116,11 +6116,11 @@ function TVAdSlideF() {
           {/* Ring 3 */}
           <div style={{position:"absolute",inset:-64,borderRadius:"50%",border:"1px solid rgba(240,192,64,.08)",animation:"tvadRotateRing 28s linear infinite",pointerEvents:"none"}} />
           <div style={{padding:"clamp(14px,2vw,20px)",background:"#0d0b00",border:"2px solid rgba(240,192,64,.5)",borderRadius:16,animation:"tvadQRGlow 3s ease-in-out infinite"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundobonaire.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,14vw,170px)",height:"clamp(100px,14vw,170px)",display:"block"}} />
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,14vw,170px)",height:"clamp(100px,14vw,170px)",display:"block"}} />
           </div>
         </div>
 
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(11px,2vw,14px)",color:"rgba(255,255,255,.28)",letterSpacing:3,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 8.4s both"}}>elmundobonaire.com</div>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(11px,2vw,14px)",color:"rgba(255,255,255,.28)",letterSpacing:3,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 8.4s both"}}>elmundo-world-cup.com</div>
       </div>
     </div>
   );
@@ -6303,10 +6303,10 @@ function TVAdSlideRegisterWin() {
         {/* QR */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,opacity:0,animation:"tvadScaleIn .8s cubic-bezier(.34,1.56,.64,1) 1.8s both"}}>
           <div style={{padding:"clamp(10px,1.6vw,14px)",background:"#fff",borderRadius:14,boxShadow:"0 0 60px rgba(240,192,64,.5),0 0 120px rgba(240,192,64,.18)",animation:"tvadQRGlow 2.5s ease-in-out 3s infinite"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundobonaire.com&bgcolor=ffffff&color=000000&format=png&margin=6" alt="QR" style={{width:qrW,height:qrW,display:"block"}}/>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundo-world-cup.com&bgcolor=ffffff&color=000000&format=png&margin=6" alt="QR" style={{width:qrW,height:qrW,display:"block"}}/>
           </div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:4,...G,textAlign:"center",lineHeight:1.5,opacity:0,animation:"tvadFadeUp .6s ease 3.2s both"}}>SCAN TO<br/>REGISTER</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.3vw,11px)",color:"rgba(255,255,255,.28)",letterSpacing:2}}>elmundobonaire.com</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.3vw,11px)",color:"rgba(255,255,255,.28)",letterSpacing:2}}>elmundo-world-cup.com</div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:3,color:"rgba(240,192,64,.5)",opacity:0,animation:"tvadNeonFlicker .1s ease 5s both,tvadLivePulse 2s ease 5.3s infinite",textAlign:"center"}}>IT'S FREE</div>
         </div>
       </div>
