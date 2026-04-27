@@ -610,6 +610,7 @@
   @keyframes tvadSlideIn{from{opacity:0;transform:scale(.97) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
   @keyframes tvadWordIn{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
   @keyframes tvadLetterIn{from{opacity:0;transform:translateY(40px) scaleY(1.3)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+  @keyframes tvadParticleDrift{0%,100%{transform:translateY(0) scale(1);opacity:.35}50%{transform:translateY(-28px) scale(1.5);opacity:.65}}
   @keyframes tvadLineGrow{from{width:0;opacity:0}to{opacity:1}}
   @keyframes tvadScoreReveal{from{opacity:0;transform:scale(.6) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
   @keyframes tvadBarGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}

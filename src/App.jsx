@@ -5953,174 +5953,220 @@ function TVAdSlideD({ matches = [] }) {
   );
 }
 
-/* B — LIVE SCORE TICKER */
+/* B — MATCH DUEL (no emoji flags — pure typography + color) */
 function TVAdSlideB() {
-  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
   const [minute, setMinute] = useState(67);
-  const [score, setScore]   = useState({h:1, a:0});
   useEffect(() => {
-    const id = setInterval(() => {
-      setMinute(m => Math.min(m + 1, 90));
-    }, 3500);
+    const id = setInterval(() => setMinute(m => Math.min(m+1,90)), 3500);
     return () => clearInterval(id);
   }, []);
 
   return (
-    <div className="tvad-slide" style={{padding:0}}>
-      <div className="tvad-scanline-overlay" />
-      {/* Header logo bar */}
-      <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"clamp(14px,2.5vw,28px) 0",borderBottom:"1px solid rgba(240,192,64,.1)",zIndex:4,background:"linear-gradient(180deg,rgba(0,0,0,.6) 0%,transparent 100%)",animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) .1s both"}}>
-        <div style={{filter:"drop-shadow(0 0 18px rgba(240,192,64,.35))"}}>
-          <Logo w={Math.min(90, Math.round(window.innerWidth * 0.07))} />
+    <div className="tvad-slide" style={{padding:0,overflow:"hidden"}}>
+      <div className="tvad-scanline-overlay"/>
+      {/* Split colour wash */}
+      <div style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+        <div style={{position:"absolute",inset:0,right:"50%",background:"linear-gradient(135deg,rgba(0,156,59,.13) 0%,transparent 70%)"}}/>
+        <div style={{position:"absolute",inset:0,left:"50%",background:"linear-gradient(225deg,rgba(116,172,223,.13) 0%,transparent 70%)"}}/>
+      </div>
+      {/* Gold centre spine */}
+      <div style={{position:"absolute",top:0,bottom:0,left:"50%",transform:"translateX(-50%)",width:1,background:"linear-gradient(180deg,transparent 4%,rgba(240,192,64,.55) 28%,rgba(240,192,64,.9) 50%,rgba(240,192,64,.55) 72%,transparent 96%)",boxShadow:"0 0 18px rgba(240,192,64,.35)",pointerEvents:"none"}}/>
+      {/* Header */}
+      <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"center",gap:14,padding:"clamp(10px,1.8vw,20px) 0",borderBottom:"1px solid rgba(240,192,64,.1)",zIndex:4,background:"linear-gradient(180deg,rgba(0,0,0,.75) 0%,transparent 100%)",opacity:0,animation:"tvadFadeUp .5s ease .1s both"}}>
+        <div style={{width:8,height:8,borderRadius:"50%",background:"#ff3333",boxShadow:"0 0 12px #ff3333",animation:"tvadLivePulse .85s ease-in-out infinite"}}/>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"#ff4444"}}>LIVE</div>
+        <div style={{width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,.2)"}}/>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:3,color:"rgba(255,255,255,.5)"}}>{minute}'</div>
+        <div style={{width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,.2)"}}/>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,11px)",color:"rgba(255,255,255,.28)",letterSpacing:3}}>GROUP A · MATCHDAY 2 · WORLD CUP 2026</div>
+      </div>
+      {/* Teams + score */}
+      <div style={{position:"relative",zIndex:2,display:"flex",width:"100%",height:"100%",alignItems:"center",paddingTop:"clamp(56px,9vw,96px)",paddingBottom:"clamp(36px,6vw,56px)"}}>
+        {/* Left team */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"clamp(6px,1.2vw,12px)",padding:"clamp(16px,3vw,40px)"}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:5,color:"rgba(255,255,255,.3)",opacity:0,animation:"tvadFadeUp .5s ease .2s both"}}>HOME</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,5.5vw,66px)",letterSpacing:1,color:"#fff",lineHeight:.95,textAlign:"center",opacity:0,animation:"tvadFadeUp .8s ease .4s both",textShadow:"0 0 50px rgba(0,200,70,.3)"}}>BRAZIL</div>
+          <div style={{width:"clamp(40px,7vw,72px)",height:3,background:"linear-gradient(90deg,transparent,#009c3b,#ffdf00,transparent)",borderRadius:2,opacity:0,animation:"tvadFadeUp .5s ease .7s both"}}/>
+        </div>
+        {/* Score centre */}
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(6px,1.2vw,12px)",minWidth:"clamp(180px,28vw,300px)"}}>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(64px,14vw,148px)",letterSpacing:6,color:"#fff",lineHeight:1,filter:"drop-shadow(0 0 36px rgba(255,255,255,.28))",opacity:0,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both",whiteSpace:"nowrap"}}>1 – 0</div>
+          <div style={{width:"clamp(80px,14vw,140px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.5),transparent)"}}/>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:4,color:"rgba(240,192,64,.65)",opacity:0,animation:"tvadFadeUp .6s ease 1.2s both"}}>DID YOU PREDICT THIS?</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,4.5vw,48px)",letterSpacing:2,background:"linear-gradient(135deg,#ffe97a,#F0C040)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",filter:"drop-shadow(0 0 18px rgba(240,192,64,.6))",opacity:0,animation:"tvadScaleIn .8s cubic-bezier(.34,1.56,.64,1) 1.7s both"}}>+5 PTS</div>
+        </div>
+        {/* Right team */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"clamp(6px,1.2vw,12px)",padding:"clamp(16px,3vw,40px)"}}>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:5,color:"rgba(255,255,255,.3)",opacity:0,animation:"tvadFadeUp .5s ease .3s both"}}>AWAY</div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(26px,5.5vw,66px)",letterSpacing:1,color:"#fff",lineHeight:.95,textAlign:"center",opacity:0,animation:"tvadFadeUp .8s ease .5s both",textShadow:"0 0 50px rgba(116,172,223,.3)"}}>ARGENTINA</div>
+          <div style={{width:"clamp(40px,7vw,72px)",height:3,background:"linear-gradient(90deg,transparent,#74acdf,#fff,#74acdf,transparent)",borderRadius:2,opacity:0,animation:"tvadFadeUp .5s ease .8s both"}}/>
         </div>
       </div>
-      <div style={{position:"relative",zIndex:2,display:"flex",width:"100%",height:"100%",alignItems:"stretch",paddingTop:"clamp(80px,14vw,160px)"}}>
-        {/* LEFT — live match */}
-        <div style={{flex:"0 0 55%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(24px,5vw,60px)",borderRight:"1px solid rgba(240,192,64,.15)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .1s both"}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:"#ff3333",animation:"tvadLivePulse .8s ease-in-out infinite"}} />
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:5,color:"#ff4444"}}>LIVE</div>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:2,color:"rgba(255,255,255,.35)",marginLeft:4}}>{minute}'</div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(16px,5vw,44px)",width:"100%",marginBottom:20,animation:"tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .3s both"}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-              <div style={{fontSize:"clamp(42px,9vw,82px)",filter:"drop-shadow(0 0 12px rgba(255,255,255,.2))"}}>🇧🇷</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:3,color:"rgba(255,255,255,.45)"}}>BRAZIL</div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(52px,12vw,120px)",letterSpacing:8,color:"#fff",lineHeight:1,filter:"drop-shadow(0 0 32px rgba(255,255,255,.3))",animation:"tvadLivePulse 2s ease-in-out infinite"}}>{score.h} – {score.a}</div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-              <div style={{fontSize:"clamp(42px,9vw,82px)",filter:"drop-shadow(0 0 12px rgba(255,255,255,.2))"}}>🇦🇷</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:3,color:"rgba(255,255,255,.45)"}}>ARGENTINA</div>
-            </div>
-          </div>
-          <div style={{width:"70%",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.3),transparent)",marginBottom:16,animation:"tvadScanlineBar 3s linear infinite"}} />
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",letterSpacing:4,color:"rgba(255,255,255,.2)",animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .7s both"}}>GROUP A · MATCHDAY 2</div>
-        </div>
-        {/* RIGHT — prediction CTA */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(20px,4vw,48px)"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.6vw,12px)",letterSpacing:6,color:"rgba(240,192,64,.6)",marginBottom:10,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) .2s both"}}>DID YOU PREDICT</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(24px,5.5vw,52px)",letterSpacing:3,color:"#fff",lineHeight:1,marginBottom:8,animation:"tvadWordIn .8s cubic-bezier(.16,1,.3,1) .4s both"}}>THIS<br/>SCORE?</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,44px)",letterSpacing:2,...G,marginBottom:24,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .6s both",filter:"drop-shadow(0 0 16px rgba(240,192,64,.4))"}}>+5 PTS</div>
-          <div style={{padding:12,background:"#0d0b00",border:"1.5px solid rgba(240,192,64,.4)",borderRadius:14,marginBottom:14,animation:"tvadQRGlow 2.5s ease-in-out infinite, tvadScoreReveal .8s cubic-bezier(.16,1,.3,1) .8s both"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=6" alt="QR" style={{width:"clamp(70px,11vw,120px)",height:"clamp(70px,11vw,120px)",display:"block"}} />
-          </div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,13px)",letterSpacing:3,...G,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1s both"}}>PREDICT FREE</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,11px)",color:"rgba(255,255,255,.22)",marginTop:4,letterSpacing:1,animation:"tvadWordIn .5s cubic-bezier(.16,1,.3,1) 1.1s both"}}>elmundo-world-cup.com</div>
-        </div>
+      {/* Bottom CTA */}
+      <div style={{position:"absolute",bottom:"clamp(12px,2.2vw,24px)",left:0,right:0,display:"flex",justifyContent:"center",gap:14,opacity:0,animation:"tvadFadeUp .6s ease 2.4s both"}}>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.5vw,13px)",letterSpacing:4,color:"rgba(255,255,255,.28)"}}>PREDICT EVERY MATCH →</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.5vw,13px)",letterSpacing:3,color:"rgba(240,192,64,.6)"}}>ELMUNDO-WORLD-CUP.COM</div>
       </div>
     </div>
   );
 }
 
-/* A — CINEMATIC LOGO REVEAL → REGISTER CTA */
+/* A — "WHO WILL WIN WORLD CUP 2026?" — DRAMATIC TYPOGRAPHY REVEAL */
 function TVAdSlideA() {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
-  const [phase, setPhase] = useState(0);
-  useEffect(() => {
-    const id = setTimeout(() => setPhase(1), 5400);
-    return () => clearTimeout(id);
-  }, []);
+  const line1 = "WORLD".split("");
+  const line2 = "CUP 2026".split("");
 
   return (
-    <div className="tvad-slide">
-      {phase === 0 ? (
-        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%"}}>
-          {/* Gold light-sweep that passes over the logo */}
-          <div className="tvad-a-sweep" />
-          {/* Top frame line */}
-          <div style={{width:"clamp(160px,40vw,560px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent)",marginBottom:"clamp(18px,3vw,30px)",opacity:0,animation:"tvadDividerGrow 1.1s cubic-bezier(.16,1,.3,1) .3s forwards"}} />
-          {/* Ambient halo + beams behind logo */}
-          <div style={{position:"relative",display:"flex",justifyContent:"center",alignItems:"center"}}>
-            {/* Wide radial glow */}
-            <div style={{position:"absolute",width:"clamp(420px,55vw,680px)",height:"clamp(420px,55vw,680px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(240,192,64,.16) 0%,rgba(240,192,64,.05) 40%,transparent 68%)",opacity:0,animation:"tvadFadeUp 1.2s cubic-bezier(.16,1,.3,1) .6s both",pointerEvents:"none"}} />
-            {/* Outer slow-rotating ring */}
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) .8s forwards",pointerEvents:"none"}}>
-              <div style={{width:"clamp(360px,48vw,580px)",height:"clamp(360px,48vw,580px)",borderRadius:"50%",border:"1px solid rgba(240,192,64,.18)",animation:"tvadRotateRing 22s linear infinite"}} />
-            </div>
-            {/* Inner counter-rotating ring */}
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 1.0s forwards",pointerEvents:"none"}}>
-              <div style={{width:"clamp(300px,40vw,500px)",height:"clamp(300px,40vw,500px)",borderRadius:"50%",border:"1px dashed rgba(240,192,64,.1)",animation:"tvadRotateRing 16s linear infinite reverse"}} />
-            </div>
-            {/* Light sweep */}
-            <div className="tvad-a-sweep" />
-            <div style={{filter:"drop-shadow(0 0 60px rgba(240,192,64,.65))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) .9s both"}}>
-              <Logo w={Math.min(360, Math.round(window.innerWidth * 0.30))} />
-            </div>
-          </div>
-          {/* Bottom frame line */}
-          <div style={{width:"clamp(160px,40vw,560px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent)",marginTop:"clamp(18px,3vw,30px)",marginBottom:"clamp(20px,3vw,32px)",opacity:0,animation:"tvadDividerGrow 1.1s cubic-bezier(.16,1,.3,1) .5s forwards"}} />
-          {/* WORLD CUP 2026 neon */}
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(22px,5vw,52px)",letterSpacing:8,...G,lineHeight:1,filter:"drop-shadow(0 0 28px rgba(240,192,64,.45))",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 2.4s both,tvadNeonFlicker 2s linear 3.4s 1"}}>WORLD CUP 2026</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(11px,2vw,15px)",letterSpacing:10,color:"rgba(255,255,255,.5)",marginTop:"clamp(8px,1.4vw,14px)",opacity:0,animation:"tvadFadeUp 1s cubic-bezier(.16,1,.3,1) 3.2s both"}}>THE ULTIMATE PREDICTION GAME</div>
+    <div className="tvad-slide" style={{padding:0,overflow:"hidden"}}>
+      <div className="tvad-scanline-overlay"/>
+
+      {/* Deep radial glow centre */}
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 65% 55% at 50% 45%,rgba(240,192,64,.09) 0%,transparent 70%)",pointerEvents:"none"}}/>
+
+      {/* Two slow orbit rings for depth */}
+      <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"min(88vw,680px)",height:"min(88vw,680px)",borderRadius:"50%",border:"1px solid rgba(240,192,64,.07)",animation:"tvadRotateRing 32s linear infinite",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"min(62vw,500px)",height:"min(62vw,500px)",borderRadius:"50%",border:"1px dashed rgba(240,192,64,.05)",animation:"tvadRotateRing 22s linear infinite reverse",pointerEvents:"none"}}/>
+
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",gap:0}}>
+
+        {/* Eyebrow label */}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",letterSpacing:9,color:"rgba(240,192,64,.55)",opacity:0,animation:"tvadFadeUp .7s ease .3s both",marginBottom:"clamp(10px,1.8vw,18px)"}}>THE WORLD IS WATCHING</div>
+
+        {/* WHO WILL WIN */}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(30px,6.5vw,72px)",letterSpacing:4,color:"rgba(255,255,255,.88)",lineHeight:1,opacity:0,animation:"tvadWordIn .85s cubic-bezier(.16,1,.3,1) .65s both",textAlign:"center"}}>WHO WILL WIN</div>
+
+        {/* Gold growing divider */}
+        <div style={{width:"clamp(60px,12vw,180px)",height:2,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.75),transparent)",margin:"clamp(10px,1.8vw,16px) 0",opacity:0,animation:"tvadDividerGrow 1.3s ease 1.1s forwards"}}/>
+
+        {/* WORLD — letter by letter */}
+        <div style={{display:"flex",justifyContent:"center",gap:"clamp(2px,0.5vw,5px)",overflow:"hidden",lineHeight:1,marginBottom:"clamp(2px,0.5vw,4px)"}}>
+          {line1.map((l, i) => (
+            <span key={i} style={{
+              fontFamily:"'Anton',sans-serif",
+              fontSize:"clamp(52px,10.5vw,118px)",
+              lineHeight:1,display:"inline-block",
+              ...G,
+              filter:"drop-shadow(0 0 32px rgba(240,192,64,.55))",
+              opacity:0,
+              animation:`tvadLetterIn .42s cubic-bezier(.16,1,.3,1) ${1.5 + i*0.07}s both`,
+            }}>{l}</span>
+          ))}
         </div>
-      ) : (
-        <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:580,animation:"tvadSlideIn .6s cubic-bezier(.16,1,.3,1) both"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(9px,1.7vw,13px)",letterSpacing:7,color:"rgba(240,192,64,.6)",marginBottom:14,animation:"tvadWordIn .5s cubic-bezier(.16,1,.3,1) .1s both"}}>JOIN THE GAME</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(24px,6vw,60px)",letterSpacing:3,color:"#fff",lineHeight:1.1,marginBottom:8,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .2s both"}}>REGISTER NOW</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(14px,3vw,26px)",letterSpacing:2,color:"rgba(255,255,255,.45)",lineHeight:1.2,marginBottom:26,animation:"tvadWordIn .7s cubic-bezier(.16,1,.3,1) .35s both"}}>& TAKE PART IN EVERY MATCH</div>
-          <div style={{display:"flex",alignItems:"center",gap:24,animation:"tvadScoreReveal .7s cubic-bezier(.16,1,.3,1) .5s both"}}>
-            <div style={{padding:14,background:"#0d0b00",border:"2px solid rgba(240,192,64,.5)",borderRadius:16,animation:"tvadQRGlow 2.2s ease-in-out infinite"}}>
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,16vw,160px)",height:"clamp(100px,16vw,160px)",display:"block"}} />
-            </div>
-            <div style={{textAlign:"left",display:"flex",flexDirection:"column",gap:10}}>
-              {[{ico:"⚡",t:"PREDICT SCORES",s:"Exact score = 5 pts"},{ico:"🏆",t:"CLIMB THE BOARD",s:"Beat every guest"},{ico:"🎁",t:"WIN PRIZES",s:"Top predictors rewarded"}].map((r,i)=>(
-                <div key={r.t} style={{animation:`tvadWordIn .5s cubic-bezier(.16,1,.3,1) ${.6+i*.12}s both`,display:"flex",alignItems:"flex-start",gap:10}}>
-                  <div style={{fontSize:"clamp(14px,2.5vw,20px)",marginTop:1}}>{r.ico}</div>
-                  <div>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,1.8vw,14px)",letterSpacing:2,color:"rgba(255,255,255,.75)"}}>{r.t}</div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(8px,1.4vw,11px)",color:"rgba(255,255,255,.28)",marginTop:1}}>{r.s}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.5vw,18px)",letterSpacing:3,...G,marginTop:20,animation:"tvadWordIn .6s cubic-bezier(.16,1,.3,1) 1s both"}}>elmundo-world-cup.com</div>
+
+        {/* CUP 2026 — letter by letter */}
+        <div style={{display:"flex",justifyContent:"center",gap:"clamp(2px,0.5vw,5px)",overflow:"hidden",lineHeight:1}}>
+          {line2.map((l, i) => (
+            <span key={i} style={{
+              fontFamily:"'Anton',sans-serif",
+              fontSize:"clamp(52px,10.5vw,118px)",
+              lineHeight:1,display:"inline-block",
+              ...(l === " " ? {width:"clamp(20px,3vw,34px)"} : {}),
+              ...(l === " " ? {} : G),
+              ...(l === " " ? {} : {filter:"drop-shadow(0 0 32px rgba(240,192,64,.55))"}),
+              color: l === " " ? "transparent" : undefined,
+              opacity: l === " " ? 1 : 0,
+              animation: l === " " ? "none" : `tvadLetterIn .42s cubic-bezier(.16,1,.3,1) ${1.9 + i*0.07}s both`,
+            }}>{l === " " ? "\u00a0" : l}</span>
+          ))}
         </div>
-      )}
+
+        {/* CAN YOU PREDICT IT? */}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(13px,2.6vw,28px)",letterSpacing:6,color:"rgba(255,255,255,.55)",marginTop:"clamp(14px,2.4vw,22px)",opacity:0,animation:"tvadWordIn .85s ease 3.6s both"}}>CAN YOU PREDICT IT?</div>
+
+        {/* Thin gold divider */}
+        <div style={{width:"clamp(40px,8vw,100px)",height:1,background:"rgba(240,192,64,.3)",margin:"clamp(10px,1.8vw,18px) 0",opacity:0,animation:"tvadDividerGrow 1s ease 4.3s forwards"}}/>
+
+        {/* CTA */}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.7vw,14px)",letterSpacing:5,...G,opacity:0,animation:"tvadFadeUp .7s ease 4.9s both",textAlign:"center"}}>PREDICT EVERY MATCH AT ELMUNDO-WORLD-CUP.COM</div>
+      </div>
     </div>
   );
 }
 
-/* F — LUXURY HOTEL MENU STYLE */
+/* F — WATCH · PREDICT · WIN three-pillar slide */
 function TVAdSlideF() {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
-  const logoW = Math.min(320, Math.round(window.innerWidth * 0.26));
-  return (
-    <div className="tvad-slide">
-      {/* Horizontal framing lines */}
-      <div style={{position:"absolute",top:"30%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.15),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) .8s both"}} />
-      <div style={{position:"absolute",bottom:"20%",left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.1),transparent)",animation:"tvadLuxLine 3.2s cubic-bezier(.16,1,.3,1) 1.2s both"}} />
+  const logoW = Math.min(200, Math.round(window.innerWidth * 0.17));
 
-      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",gap:"clamp(6px,1.6vw,16px)"}}>
-        {/* LOGO — main hero element */}
-        <div style={{filter:"drop-shadow(0 0 50px rgba(240,192,64,.55))",opacity:0,animation:"tvadLogoReveal 1.8s cubic-bezier(.16,1,.3,1) 1.5s both"}}>
+  const pillars = [
+    {word:"WATCH",   desc:"Every World Cup 2026 match — live at El Mundo Bar, Bonaire",  delay:1.2},
+    {word:"PREDICT", desc:"Submit your exact score prediction before every kick-off",      delay:2.7},
+    {word:"WIN",     desc:"Top the leaderboard and claim your Grand Prize",                delay:4.2},
+  ];
+
+  // Deterministic-ish particles (avoid Math.random on render)
+  const particles = [
+    {x:8,  y:15, s:3, d:0,   dur:5.2},
+    {x:22, y:72, s:2, d:1.4, dur:6.1},
+    {x:38, y:30, s:4, d:2.8, dur:4.8},
+    {x:55, y:85, s:2, d:0.6, dur:5.7},
+    {x:68, y:20, s:3, d:3.3, dur:6.3},
+    {x:80, y:60, s:2, d:1.9, dur:5.0},
+    {x:92, y:40, s:4, d:4.1, dur:4.6},
+    {x:14, y:50, s:2, d:2.2, dur:5.9},
+    {x:47, y:10, s:3, d:0.9, dur:6.0},
+    {x:76, y:88, s:2, d:3.7, dur:5.4},
+    {x:31, y:95, s:3, d:1.1, dur:4.9},
+    {x:61, y:55, s:2, d:4.5, dur:6.2},
+  ];
+
+  return (
+    <div className="tvad-slide" style={{padding:0,overflow:"hidden"}}>
+      <div className="tvad-scanline-overlay"/>
+
+      {/* Ambient gradient wash */}
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 70% 60% at 50% 50%,rgba(240,192,64,.06) 0%,transparent 68%)",pointerEvents:"none"}}/>
+
+      {/* Floating gold dust particles */}
+      {particles.map((p,i) => (
+        <div key={i} style={{
+          position:"absolute",left:`${p.x}%`,top:`${p.y}%`,
+          width:p.s,height:p.s,borderRadius:"50%",
+          background:"rgba(240,192,64,0.4)",
+          animation:`tvadParticleDrift ${p.dur}s ease-in-out ${p.d}s infinite`,
+          pointerEvents:"none",
+        }}/>
+      ))}
+
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",gap:0}}>
+
+        {/* Logo */}
+        <div style={{filter:"drop-shadow(0 0 40px rgba(240,192,64,.5))",opacity:0,animation:"tvadLogoReveal 1.4s cubic-bezier(.16,1,.3,1) .3s both",marginBottom:"clamp(8px,1.6vw,14px)"}}>
           <Logo w={logoW} />
         </div>
 
-        <div style={{width:"clamp(100px,20vw,260px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.45),transparent)",transformOrigin:"center",opacity:0,animation:"tvadDividerGrow 1.2s ease 3.4s forwards"}} />
+        {/* Divider */}
+        <div style={{width:"clamp(80px,16vw,220px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.5),transparent)",opacity:0,animation:"tvadDividerGrow 1.2s ease .8s forwards",marginBottom:"clamp(12px,2.2vw,22px)"}}/>
 
-        {/* Subtitle lines */}
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(18px,4vw,42px)",letterSpacing:5,...G,lineHeight:1,filter:"drop-shadow(0 0 22px rgba(240,192,64,.35))",opacity:0,animation:"tvadFadeUp .9s cubic-bezier(.16,1,.3,1) 3.8s both"}}>WORLD CUP 2026</div>
-        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(12px,2.4vw,22px)",letterSpacing:6,color:"rgba(255,255,255,.5)",opacity:0,animation:"tvadFadeUp .8s cubic-bezier(.16,1,.3,1) 4.8s both"}}>PREDICTION GAME</div>
-
-        <div style={{width:"clamp(60px,10vw,100px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.35),transparent)",opacity:0,animation:"tvadDividerGrow 1s ease 6.4s forwards"}} />
-
-        {/* QR with 4 orbit rings */}
-        <div style={{position:"relative",opacity:0,animation:"tvadFadeUp .9s cubic-bezier(.16,1,.3,1) 7.0s both"}}>
-          {/* Ring 1 */}
-          <div style={{position:"absolute",inset:-32,borderRadius:"50%",border:"1px solid rgba(240,192,64,.22)",animation:"tvadRotateRing 9s linear infinite",pointerEvents:"none"}} />
-          {/* Ring 2 */}
-          <div style={{position:"absolute",inset:-48,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.14)",animation:"tvadRotateRing 18s linear infinite reverse",pointerEvents:"none"}} />
-          {/* Ring 3 */}
-          <div style={{position:"absolute",inset:-64,borderRadius:"50%",border:"1px solid rgba(240,192,64,.08)",animation:"tvadRotateRing 28s linear infinite",pointerEvents:"none"}} />
-          <div style={{padding:"clamp(14px,2vw,20px)",background:"#0d0b00",border:"2px solid rgba(240,192,64,.5)",borderRadius:16,animation:"tvadQRGlow 3s ease-in-out infinite"}}>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://elmundo-world-cup.com&bgcolor=0d0b00&color=F0C040&format=png&margin=8" alt="QR" style={{width:"clamp(100px,14vw,170px)",height:"clamp(100px,14vw,170px)",display:"block"}} />
-          </div>
+        {/* Three pillar cards */}
+        <div style={{display:"flex",flexDirection:"column",gap:"clamp(8px,1.4vw,12px)",width:"100%",maxWidth:660}}>
+          {pillars.map((p, i) => (
+            <div key={i} style={{
+              display:"flex",alignItems:"center",gap:"clamp(16px,2.6vw,26px)",
+              padding:"clamp(13px,2.2vw,20px) clamp(18px,3vw,30px)",
+              background:"linear-gradient(135deg,rgba(240,192,64,.09) 0%,rgba(240,192,64,.02) 100%)",
+              border:"1px solid rgba(240,192,64,.2)",
+              borderLeft:"3px solid rgba(240,192,64,.75)",
+              borderRadius:12,
+              opacity:0,animation:`tvadSlideFromLeft .65s cubic-bezier(.16,1,.3,1) ${p.delay}s both`,
+            }}>
+              <div style={{
+                fontFamily:"'Anton',sans-serif",
+                fontSize:"clamp(28px,5.5vw,58px)",
+                letterSpacing:3,lineHeight:1,
+                ...G,
+                filter:"drop-shadow(0 0 18px rgba(240,192,64,.45))",
+                minWidth:"clamp(90px,13vw,160px)",
+              }}>{p.word}</div>
+              <div style={{width:1,alignSelf:"stretch",background:"rgba(240,192,64,.15)",flexShrink:0}}/>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(10px,1.7vw,15px)",color:"rgba(255,255,255,.5)",letterSpacing:1,lineHeight:1.5}}>{p.desc}</div>
+            </div>
+          ))}
         </div>
 
-        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(11px,2vw,14px)",color:"rgba(255,255,255,.28)",letterSpacing:3,opacity:0,animation:"tvadFadeUp .7s cubic-bezier(.16,1,.3,1) 8.4s both"}}>elmundo-world-cup.com</div>
+        {/* Footer */}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:5,color:"rgba(255,255,255,.28)",marginTop:"clamp(12px,2vw,20px)",opacity:0,animation:"tvadFadeUp .6s ease 5.6s both"}}>EL MUNDO BAR · BONAIRE · WORLD CUP 2026</div>
       </div>
     </div>
   );
