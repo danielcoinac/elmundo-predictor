@@ -1061,16 +1061,21 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="fp-header">
 
-        {/* Plan selector + printer zone badge */}
+        {/* Current floor label + printer zone badge */}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-          {[{id:"1",label:"🏠 FLOOR PLAN #1"},{id:"2",label:"🌴 FLOOR PLAN #2 · OUTDOOR"}].map(p => (
-            <button key={p.id} onClick={()=>switchPlan(p.id)}
-              style={{padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,cursor:"pointer",border:"none",borderRadius:4,transition:"all .2s",
-                background: activePlan===p.id ? "#fff" : "rgba(255,255,255,.07)",
-                color: activePlan===p.id ? "#000" : "rgba(255,255,255,.5)",
-                boxShadow: activePlan===p.id ? "0 0 16px rgba(255,255,255,.15)" : "none",
-              }}>{p.label}</button>
-          ))}
+          {/* Read-only floor indicator — floor follows printer zone, change via printer button */}
+          <div style={{
+            padding:"8px 16px",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,
+            background: activePlan==="2" ? "rgba(104,211,145,.12)" : "rgba(99,179,237,.12)",
+            color: activePlan==="2" ? "#68d391" : "#63b3ed",
+            border:`1px solid ${activePlan==="2" ? "rgba(104,211,145,.3)" : "rgba(99,179,237,.3)"}`,
+            borderRadius:4, userSelect:"none",
+          }}>
+            {activePlan==="2" ? "🌴 FLOOR PLAN #2 · OUTDOOR" : "🏠 FLOOR PLAN #1 · INDOOR"}
+          </div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.25)",letterSpacing:1}}>
+            Change floor via printer →
+          </div>
           {/* Printer zone indicator — always visible */}
           <button onClick={()=>setShowZoneModal(true)} style={{
             marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
