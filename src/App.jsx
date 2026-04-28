@@ -867,10 +867,12 @@ export default function App() {
       return acc + calcPts(p, m.hs, m.as);
     }, 0), [matches, preds]);
 
+  // Full board includes ALL users (admins too) so the rank anchor can always
+  // locate the current user regardless of their admin status.
+  // LeaderView filters admins out of the visible podium/table itself.
   const board = Object.values(users)
-    .filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true")
     .map(u => ({ ...u, pts: pts(u.id) }))
-    .sort((a, b) => b.pts - a.pts).slice(0, 10);
+    .sort((a, b) => b.pts - a.pts);
 
   const isAdmin = user?.is_admin === true || user?.is_admin === 1 || user?.is_admin === "true"
     || user?.badge === "developer" || user?.badge === "owner";
