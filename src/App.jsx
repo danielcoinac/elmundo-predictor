@@ -6366,7 +6366,98 @@ function TVAdSlideRegisterWin() {
   );
 }
 
-const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000, 13000, 11000, 13000, 14000, 13000, 24000];
+/* ── QR GRAND FINALE ─────────────────────────────────────────────────────── */
+function TVAdSlideQR() {
+  const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
+  const qrSize = Math.min(300, Math.round(window.innerWidth * 0.24));
+
+  return (
+    <div className="tvad-slide" style={{padding:0,overflow:"hidden"}}>
+      <div className="tvad-scanline-overlay"/>
+
+      {/* Gold atmosphere glow */}
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 65% 70% at 50% 52%,rgba(240,192,64,.11) 0%,rgba(240,192,64,.03) 45%,transparent 70%)",pointerEvents:"none"}}/>
+
+      {/* Corner bracket accents */}
+      {[[false,false],[false,true],[true,false],[true,true]].map(([bottom,right],i) => (
+        <div key={i} style={{
+          position:"absolute",
+          top:    bottom ? "auto" : "clamp(14px,2.5vw,26px)",
+          bottom: bottom ? "clamp(14px,2.5vw,26px)" : "auto",
+          left:   right  ? "auto" : "clamp(14px,2.5vw,26px)",
+          right:  right  ? "clamp(14px,2.5vw,26px)" : "auto",
+          width:"clamp(18px,3vw,30px)", height:"clamp(18px,3vw,30px)",
+          borderTop:    bottom ? "none" : "2px solid rgba(240,192,64,.4)",
+          borderBottom: bottom ? "2px solid rgba(240,192,64,.4)" : "none",
+          borderLeft:   right  ? "none" : "2px solid rgba(240,192,64,.4)",
+          borderRight:  right  ? "2px solid rgba(240,192,64,.4)" : "none",
+          opacity:0, animation:`tvadFadeUp .5s ease ${.2+i*.08}s both`,
+        }}/>
+      ))}
+
+      <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",gap:0}}>
+
+        {/* Eyebrow */}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.5vw,12px)",letterSpacing:10,color:"rgba(240,192,64,.5)",opacity:0,animation:"tvadFadeUp .6s ease .3s both",marginBottom:"clamp(8px,1.4vw,14px)"}}>SCAN TO PLAY · IT'S FREE</div>
+
+        {/* SCAN THIS — per-letter gold reveal */}
+        <div style={{display:"flex",alignItems:"flex-end",gap:"clamp(2px,0.4vw,4px)",marginBottom:"clamp(14px,2.4vw,22px)",overflow:"hidden"}}>
+          {"SCAN THIS".split("").map((l, i) => (
+            <span key={i} style={{
+              fontFamily:"'Anton',sans-serif",
+              fontSize: l === " " ? "clamp(18px,3vw,32px)" : "clamp(38px,7.8vw,86px)",
+              lineHeight:1, display:"inline-block",
+              ...(l === " " ? {width:"clamp(16px,2.5vw,24px)"} : {}),
+              ...(l === " " ? {color:"transparent"} : G),
+              filter: l === " " ? "none" : "drop-shadow(0 0 30px rgba(240,192,64,.6))",
+              opacity: l === " " ? 1 : 0,
+              animation: l === " " ? "none" : `tvadLetterIn .42s cubic-bezier(.16,1,.3,1) ${.5+i*.06}s both`,
+            }}>{l === " " ? "\u00a0" : l}</span>
+          ))}
+        </div>
+
+        {/* BIG QR — orbit rings + golden scan beam */}
+        <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,animation:"tvadScaleIn 1.1s cubic-bezier(.34,1.56,.64,1) 1.3s both"}}>
+          {/* Ring 1 — close, fast */}
+          <div style={{position:"absolute",inset:-34,borderRadius:"50%",border:"1.5px solid rgba(240,192,64,.28)",animation:"tvadRotateRing 7s linear infinite",pointerEvents:"none"}}/>
+          {/* Ring 2 — medium, counter */}
+          <div style={{position:"absolute",inset:-56,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.15)",animation:"tvadRotateRing 14s linear infinite reverse",pointerEvents:"none"}}/>
+          {/* Ring 3 — wide, slow */}
+          <div style={{position:"absolute",inset:-80,borderRadius:"50%",border:"1px solid rgba(240,192,64,.07)",animation:"tvadRotateRing 26s linear infinite",pointerEvents:"none"}}/>
+          {/* Ring 4 — widest, dotted counter */}
+          <div style={{position:"absolute",inset:-108,borderRadius:"50%",border:"1px dashed rgba(240,192,64,.04)",animation:"tvadRotateRing 40s linear infinite reverse",pointerEvents:"none"}}/>
+
+          {/* QR card */}
+          <div style={{position:"relative",overflow:"hidden",borderRadius:20,padding:"clamp(16px,2.4vw,24px)",background:"#0a0800",border:"2px solid rgba(240,192,64,.6)",animation:"tvadQRGlow 2.4s ease-in-out 2.4s infinite"}}>
+            {/* Gold scan beam */}
+            <div style={{
+              position:"absolute",left:0,right:0,height:4,zIndex:3,pointerEvents:"none",
+              background:"linear-gradient(90deg,transparent 0%,rgba(240,192,64,.95) 40%,rgba(255,255,200,1) 50%,rgba(240,192,64,.95) 60%,transparent 100%)",
+              boxShadow:"0 0 16px 6px rgba(240,192,64,.5), 0 0 40px 10px rgba(240,192,64,.2)",
+              animation:"tvadQRScan 2.6s ease-in-out 2.5s infinite",
+            }}/>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=https://elmundo-world-cup.com&bgcolor=0a0800&color=F0C040&format=png&margin=12`}
+              alt="Scan to join"
+              style={{width:qrSize, height:qrSize, display:"block", position:"relative", zIndex:1}}
+            />
+          </div>
+        </div>
+
+        {/* URL — big gold */}
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(15px,3vw,30px)",letterSpacing:4,...G,marginTop:"clamp(18px,2.8vw,28px)",filter:"drop-shadow(0 0 24px rgba(240,192,64,.45))",opacity:0,animation:"tvadFadeUp .9s ease 2.8s both"}}>ELMUNDO-WORLD-CUP.COM</div>
+
+        {/* Divider */}
+        <div style={{width:"clamp(60px,14vw,180px)",height:1,background:"linear-gradient(90deg,transparent,rgba(240,192,64,.4),transparent)",margin:"clamp(10px,1.6vw,16px) 0",opacity:0,animation:"tvadDividerGrow 1.1s ease 3.5s forwards"}}/>
+
+        {/* Tagline */}
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",letterSpacing:5,color:"rgba(255,255,255,.35)",opacity:0,animation:"tvadFadeUp .6s ease 4.0s both"}}>WORLD CUP 2026 PREDICTION GAME · FREE TO PLAY</div>
+      </div>
+    </div>
+  );
+}
+
+const TVAD_DURATIONS = [11000, 12000, 11000, 12000, 14000, 13000, 11000, 13000, 14000, 13000, 24000, 18000];
 const TVAD_COUNT = TVAD_DURATIONS.length;
 
 function TVAdView({ onBack, matches = [], board = [] }) {
@@ -6406,6 +6497,7 @@ function TVAdView({ onBack, matches = [], board = [] }) {
       {slide===8 && <TVAdSlidePrizes key={`prz-${tick}`} />}
       {slide===9 && <TVAdSlideRegisterWin key={`reg-${tick}`} />}
       {slide===10 && <TVLeaderboard key={`lb-${tick}`} board={board} inAd={true} onBack={null} />}
+      {slide===11 && <TVAdSlideQR key={`qr-${tick}`} />}
     </div>
   );
 }

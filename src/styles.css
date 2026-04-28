@@ -615,6 +615,7 @@
   @keyframes tvadScoreReveal{from{opacity:0;transform:scale(.6) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
   @keyframes tvadBarGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
   @keyframes tvadQRGlow{0%,100%{box-shadow:0 0 0 2px rgba(240,192,64,.35),0 0 30px rgba(240,192,64,.12)}50%{box-shadow:0 0 0 4px rgba(240,192,64,.65),0 0 60px rgba(240,192,64,.28)}}
+  @keyframes tvadQRScan{0%{transform:translateY(-100%);opacity:0}5%{opacity:1}90%{opacity:1}100%{transform:translateY(2000%);opacity:0}}
   @keyframes tvadFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
   @keyframes tvadNeonFlicker{0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}20%,22%,24%,55%{opacity:.3}}
   @keyframes tvadScanlineBar{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
