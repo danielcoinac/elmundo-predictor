@@ -4399,8 +4399,11 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
   const top3 = filtered.slice(0, 3);
   const rest = filtered.slice(3);
-  const myRank = filtered.findIndex(u => u.id === user.id) + 1;
-  const myEntry = filtered.find(u => u.id === user.id);
+  // Find rank in filtered first; fall back to full board so admins still see themselves
+  const myRankFiltered = filtered.findIndex(u => u.id === user.id) + 1;
+  const myRankFull     = board.findIndex(u => u.id === user.id) + 1;
+  const myRank  = myRankFiltered > 0 ? myRankFiltered : myRankFull;
+  const myEntry = filtered.find(u => u.id === user.id) || board.find(u => u.id === user.id);
   const [profilePlayer, setProfilePlayer] = useState(null);
   const myRowRef = useRef(null);
   const scrollToMe = () => myRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -4485,11 +4488,12 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
       )}
 
       {myRank > 0 && (
-        <div className="lb-rank-anchor" onClick={scrollToMe} style={{cursor: myRank > 3 ? "pointer" : "default"}}>
+        <div className="lb-rank-anchor" onClick={myRankFiltered > 3 ? scrollToMe : undefined} style={{cursor: myRankFiltered > 3 ? "pointer" : "default"}}>
+          <span className="lb-rank-anchor-label">YOUR RANK</span>
           <span className="lb-rank-anchor-pos">#{myRank}</span>
-          <span className="lb-rank-anchor-name">{myEntry?.name || "YOU"}</span>
+          <span className="lb-rank-anchor-name">{myEntry?.name || user.name || "YOU"}</span>
           <span className="lb-rank-anchor-pts">{myEntry?.pts ?? 0}<span style={{fontSize:11,opacity:.6}}> pts</span></span>
-          {myRank > 3 && <span className="lb-rank-anchor-hint">↑ scroll to me</span>}
+          {myRankFiltered > 3 && <span className="lb-rank-anchor-hint">↑ tap</span>}
         </div>
       )}
     </div>
