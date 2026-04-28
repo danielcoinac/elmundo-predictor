@@ -5561,7 +5561,7 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
                 </div>
               </div>
             ) : (
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:420,overflowY:"auto",paddingRight:4}}>
                 {shown.map(m => {
                   const k = `${user.id}__${m.id}`;
                   const p = preds[k];
