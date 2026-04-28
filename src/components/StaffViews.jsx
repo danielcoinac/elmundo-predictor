@@ -549,7 +549,10 @@ const FP_DEFAULT_P2 = [
 const _seenOrderIds = new Set();
 
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
-  const [activePlan, setActivePlan] = useState("1");
+  const [activePlan, setActivePlan] = useState(() => {
+    const pz = localStorage.getItem("em-printer-zone");
+    return pz === "outside" ? "2" : "1";
+  });
   const isP2 = activePlan === "2";
   const fpKey    = isP2 ? FP_KEY_P2    : FP_KEY;
   const fpBarKey = isP2 ? FP_BAR_KEY_P2 : FP_BAR_KEY;
@@ -586,7 +589,16 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const PZ_KEY = "em-printer-zone"; // "inside" | "outside" | null
   const [printerZone,   setPrinterZone  ] = useState(() => localStorage.getItem(PZ_KEY));
   const [showZoneModal, setShowZoneModal] = useState(() => !localStorage.getItem(PZ_KEY));
-  const saveZone = (z) => { localStorage.setItem(PZ_KEY, z); setPrinterZone(z); setShowZoneModal(false); };
+  const saveZone = (z) => {
+    localStorage.setItem(PZ_KEY, z);
+    setPrinterZone(z);
+    setShowZoneModal(false);
+    // Auto-navigate to the floor plan that matches the printer location
+    setActivePlan(z === "outside" ? "2" : "1");
+    setEditMode(false);
+    setSelectedTable(null);
+    setEditSel(null);
+  };
 
   // Plan-aware aliases
   const curTables    = isP2 ? tablesP2    : tables;
