@@ -71,6 +71,28 @@ export default function App() {
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
   }, []);
 
+  // Offline prediction retry queue — flush when back online
+  useEffect(() => {
+    const flush = async () => {
+      const OFFLINE_QUEUE_KEY = "em-pred-queue";
+      const queue = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
+      if (!queue.length || !navigator.onLine) return;
+      const failed = [];
+      for (const item of queue) {
+        const { error } = await supabase.from("predictions").upsert(
+          { user_id: item.userId, match_id: item.matchId, home_pred: item.h, away_pred: item.a },
+          { onConflict: "user_id,match_id" }
+        );
+        if (error) failed.push(item);
+      }
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(failed));
+      if (failed.length < queue.length) toast$(`✅ ${queue.length - failed.length} prediction(s) synced`);
+    };
+    window.addEventListener("online", flush);
+    flush(); // also try on mount
+    return () => window.removeEventListener("online", flush);
+  }, []);
+
   // Load global app settings from Supabase (shared for ALL users/devices)
   useEffect(() => {
     (async () => {
@@ -755,7 +777,24 @@ export default function App() {
         { user_id: user.id, match_id: id, home_pred: +h, away_pred: +a },
         { onConflict: "user_id,match_id" }
       );
-      if (error) { toast$("Error saving prediction", false); return; }
+      if (error) {
+        // Server-side lock error
+        if (/window|closed|lock/i.test(error.message)) {
+          toast$("⛔ Prediction window is closed", false); return;
+        }
+        // Offline / network error — queue for retry
+        if (!navigator.onLine || /fetch/i.test(error.message)) {
+          const OFFLINE_QUEUE_KEY = "em-pred-queue";
+          const queue = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
+          queue.push({ userId: user.id, matchId: id, h: +h, a: +a, savedAt: Date.now() });
+          localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+          const k = `${user.id}__${id}`;
+          setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
+          toast$("💾 Saved offline — will sync when back online");
+          return;
+        }
+        toast$("Error saving prediction", false); return;
+      }
       const k = `${user.id}__${id}`;
       setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
       toast$("Prediction saved ⚽");
@@ -4363,6 +4402,8 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
   const myRank = filtered.findIndex(u => u.id === user.id) + 1;
   const myEntry = filtered.find(u => u.id === user.id);
   const [profilePlayer, setProfilePlayer] = useState(null);
+  const myRowRef = useRef(null);
+  const scrollToMe = () => myRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   const profileRank = profilePlayer ? filtered.findIndex(u => u.id === profilePlayer.id) + 1 : 0;
 
   return (
@@ -4423,7 +4464,7 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
             <span className="lb-th-pts">PTS</span>
           </div>
           {rest.map((u, i) => (
-            <div key={u.id} className={`lb-row ${u.id===user.id?"lb-row-me":""}`} style={{cursor:"pointer"}} onClick={() => setProfilePlayer(u)}>
+            <div key={u.id} ref={u.id===user.id ? myRowRef : null} className={`lb-row ${u.id===user.id?"lb-row-me":""}`} style={{cursor:"pointer"}} onClick={() => setProfilePlayer(u)}>
               <span className="lb-row-rank">#{i + 4}</span>
               <span className="lb-row-name">
                 {u.name}
@@ -4440,6 +4481,15 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
           <div style={{fontSize:48,marginBottom:16}}>🏆</div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"rgba(255,255,255,.4)"}}>NO PLAYERS YET</div>
           <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
+        </div>
+      )}
+
+      {myRank > 0 && (
+        <div className="lb-rank-anchor" onClick={scrollToMe} style={{cursor: myRank > 3 ? "pointer" : "default"}}>
+          <span className="lb-rank-anchor-pos">#{myRank}</span>
+          <span className="lb-rank-anchor-name">{myEntry?.name || "YOU"}</span>
+          <span className="lb-rank-anchor-pts">{myEntry?.pts ?? 0}<span style={{fontSize:11,opacity:.6}}> pts</span></span>
+          {myRank > 3 && <span className="lb-rank-anchor-hint">↑ scroll to me</span>}
         </div>
       )}
     </div>
@@ -5464,6 +5514,48 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         <div className="info-title">⚽ HOW POINTS WORK</div>
         <p className="info-body">Predict the exact final score for each match. Exact score correct earns <strong>5 points</strong>. Correct winner with wrong score earns <strong>1 point</strong>. Draw matches: only exact score earns points. Most points at tournament end wins.</p>
       </div>
+
+      {/* ── MY PREDICTION HISTORY ── */}
+      {(() => {
+        const finMatches = matches.filter(m => m.status === "finished").sort((a,b) => new Date(b.kickoff||b.date) - new Date(a.kickoff||a.date));
+        if (!finMatches.length) return null;
+        return (
+          <div style={{marginTop:24,marginBottom:8}}>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:4,color:"rgba(255,255,255,.5)",marginBottom:12,paddingLeft:2}}>MY PREDICTIONS</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {finMatches.map(m => {
+                const k = `${user.id}__${m.id}`;
+                const p = preds[k];
+                const exact = p && p.h === m.hs && p.a === m.as;
+                const winner = p && !exact && ((p.h > p.a && m.hs > m.as) || (p.h < p.a && m.hs < m.as) || (p.h === p.a && m.hs === m.as));
+                const hasPred = !!p;
+                return (
+                  <div key={m.id} style={{
+                    display:"flex",alignItems:"center",gap:12,
+                    padding:"11px 14px",borderRadius:10,
+                    background: exact ? "rgba(240,192,64,.08)" : winner ? "rgba(74,222,128,.06)" : hasPred ? "rgba(239,68,68,.05)" : "rgba(255,255,255,.03)",
+                    border: `1px solid ${exact ? "rgba(240,192,64,.25)" : winner ? "rgba(74,222,128,.2)" : hasPred ? "rgba(239,68,68,.18)" : "rgba(255,255,255,.07)"}`,
+                  }}>
+                    {/* Match */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,color:"rgba(255,255,255,.85)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.home} vs {m.away}</div>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>Result: {m.hs}–{m.as} · Your pick: {hasPred ? `${p.h}–${p.a}` : "—"}</div>
+                    </div>
+                    {/* Badge */}
+                    <div style={{
+                      fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1,padding:"4px 10px",borderRadius:20,flexShrink:0,
+                      background: exact ? "rgba(240,192,64,.2)" : winner ? "rgba(74,222,128,.15)" : hasPred ? "rgba(239,68,68,.12)" : "rgba(255,255,255,.06)",
+                      color: exact ? "#F0C040" : winner ? "#4ade80" : hasPred ? "#f87171" : "rgba(255,255,255,.3)",
+                    }}>
+                      {exact ? "+5 ✓" : winner ? "+1 ~" : hasPred ? "0 ✗" : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── SPONSORS SECTION ── */}
       <SponsorsSection />
@@ -8395,11 +8487,38 @@ function AdminEditCard({ ef, efSet, onSave, onCancel }) {
         <AField label="Group"         val={ef.group} on={efSet("group")} ph="Group A" />
       </div>
       <div className="admin-score-row">
-        <span className="admin-score-lbl">Final Score — filling this marks match as FINISHED and awards points</span>
-        <div className="admin-score-inputs">
-          <input className="admin-sinput admin-sinput-lg" type="number" min="0" max="20" value={ef.hs} onChange={efSet("hs")} placeholder="H" />
-          <span className="admin-sep">–</span>
-          <input className="admin-sinput admin-sinput-lg" type="number" min="0" max="20" value={ef.as} onChange={efSet("as")} placeholder="A" />
+        <span className="admin-score-lbl">Final Score — fills this marks match as FINISHED and awards points</span>
+        <div className="admin-score-inputs" style={{gap:16,alignItems:"center"}}>
+          {/* Home stepper */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",letterSpacing:2}}>{ef.home||"HOME"}</span>
+            <div style={{display:"flex",alignItems:"center",gap:0,background:"rgba(255,255,255,.06)",borderRadius:10,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
+              <button type="button" onClick={()=>efSet("hs")({target:{value:Math.max(0,(+ef.hs||0)-1)}})}
+                style={{padding:"10px 16px",background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:20,cursor:"pointer",fontWeight:"bold",lineHeight:1}}>−</button>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",minWidth:36,textAlign:"center",lineHeight:1}}>{ef.hs===undefined||ef.hs===""?"·":ef.hs}</span>
+              <button type="button" onClick={()=>efSet("hs")({target:{value:Math.min(20,(+ef.hs||0)+1)}})}
+                style={{padding:"10px 16px",background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:20,cursor:"pointer",fontWeight:"bold",lineHeight:1}}>+</button>
+            </div>
+          </div>
+          <span className="admin-sep" style={{fontSize:28,alignSelf:"flex-end",marginBottom:4}}>–</span>
+          {/* Away stepper */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",letterSpacing:2}}>{ef.away||"AWAY"}</span>
+            <div style={{display:"flex",alignItems:"center",gap:0,background:"rgba(255,255,255,.06)",borderRadius:10,overflow:"hidden",border:"1px solid rgba(255,255,255,.12)"}}>
+              <button type="button" onClick={()=>efSet("as")({target:{value:Math.max(0,(+ef.as||0)-1)}})}
+                style={{padding:"10px 16px",background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:20,cursor:"pointer",fontWeight:"bold",lineHeight:1}}>−</button>
+              <span style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"#fff",minWidth:36,textAlign:"center",lineHeight:1}}>{ef.as===undefined||ef.as===""?"·":ef.as}</span>
+              <button type="button" onClick={()=>efSet("as")({target:{value:Math.min(20,(+ef.as||0)+1)}})}
+                style={{padding:"10px 16px",background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:20,cursor:"pointer",fontWeight:"bold",lineHeight:1}}>+</button>
+            </div>
+          </div>
+          {/* Clear result */}
+          {(ef.hs!==""||ef.as!=="") && (
+            <button type="button" onClick={()=>{efSet("hs")({target:{value:""}});efSet("as")({target:{value:""}});}}
+              style={{padding:"6px 12px",background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,color:"rgba(239,68,68,.8)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",marginTop:18}}>
+              CLEAR
+            </button>
+          )}
         </div>
       </div>
       <div className="admin-form-actions">

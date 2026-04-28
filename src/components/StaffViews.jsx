@@ -619,11 +619,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const refresh = async () => {
       await onLoad();
       setNow(Date.now());
-      // Fetch active group sessions for table color
+      // Fetch active group sessions for table color + countdown
       const { data: gs } = await supabase.from("group_orders")
-        .select("table_number,status")
+        .select("id,table_number,status,created_at")
         .in("status", ["open", "ordering", "awaiting_payment"]);
-      setActiveGroupSessions(gs || []);
+      const loadedSessions = gs || [];
+      setActiveGroupSessions(loadedSessions);
+      // Auto-expire group orders open > 30 min
+      const staleThreshold = Date.now() - 30 * 60 * 1000;
+      const staleSessions = loadedSessions.filter(s =>
+        s.status === "open" && new Date(s.created_at).getTime() < staleThreshold
+      );
+      for (const s of staleSessions) {
+        await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", s.id);
+      }
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       // Cancel card_pending orders unpaid for 10+ min
       await supabase.from("orders")
@@ -916,11 +925,20 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         )}
 
         {/* Group order badge — only when active group session */}
-        {!isZone && !editMode && s === "group" && (
-          <div style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",background:"rgba(96,165,250,.2)",border:"1px solid rgba(96,165,250,.6)",borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>
-            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,letterSpacing:1,color:"#93c5fd",textTransform:"uppercase"}}>Group Order</span>
-          </div>
-        )}
+        {!isZone && !editMode && s === "group" && (() => {
+          const session = activeGroupSessions.find(g => String(g.table_number) === tableKey);
+          const expiresIn = session?.created_at
+            ? Math.max(0, 30*60 - Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000))
+            : null;
+          const isExpiring = expiresIn !== null && expiresIn < 5 * 60;
+          return (
+            <div style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",background:"rgba(96,165,250,.2)",border:`1px solid ${isExpiring?"rgba(239,68,68,.7)":"rgba(96,165,250,.6)"}`,borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>
+              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,letterSpacing:1,color:isExpiring?"#f87171":"#93c5fd",textTransform:"uppercase"}}>
+                Group{expiresIn !== null ? ` ${Math.floor(expiresIn/60)}:${String(expiresIn%60).padStart(2,"0")}` : ""}
+              </span>
+            </div>
+          );
+        })()}
 
 
         {/* EDIT: shape toggle (top-left) */}
