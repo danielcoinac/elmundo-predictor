@@ -2272,6 +2272,54 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
+
+  // ── Post-match card + points animation ──────────────────────────────────
+  const [postMatchCard, setPostMatchCard] = useState(null);
+  const [ptsAnim, setPtsAnim]             = useState(null); // { delta, key }
+  // Initialised lazily so first-load finished matches are ignored
+  const seenFinishedRef = useRef(null);
+  const prevPtsRef      = useRef(null); // null = not yet initialised
+  const prevRankRef     = useRef(myRank);
+
+  // Detect newly-finished matches (realtime push from admin) — order matters:
+  // this effect runs BEFORE the myPts effect so prevRankRef still holds old rank
+  useEffect(() => {
+    if (!seenFinishedRef.current) {
+      // First run: seed with already-finished matches so we don't spam on load
+      seenFinishedRef.current = new Set(matches.filter(m => m.status === "finished").map(m => m.id));
+      return;
+    }
+    const newlyFinished = matches.filter(m =>
+      m.status === "finished" && !seenFinishedRef.current.has(m.id)
+    );
+    if (!newlyFinished.length) return;
+    for (const m of newlyFinished) {
+      seenFinishedRef.current.add(m.id);
+      const p = preds[`${user.id}__${m.id}`] ?? null;
+      setPostMatchCard({
+        match: m,
+        pred: p,
+        earned: calcPts(p, m.hs, m.as),
+        prevRank: prevRankRef.current,
+        newRank: myRank,
+      });
+      break; // show one card at a time
+    }
+  }, [matches]); // eslint-disable-line
+
+  // Track pts for floating animation (runs after the matches effect)
+  useEffect(() => {
+    if (prevPtsRef.current === null) { prevPtsRef.current = myPts; prevRankRef.current = myRank; return; }
+    const delta = myPts - prevPtsRef.current;
+    if (delta > 0) {
+      setPtsAnim({ delta, key: Date.now() });
+      const t = setTimeout(() => setPtsAnim(null), 2400);
+      return () => clearTimeout(t);
+    }
+    prevPtsRef.current = myPts;
+    prevRankRef.current = myRank;
+  }, [myPts]); // eslint-disable-line
+
   const [animKey, setAnimKey] = useState(appTab);
   const [showTVAd, setShowTVAd] = useState(false);
 
@@ -2403,6 +2451,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 
   return (
     <div className="shell">
+      {/* Post-match result card */}
+      {postMatchCard && <PostMatchCard data={postMatchCard} onClose={() => setPostMatchCard(null)} />}
       <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
         <div className="hdr-inner">
           <div className="hdr-l">
@@ -2412,12 +2462,21 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
           </div>
           <div className="hdr-r">
             {!isAdmin && myRank > 0 && (
-              <div className="hdr-badge">
+              <div className="hdr-badge" style={{position:"relative"}}>
                 <span className="hdr-badge-pts">{myPts}</span>
                 <div className="hdr-badge-meta">
                   <span className="hdr-badge-label">PTS</span>
                   <span className="hdr-badge-rank">#{myRank}</span>
                 </div>
+                {ptsAnim && (
+                  <span key={ptsAnim.key} style={{
+                    position:"absolute",top:-4,right:-4,
+                    fontFamily:"'Anton',sans-serif",fontSize:15,color:"#F0C040",
+                    pointerEvents:"none",whiteSpace:"nowrap",
+                    filter:"drop-shadow(0 0 6px rgba(240,192,64,.7))",
+                    animation:"ptsBubble 2.4s ease forwards",zIndex:100,
+                  }}>+{ptsAnim.delta}</span>
+                )}
               </div>
             )}
             {!isAdmin && myRank === 0 && (
@@ -5201,6 +5260,24 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
+
+  // ── Streak calculation ─────────────────────────────────────────────────
+  const finSorted = [...fin].sort((a,b) => new Date(a.kickoff||a.date||0) - new Date(b.kickoff||b.date||0));
+  // Current streak: walk backwards from most recent finished match
+  let currentStreak = 0;
+  for (let i = finSorted.length - 1; i >= 0; i--) {
+    const p = preds[`${user.id}__${finSorted[i].id}`];
+    if (!p) break;
+    if (calcPts(p, finSorted[i].hs, finSorted[i].as) > 0) currentStreak++;
+    else break;
+  }
+  // Best streak ever
+  let bestStreak = 0, tmp = 0;
+  for (const m of finSorted) {
+    const p = preds[`${user.id}__${m.id}`];
+    if (p && calcPts(p, m.hs, m.as) > 0) { tmp++; bestStreak = Math.max(bestStreak, tmp); }
+    else tmp = 0;
+  }
   const [uploading, setUploading] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
   const [cardUrl, setCardUrl] = useState(null);
@@ -5459,6 +5536,25 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
           </div>
         ))}
       </div>
+
+      {/* ── Streak card — only show once there are finished matches ── */}
+      {finSorted.length > 0 && (
+        <div className="streak-card">
+          <div className="streak-flame">{currentStreak >= 3 ? "🔥" : currentStreak > 0 ? "⚡" : "💤"}</div>
+          <div className="streak-info">
+            <div className="streak-num">{currentStreak}</div>
+            <div className="streak-label">
+              {currentStreak === 0 ? "NO ACTIVE STREAK" : currentStreak === 1 ? "CORRECT IN A ROW" : `CORRECT IN A ROW`}
+            </div>
+          </div>
+          {bestStreak > 0 && (
+            <div className="streak-best">
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.35)"}}>{bestStreak}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:"rgba(255,255,255,.2)",letterSpacing:2}}>BEST</div>
+            </div>
+          )}
+        </div>
+      )}
       {/* ── Share Card CTA ── */}
       <div className="sc-cta-wrap">
         <button className="sc-cta-btn" onClick={generateCard} disabled={generatingCard}>
@@ -6588,6 +6684,71 @@ function TVAdSlideQR() {
 
         {/* Tagline */}
         <div style={{fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,1.6vw,13px)",letterSpacing:5,color:"rgba(255,255,255,.35)",opacity:0,animation:"tvadFadeUp .6s ease 4.0s both"}}>WORLD CUP 2026 PREDICTION GAME · FREE TO PLAY</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── POST-MATCH RESULT CARD ──────────────────────────────────────────────── */
+function PostMatchCard({ data, onClose }) {
+  const { match: m, pred, earned, prevRank, newRank } = data;
+  const exact  = earned === 5;
+  const winner = earned === 1;
+  const wrong  = pred && earned === 0;
+  const missed = !pred;
+
+  const accentColor = exact ? "#F0C040" : winner ? "#4ade80" : wrong ? "#f87171" : "rgba(255,255,255,.3)";
+  const borderColor = exact ? "rgba(240,192,64,.45)" : winner ? "rgba(74,222,128,.35)" : "rgba(255,255,255,.1)";
+  const emoji       = exact ? "⚽" : winner ? "✅" : wrong ? "😬" : "😶";
+  const headline    = exact ? "EXACT SCORE!" : winner ? "CORRECT WINNER" : wrong ? "WRONG PREDICTION" : "NO PREDICTION MADE";
+
+  const rankMoved = prevRank > 0 && newRank > 0 && newRank !== prevRank;
+
+  return (
+    <div className="pmcard-overlay" onClick={onClose}>
+      <div className="pmcard" style={{border:`1px solid ${borderColor}`}} onClick={e => e.stopPropagation()}>
+
+        {/* Emoji + headline */}
+        <div style={{fontSize:44,marginBottom:8}}>{emoji}</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:5,color:accentColor,marginBottom:4}}>{headline}</div>
+        <div style={{fontFamily:"'Anton',sans-serif",fontSize:17,color:"rgba(255,255,255,.85)",marginBottom:20,letterSpacing:1}}>{m.home} vs {m.away}</div>
+
+        {/* Score side-by-side */}
+        <div className="pmcard-scores">
+          <div className="pmcard-score-block">
+            <span className="pmcard-score-label">RESULT</span>
+            <span className="pmcard-score-val" style={{color:"#fff"}}>{m.hs}–{m.as}</span>
+          </div>
+          <span className="pmcard-vs">vs</span>
+          <div className="pmcard-score-block">
+            <span className="pmcard-score-label">YOUR PICK</span>
+            <span className="pmcard-score-val" style={{color: accentColor}}>
+              {pred ? `${pred.h}–${pred.a}` : "—"}
+            </span>
+          </div>
+        </div>
+
+        {/* Points earned */}
+        <div style={{
+          fontFamily:"'Anton',sans-serif",
+          fontSize: earned > 0 ? 36 : 20,
+          color: earned > 0 ? "#F0C040" : "rgba(255,255,255,.25)",
+          marginBottom: 10,
+          lineHeight: 1,
+        }}>
+          {earned > 0 ? `+${earned} PTS` : "0 PTS"}
+        </div>
+
+        {/* Rank line */}
+        {newRank > 0 && (
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",marginBottom:4}}>
+            {rankMoved
+              ? `📈 Rank moved from #${prevRank} → #${newRank}`
+              : `Your rank: #${newRank}`}
+          </div>
+        )}
+
+        <button className="pmcard-close" onClick={onClose}>CLOSE</button>
       </div>
     </div>
   );
