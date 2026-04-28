@@ -5521,42 +5521,72 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 
       {/* ── MY PREDICTION HISTORY ── */}
       {(() => {
-        const finMatches = matches.filter(m => m.status === "finished").sort((a,b) => new Date(b.kickoff||b.date) - new Date(a.kickoff||a.date));
-        if (!finMatches.length) return null;
+        // All matches sorted newest first — show finished results + upcoming picks
+        const allSorted = [...matches].sort((a,b) => new Date(b.kickoff||b.date||0) - new Date(a.kickoff||a.date||0));
+        // Matches the user has predicted (any status)
+        const predicted = allSorted.filter(m => !!preds[`${user.id}__${m.id}`]);
+        // Finished matches without a prediction (missed)
+        const missedFin = allSorted.filter(m => m.status==="finished" && !preds[`${user.id}__${m.id}`]);
+        // Combine: predicted (all) + missed finished — deduplicate
+        const shown = [...predicted, ...missedFin.filter(m => !predicted.find(p => p.id===m.id))].slice(0, 50);
+
         return (
-          <div style={{marginTop:24,marginBottom:8}}>
-            <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:4,color:"rgba(255,255,255,.5)",marginBottom:12,paddingLeft:2}}>MY PREDICTIONS</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {finMatches.map(m => {
-                const k = `${user.id}__${m.id}`;
-                const p = preds[k];
-                const exact = p && p.h === m.hs && p.a === m.as;
-                const winner = p && !exact && ((p.h > p.a && m.hs > m.as) || (p.h < p.a && m.hs < m.as) || (p.h === p.a && m.hs === m.as));
-                const hasPred = !!p;
-                return (
-                  <div key={m.id} style={{
-                    display:"flex",alignItems:"center",gap:12,
-                    padding:"11px 14px",borderRadius:10,
-                    background: exact ? "rgba(240,192,64,.08)" : winner ? "rgba(74,222,128,.06)" : hasPred ? "rgba(239,68,68,.05)" : "rgba(255,255,255,.03)",
-                    border: `1px solid ${exact ? "rgba(240,192,64,.25)" : winner ? "rgba(74,222,128,.2)" : hasPred ? "rgba(239,68,68,.18)" : "rgba(255,255,255,.07)"}`,
-                  }}>
-                    {/* Match */}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,color:"rgba(255,255,255,.85)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.home} vs {m.away}</div>
-                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>Result: {m.hs}–{m.as} · Your pick: {hasPred ? `${p.h}–${p.a}` : "—"}</div>
-                    </div>
-                    {/* Badge */}
-                    <div style={{
-                      fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1,padding:"4px 10px",borderRadius:20,flexShrink:0,
-                      background: exact ? "rgba(240,192,64,.2)" : winner ? "rgba(74,222,128,.15)" : hasPred ? "rgba(239,68,68,.12)" : "rgba(255,255,255,.06)",
-                      color: exact ? "#F0C040" : winner ? "#4ade80" : hasPred ? "#f87171" : "rgba(255,255,255,.3)",
-                    }}>
-                      {exact ? "+5 ✓" : winner ? "+1 ~" : hasPred ? "0 ✗" : "—"}
-                    </div>
-                  </div>
-                );
-              })}
+          <div style={{marginTop:28,marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,paddingLeft:2}}>
+              <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:4,color:"rgba(255,255,255,.5)"}}>MY PREDICTIONS</div>
+              {predicted.length > 0 && (
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)"}}>
+                  {predicted.length} submitted
+                </div>
+              )}
             </div>
+
+            {shown.length === 0 ? (
+              /* Empty state */
+              <div style={{textAlign:"center",padding:"28px 16px",background:"rgba(255,255,255,.03)",border:"1px dashed rgba(255,255,255,.1)",borderRadius:12}}>
+                <div style={{fontSize:32,marginBottom:10}}>⚽</div>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,letterSpacing:2,color:"rgba(255,255,255,.4)",marginBottom:6}}>NO PREDICTIONS YET</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.22)",lineHeight:1.6}}>
+                  Head to the Matches tab to predict scores.<br/>Your picks will show up here.
+                </div>
+              </div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {shown.map(m => {
+                  const k = `${user.id}__${m.id}`;
+                  const p = preds[k];
+                  const fin = m.status === "finished";
+                  const exact  = fin && p && p.h === m.hs && p.a === m.as;
+                  const winner = fin && p && !exact && ((p.h > p.a && m.hs > m.as) || (p.h < p.a && m.hs < m.as) || (p.h === p.a && m.hs === m.as));
+                  const wrong  = fin && p && !exact && !winner;
+                  const missed = fin && !p;
+                  const pending = !fin && p;
+
+                  const bg    = exact ? "rgba(240,192,64,.08)" : winner ? "rgba(74,222,128,.06)" : wrong ? "rgba(239,68,68,.05)" : missed ? "rgba(255,255,255,.02)" : "rgba(255,255,255,.03)";
+                  const bdr   = exact ? "rgba(240,192,64,.25)" : winner ? "rgba(74,222,128,.18)" : wrong ? "rgba(239,68,68,.16)" : missed ? "rgba(255,255,255,.06)" : "rgba(255,255,255,.09)";
+                  const badgeBg = exact ? "rgba(240,192,64,.2)" : winner ? "rgba(74,222,128,.15)" : wrong ? "rgba(239,68,68,.12)" : missed ? "rgba(255,255,255,.05)" : "rgba(99,179,237,.12)";
+                  const badgeColor = exact ? "#F0C040" : winner ? "#4ade80" : wrong ? "#f87171" : missed ? "rgba(255,255,255,.25)" : "#63b3ed";
+                  const badgeText  = exact ? "+5 ✓" : winner ? "+1 ~" : wrong ? "0 ✗" : missed ? "MISSED" : "PENDING";
+
+                  return (
+                    <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:10,background:bg,border:`1px solid ${bdr}`}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,color:"rgba(255,255,255,.85)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {m.home} vs {m.away}
+                        </div>
+                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>
+                          {fin ? `Result: ${m.hs}–${m.as} · ` : (m.date ? `${m.date}${m.time?` · ${m.time}`:""}  · ` : "")}
+                          {p ? `Your pick: ${p.h}–${p.a}` : fin ? "No pick submitted" : "Locked in ✓"}
+                        </div>
+                      </div>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:1,padding:"4px 10px",borderRadius:20,flexShrink:0,background:badgeBg,color:badgeColor}}>
+                        {badgeText}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })()}
