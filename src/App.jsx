@@ -4399,16 +4399,19 @@ function PlayerProfileModal({ player, rank, matches, preds, onClose }) {
 
 function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
-  const top3 = filtered.slice(0, 3);
-  const rest = filtered.slice(3);
-  // Find rank in filtered first; fall back to full board so admins still see themselves
+  const top3   = filtered.slice(0, 3);
+  const top4to10 = filtered.slice(3, 10); // positions 4–10 only
+
+  // Rank in filtered (non-admin) board; fall back to full board for admins
   const myRankFiltered = filtered.findIndex(u => u.id === user.id) + 1;
   const myRankFull     = board.findIndex(u => u.id === user.id) + 1;
   const myRank  = myRankFiltered > 0 ? myRankFiltered : myRankFull;
   const myEntry = filtered.find(u => u.id === user.id) || board.find(u => u.id === user.id);
+
+  // Show the user's own row below the table only when they're outside top 10
+  const outsideTop10 = myRank > 10 || (myRankFiltered === 0 && myRankFull > 0);
+
   const [profilePlayer, setProfilePlayer] = useState(null);
-  const myRowRef = useRef(null);
-  const scrollToMe = () => myRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   const profileRank = profilePlayer ? filtered.findIndex(u => u.id === profilePlayer.id) + 1 : 0;
 
   return (
@@ -4426,7 +4429,6 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
       {/* ── TOP 3 PODIUM ── */}
       {top3.length >= 3 && (
         <div className="lb-podium">
-          {/* 2nd */}
           {top3[1] ? (
             <div className="lb-pod lb-pod-2" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[1])}>
               <div className="lb-pod-medal">🥈</div>
@@ -4437,7 +4439,6 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
             </div>
           ) : <div className="lb-pod" />}
 
-          {/* 1st — tallest */}
           <div className="lb-pod lb-pod-1" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[0])}>
             <div className="lb-pod-crown">👑</div>
             <div className="lb-pod-medal lb-pod-medal-1">🥇</div>
@@ -4447,7 +4448,6 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
             <div className="lb-pod-plinth lb-pod-plinth-1" />
           </div>
 
-          {/* 3rd */}
           {top3[2] ? (
             <div className="lb-pod lb-pod-3" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(top3[2])}>
               <div className="lb-pod-medal">🥉</div>
@@ -4460,16 +4460,17 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
         </div>
       )}
 
-      {/* ── REST OF TABLE ── */}
-      {rest.length > 0 && (
+      {/* ── POSITIONS 4–10 + optional YOUR ROW ── */}
+      {(top4to10.length > 0 || outsideTop10) && (
         <div className="lb-table">
           <div className="lb-table-header">
             <span className="lb-th-rank">POS</span>
             <span className="lb-th-name">PLAYER</span>
             <span className="lb-th-pts">PTS</span>
           </div>
-          {rest.map((u, i) => (
-            <div key={u.id} ref={u.id===user.id ? myRowRef : null} className={`lb-row ${u.id===user.id?"lb-row-me":""}`} style={{cursor:"pointer"}} onClick={() => setProfilePlayer(u)}>
+
+          {top4to10.map((u, i) => (
+            <div key={u.id} className={`lb-row ${u.id===user.id ? "lb-row-me" : ""}`} style={{cursor:"pointer"}} onClick={() => setProfilePlayer(u)}>
               <span className="lb-row-rank">#{i + 4}</span>
               <span className="lb-row-name">
                 {u.name}
@@ -4478,6 +4479,23 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
               <span className="lb-row-pts">{u.pts}<span className="lb-row-pts-u"> pts</span></span>
             </div>
           ))}
+
+          {/* Gap separator + user's own row when outside top 10 */}
+          {outsideTop10 && myEntry && (
+            <>
+              <div className="lb-row-gap">
+                <span>· · ·</span>
+              </div>
+              <div className="lb-row lb-row-me lb-row-you-inline" style={{cursor:"pointer"}} onClick={() => setProfilePlayer(myEntry)}>
+                <span className="lb-row-rank" style={{color:"#F0C040"}}>#{myRank}</span>
+                <span className="lb-row-name">
+                  {myEntry.name}
+                  <span className="lb-you-tag">YOU</span>
+                </span>
+                <span className="lb-row-pts" style={{color:"#F0C040"}}>{myEntry.pts ?? 0}<span className="lb-row-pts-u"> pts</span></span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -4486,16 +4504,6 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
           <div style={{fontSize:48,marginBottom:16}}>🏆</div>
           <div style={{fontFamily:"'Anton',sans-serif",fontSize:18,letterSpacing:3,color:"rgba(255,255,255,.4)"}}>NO PLAYERS YET</div>
           <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.25)",marginTop:8}}>Be the first to register and predict!</div>
-        </div>
-      )}
-
-      {myRank > 0 && (
-        <div className="lb-rank-anchor" onClick={myRankFiltered > 3 ? scrollToMe : undefined} style={{cursor: myRankFiltered > 3 ? "pointer" : "default"}}>
-          <span className="lb-rank-anchor-label">YOUR RANK</span>
-          <span className="lb-rank-anchor-pos">#{myRank}</span>
-          <span className="lb-rank-anchor-name">{myEntry?.name || user.name || "YOU"}</span>
-          <span className="lb-rank-anchor-pts">{myEntry?.pts ?? 0}<span style={{fontSize:11,opacity:.6}}> pts</span></span>
-          {myRankFiltered > 3 && <span className="lb-rank-anchor-hint">↑ tap</span>}
         </div>
       )}
     </div>
