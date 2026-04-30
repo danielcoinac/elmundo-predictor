@@ -400,6 +400,31 @@ export default function App() {
         .subscribe();
     }
 
+    // ── 8b. FLOOR PLAN ORDER SYNC (non-admin staff with floor plan access) ─────
+    // Admins already receive all order events above. Floor plan staff also need
+    // real-time allOrders updates so they see orders from ANY customer, not just
+    // their own, and the FloorPlan component can route them to the right printer.
+    let floorplanOrderSub = null;
+    if (!isAdmin && user?.floorplan_access) {
+      floorplanOrderSub = supabase.channel("rt-floorplan-orders")
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"orders" }, payload => {
+          if (payload.new && payload.new.payment_method !== "card_pending") {
+            setAllOrders(o => o.find(x => x.id === payload.new.id) ? o : [payload.new, ...o]);
+          }
+        })
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"orders" }, payload => {
+          if (payload.new) {
+            setAllOrders(o => o.map(x => x.id === payload.new.id ? payload.new : x));
+          }
+        })
+        .on("postgres_changes", { event:"DELETE", schema:"public", table:"orders" }, payload => {
+          if (payload.old) {
+            setAllOrders(o => o.filter(x => x.id !== payload.old.id));
+          }
+        })
+        .subscribe();
+    }
+
     // ── 9. GLOBAL EVENTS (winner announcement broadcast to all clients) ──────
     const globalSub = supabase.channel("rt-global-events")
       .on("broadcast", { event: "winner_announced" }, ({ payload }) => {
@@ -463,6 +488,7 @@ export default function App() {
       supabase.removeChannel(orderSub);
       supabase.removeChannel(creditNotifSub);
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
+      if (floorplanOrderSub) supabase.removeChannel(floorplanOrderSub);
       supabase.removeChannel(globalSub);
       supabase.removeChannel(giftSub);
       supabase.removeChannel(passportCompletionSub);
