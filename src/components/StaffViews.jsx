@@ -586,18 +586,33 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const canvasRef = useRef(null);
 
   // ── Printer zone routing ────────────────────────────────────────────────
-  const PZ_KEY = "em-printer-zone"; // "inside" | "outside" | null
+  const PZ_KEY   = "em-printer-zone";  // "inside" | "outside"
+  const PZ_SEEN  = "em-printer-seen";  // "1" once ever seen/chosen
   const [printerZone,   setPrinterZone  ] = useState(() => localStorage.getItem(PZ_KEY));
-  const [showZoneModal, setShowZoneModal] = useState(() => !localStorage.getItem(PZ_KEY));
+  // Only auto-open if the user has NEVER seen this modal before on this device
+  const [showZoneModal, setShowZoneModal] = useState(() =>
+    !localStorage.getItem(PZ_KEY) && !localStorage.getItem(PZ_SEEN)
+  );
+
+  // Mark as seen as soon as the modal is shown the first time
+  useEffect(() => {
+    if (showZoneModal) localStorage.setItem(PZ_SEEN, "1");
+  }, [showZoneModal]);
+
   const saveZone = (z) => {
     localStorage.setItem(PZ_KEY, z);
+    localStorage.setItem(PZ_SEEN, "1");
     setPrinterZone(z);
     setShowZoneModal(false);
-    // Auto-navigate to the floor plan that matches the printer location
     setActivePlan(z === "outside" ? "2" : "1");
     setEditMode(false);
     setSelectedTable(null);
     setEditSel(null);
+  };
+
+  const dismissZoneModal = () => {
+    localStorage.setItem(PZ_SEEN, "1");
+    setShowZoneModal(false);
   };
 
   // Plan-aware aliases
@@ -1110,8 +1125,10 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
         {/* Printer zone modal */}
         {showZoneModal && (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={printerZone?()=>setShowZoneModal(false):undefined}>
-            <div style={{background:"#111",border:"1px solid rgba(255,255,255,.12)",borderRadius:16,padding:"36px 32px",maxWidth:420,width:"90%",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={dismissZoneModal}>
+            <div style={{background:"#111",border:"1px solid rgba(255,255,255,.12)",borderRadius:16,padding:"36px 32px",maxWidth:420,width:"90%",textAlign:"center",position:"relative"}} onClick={e=>e.stopPropagation()}>
+              {/* Always-visible close button */}
+              <button onClick={dismissZoneModal} style={{position:"absolute",top:12,right:14,background:"none",border:"none",color:"rgba(255,255,255,.3)",fontSize:18,cursor:"pointer",lineHeight:1,padding:4}}>✕</button>
               <div style={{fontSize:36,marginBottom:14}}>🖨️</div>
               <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:3,color:"#fff",marginBottom:8}}>WHICH BAR IS THIS DEVICE?</div>
               <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.35)",marginBottom:28,lineHeight:1.6}}>
@@ -1135,7 +1152,9 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                   🌴<br/>OUTSIDE BAR<br/><span style={{fontSize:10,opacity:.6,letterSpacing:1}}>Outdoor Zones</span>
                 </button>
               </div>
-              {printerZone && <button onClick={()=>setShowZoneModal(false)} style={{marginTop:16,background:"none",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer"}}>Cancel</button>}
+              <button onClick={dismissZoneModal} style={{marginTop:16,background:"none",border:"none",color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                {printerZone ? "Cancel" : "Skip for now"}
+              </button>
             </div>
           </div>
         )}

@@ -2612,3 +2612,128 @@
   .streak-num{font-family:'Anton',sans-serif;font-size:26px;color:#F0C040;line-height:1}
   .streak-label{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.4);letter-spacing:2px;margin-top:2px}
   .streak-best{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.22);letter-spacing:1px;margin-left:auto;text-align:right}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     📡 MATCH PULSE — Broadcast-Style Live Atmosphere
+  ══════════════════════════════════════════════════════════════════════════ */
+  .broadcast-wrap{padding:0 0 4px}
+  .broadcast-card{position:relative;margin:12px 16px;border-radius:18px;background:linear-gradient(160deg,#0a0a14,#0d0d1e,#0a0a10);border:1px solid rgba(255,255,255,.1);overflow:hidden;padding:18px 18px 16px}
+
+  /* Animated background glow */
+  .broadcast-glow{position:absolute;inset:0;pointer-events:none;opacity:.35}
+  .broadcast-glow-live{background:radial-gradient(ellipse 70% 60% at 50% -10%,rgba(239,68,68,.35),transparent 70%);animation:broadcastGlowPulse 2.4s ease-in-out infinite}
+  .broadcast-glow-soon{background:radial-gradient(ellipse 70% 60% at 50% -10%,rgba(251,191,36,.3),transparent 70%);animation:broadcastGlowPulse 3s ease-in-out infinite}
+  @keyframes broadcastGlowPulse{0%,100%{opacity:.25}50%{opacity:.55}}
+
+  /* Top bar */
+  .broadcast-topbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .broadcast-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 7px;border-radius:30px;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px}
+  .broadcast-badge-live{background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.5);color:#ef4444}
+  .broadcast-badge-soon{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24}
+  .broadcast-badge-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .broadcast-badge-live .broadcast-badge-dot{background:#ef4444;box-shadow:0 0 6px #ef4444;animation:liveDotBlink .9s ease-in-out infinite}
+  .broadcast-badge-soon .broadcast-badge-dot{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+  @keyframes liveDotBlink{0%,100%{opacity:1}50%{opacity:.3}}
+  .broadcast-timer{font-family:'Anton',sans-serif;font-size:13px;color:rgba(255,255,255,.55);letter-spacing:1px}
+  .broadcast-timer strong{color:rgba(255,255,255,.9)}
+  .broadcast-minute{color:rgba(255,255,255,.9);font-size:15px}
+  .broadcast-stage{margin-left:auto;font-family:'Outfit',sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.25);text-transform:uppercase}
+
+  /* Teams */
+  .broadcast-teams{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .broadcast-team{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .broadcast-flag-big{font-size:clamp(28px,8vw,44px);line-height:1;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}
+  .broadcast-team-name{font-family:'Anton',sans-serif;font-size:clamp(10px,2.5vw,14px);letter-spacing:2px;color:rgba(255,255,255,.9);text-align:center;text-transform:uppercase}
+  .broadcast-vs-col{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0}
+  .broadcast-vs-text{font-family:'Anton',sans-serif;font-size:16px;color:rgba(255,255,255,.18);letter-spacing:3px}
+  .broadcast-match-date{font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.28);text-align:center}
+
+  /* Community pulse section */
+  .broadcast-pulse-section{background:rgba(255,255,255,.04);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .broadcast-pulse-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .broadcast-pulse-label{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:2.5px;color:rgba(255,255,255,.5)}
+  .broadcast-pulse-count{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.3)}
+  .broadcast-bar-outer{display:flex;height:32px;border-radius:8px;overflow:hidden;gap:2px;margin-bottom:8px}
+  .broadcast-bar-seg{display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:11px;color:rgba(255,255,255,.9);letter-spacing:1px;transition:width .6s cubic-bezier(.4,0,.2,1);min-width:8%}
+  .broadcast-bar-home{background:linear-gradient(90deg,rgba(74,222,128,.25),rgba(74,222,128,.4));border-radius:8px 0 0 8px}
+  .broadcast-bar-draw{background:linear-gradient(90deg,rgba(148,163,184,.2),rgba(148,163,184,.3))}
+  .broadcast-bar-away{background:linear-gradient(90deg,rgba(248,113,113,.25),rgba(248,113,113,.4));border-radius:0 8px 8px 0}
+  .broadcast-legend{display:flex;gap:12px;font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.45);margin-bottom:8px;flex-wrap:wrap}
+  .bleg-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .broadcast-top-score{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:5px;margin-top:4px}
+  .broadcast-top-score strong{color:rgba(255,255,255,.8);font-family:'Anton',sans-serif;font-size:12px;letter-spacing:1px}
+  .broadcast-top-icon{font-size:13px}
+  .broadcast-top-count{color:rgba(255,255,255,.3)}
+  .broadcast-no-preds{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.28);text-align:center;padding:6px 0}
+
+  /* User's own prediction */
+  .broadcast-mypred{display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(90deg,rgba(240,192,64,.08),rgba(240,192,64,.04));border-radius:10px;border:1px solid rgba(240,192,64,.18)}
+  .broadcast-mypred-label{font-family:'Anton',sans-serif;font-size:9px;letter-spacing:3px;color:rgba(240,192,64,.6);flex:1}
+  .broadcast-mypred-score{font-family:'Anton',sans-serif;font-size:20px;color:#F0C040;letter-spacing:2px;line-height:1}
+  .broadcast-mypred-hint{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.3);margin-left:4px}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     🎬 EXACT SCORE CELEBRATION — Keyframes
+  ══════════════════════════════════════════════════════════════════════════ */
+  @keyframes exactBadgePop{0%{opacity:0;transform:scale(.4) rotate(-6deg)}60%{transform:scale(1.1) rotate(1.5deg)}80%{transform:scale(.96) rotate(-.5deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
+  @keyframes pts5Erupt{0%{opacity:0;transform:scale(.3) translateY(30px)}50%{opacity:1;transform:scale(1.18) translateY(-8px)}70%{transform:scale(.95) translateY(2px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+
+  /* ── Floating +PTS portal animation (visible to everyone) ── */
+  .pts-float-portal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8000;text-align:center;pointer-events:none;animation:ptsFloatUp 2.6s cubic-bezier(.22,1,.36,1) forwards}
+  .pts-float-text{font-family:'Anton',sans-serif;font-size:clamp(36px,12vw,72px);color:#F0C040;letter-spacing:4px;line-height:1;text-shadow:0 0 60px rgba(240,192,64,.9),0 0 120px rgba(240,192,64,.4);filter:drop-shadow(0 4px 20px rgba(240,192,64,.7))}
+  .pts-float-stars{font-size:clamp(18px,5vw,30px);margin-top:6px;filter:drop-shadow(0 0 8px rgba(255,215,0,.8))}
+  @keyframes ptsFloatUp{0%{opacity:0;transform:translate(-50%,0%) scale(.6)}12%{opacity:1;transform:translate(-50%,-20%) scale(1.15)}25%{transform:translate(-50%,-30%) scale(1)}70%{opacity:1;transform:translate(-50%,-60%) scale(1)}100%{opacity:0;transform:translate(-50%,-90%) scale(.85)}}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     🗺️ PREDICTION JOURNEY — Profile Chart
+  ══════════════════════════════════════════════════════════════════════════ */
+  .journey-wrap{margin:0 16px 16px;border-radius:18px;background:linear-gradient(160deg,rgba(240,192,64,.06),rgba(240,192,64,.02),rgba(0,0,0,.2));border:1px solid rgba(240,192,64,.18);overflow:hidden;padding:16px 14px 12px}
+  .journey-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+  .journey-title{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.75)}
+  .journey-sub{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.3);margin-top:3px;letter-spacing:1px}
+  .journey-total-pts{font-family:'Anton',sans-serif;font-size:22px;color:#F0C040;line-height:1;text-shadow:0 0 20px rgba(240,192,64,.4)}
+  .journey-chart-outer{border-radius:10px;overflow:visible;margin:0 -2px}
+  .journey-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px}
+  .journey-legend{display:flex;gap:10px;font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.4);flex-wrap:wrap}
+  .jleg{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .journey-mini-stats{display:flex;gap:8px}
+  .journey-exact-badge{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1px;color:#F0C040;background:rgba(240,192,64,.12);border:1px solid rgba(240,192,64,.25);padding:3px 9px;border-radius:20px}
+  .journey-win-badge{font-family:'Anton',sans-serif;font-size:10px;letter-spacing:1px;color:#4ade80;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.2);padding:3px 9px;border-radius:20px}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     💳 CREDITS BALANCE — Header badge + float animation
+  ══════════════════════════════════════════════════════════════════════════ */
+
+  /* Header badge */
+  .hdr-credits-badge{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.08));border:1px solid rgba(16,185,129,.3);cursor:pointer;transition:background .2s,border-color .2s;position:relative;overflow:visible}
+  .hdr-credits-badge:hover{background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(5,150,105,.14));border-color:rgba(16,185,129,.5)}
+  .hdr-credits-icon{font-size:14px;line-height:1;flex-shrink:0}
+  .hdr-credits-info{display:flex;flex-direction:column;align-items:flex-start;line-height:1}
+  .hdr-credits-value{font-family:'Anton',sans-serif;font-size:14px;color:#10b981;letter-spacing:.5px;line-height:1;animation:creditsFlip .35s ease both}
+  .hdr-credits-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2.5px;color:rgba(16,185,129,.5);margin-top:2px}
+  /* Mini delta badge on credit badge */
+  .hdr-credits-delta{position:absolute;top:-8px;right:-4px;font-family:'Anton',sans-serif;font-size:11px;padding:2px 7px;border-radius:20px;pointer-events:none;white-space:nowrap;animation:creditsDeltaPop 3s cubic-bezier(.22,1,.36,1) forwards}
+  .hdr-credits-delta-up{color:#10b981;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);text-shadow:0 0 8px rgba(16,185,129,.6)}
+  .hdr-credits-delta-down{color:#f87171;background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.35);text-shadow:0 0 8px rgba(248,113,113,.5)}
+
+  /* Animated number flip */
+  @keyframes creditsFlip{0%{opacity:0;transform:translateY(6px) scale(.85)}60%{transform:translateY(-2px) scale(1.05)}100%{opacity:1;transform:translateY(0) scale(1)}}
+
+  /* Mini delta pop+float */
+  @keyframes creditsDeltaPop{0%{opacity:0;transform:translateY(4px) scale(.7)}10%{opacity:1;transform:translateY(-2px) scale(1.15)}20%{transform:translateY(0) scale(1)}70%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-12px) scale(.85)}}
+
+  /* Full-screen central float animation */
+  .credits-float-portal{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);z-index:8001;text-align:center;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .credits-float-up{animation:creditsBigUp 3s cubic-bezier(.22,1,.36,1) forwards}
+  .credits-float-down{animation:creditsBigDown 3s cubic-bezier(.22,1,.36,1) forwards}
+  .credits-float-icon{font-size:clamp(28px,8vw,44px);filter:drop-shadow(0 0 12px rgba(16,185,129,.6));animation:creditsBounceIn .5s cubic-bezier(.34,1.56,.64,1) both}
+  .credits-float-amount{font-family:'Anton',sans-serif;font-size:clamp(40px,14vw,80px);line-height:1;letter-spacing:2px}
+  .credits-float-up .credits-float-amount{color:#10b981;text-shadow:0 0 60px rgba(16,185,129,.9),0 0 120px rgba(16,185,129,.5)}
+  .credits-float-down .credits-float-amount{color:#f87171;text-shadow:0 0 60px rgba(248,113,113,.9),0 0 120px rgba(248,113,113,.5)}
+  .credits-float-label{font-family:'Outfit',sans-serif;font-size:clamp(9px,2vw,13px);letter-spacing:7px;margin-top:2px}
+  .credits-float-up .credits-float-label{color:rgba(16,185,129,.6)}
+  .credits-float-down .credits-float-label{color:rgba(248,113,113,.55)}
+
+  @keyframes creditsBounceIn{0%{transform:scale(0) rotate(-20deg)}60%{transform:scale(1.2) rotate(4deg)}100%{transform:scale(1) rotate(0)}}
+  @keyframes creditsBigUp{0%{opacity:0;transform:translate(-50%,20px) scale(.55)}8%{opacity:1;transform:translate(-50%,-10px) scale(1.12)}18%{transform:translate(-50%,0) scale(1)}72%{opacity:1;transform:translate(-50%,-30px) scale(1)}100%{opacity:0;transform:translate(-50%,-80px) scale(.8)}}
+  @keyframes creditsBigDown{0%{opacity:0;transform:translate(-50%,20px) scale(.55)}8%{opacity:1;transform:translate(-50%,-10px) scale(1.1)}18%{transform:translate(-50%,0) scale(1)}72%{opacity:1;transform:translate(-50%,-20px) scale(1)}100%{opacity:0;transform:translate(-50%,-60px) scale(.85)}}

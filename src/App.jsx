@@ -2244,6 +2244,31 @@ function TVLeaderboard({ board, onBack, inAd = false }) {
   return inner;
 }
 
+/* ── Animated number hook — smooth easeOutExpo counter ─────────────────── */
+function useAnimatedNumber(target, duration = 700) {
+  const [display, setDisplay] = useState(target);
+  const fromRef = useRef(target);
+  const rafRef  = useRef(null);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === target) return;
+    const startTs = performance.now();
+    const animate = (now) => {
+      const t = Math.min((now - startTs) / duration, 1);
+      const ease = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      setDisplay(from + (target - from) * ease);
+      if (t < 1) { rafRef.current = requestAnimationFrame(animate); }
+      else { fromRef.current = target; setDisplay(target); }
+    };
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration]);
+
+  return display;
+}
+
 /* ═══ MAIN SHELL ════════════════════════════════════════════════════════════ */
 function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, sponsors,
                 getPred, savePred, pts, onLogout,
@@ -2311,14 +2336,33 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   useEffect(() => {
     if (prevPtsRef.current === null) { prevPtsRef.current = myPts; prevRankRef.current = myRank; return; }
     const delta = myPts - prevPtsRef.current;
+    // Always update refs before early return so they stay fresh
+    prevPtsRef.current  = myPts;
+    prevRankRef.current = myRank;
     if (delta > 0) {
       setPtsAnim({ delta, key: Date.now() });
-      const t = setTimeout(() => setPtsAnim(null), 2400);
+      const t = setTimeout(() => setPtsAnim(null), 2600);
       return () => clearTimeout(t);
     }
-    prevPtsRef.current = myPts;
-    prevRankRef.current = myRank;
   }, [myPts]); // eslint-disable-line
+
+  // ── Credits change tracking ──────────────────────────────────────────────
+  const [creditsAnim, setCreditsAnim] = useState(null); // {delta, key, positive}
+  const prevCreditsRef = useRef(null);
+
+  useEffect(() => {
+    if (prevCreditsRef.current === null) { prevCreditsRef.current = myCredits; return; }
+    const delta = myCredits - prevCreditsRef.current;
+    prevCreditsRef.current = myCredits;
+    if (Math.abs(delta) > 0.001) {
+      setCreditsAnim({ delta, key: Date.now(), positive: delta > 0 });
+      const t = setTimeout(() => setCreditsAnim(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [myCredits]); // eslint-disable-line
+
+  // Animated display value for the credits badge
+  const animatedCredits = useAnimatedNumber(myCredits, 900);
 
   const [animKey, setAnimKey] = useState(appTab);
   const [showTVAd, setShowTVAd] = useState(false);
@@ -2453,6 +2497,25 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     <div className="shell">
       {/* Post-match result card */}
       {postMatchCard && <PostMatchCard data={postMatchCard} onClose={() => setPostMatchCard(null)} />}
+      {/* Floating pts animation — central portal */}
+      {ptsAnim && createPortal(
+        <div key={ptsAnim.key} className="pts-float-portal">
+          <div className="pts-float-text">+{ptsAnim.delta} PTS</div>
+          <div className="pts-float-stars">{"⭐".repeat(Math.min(ptsAnim.delta, 5))}</div>
+        </div>,
+        document.body
+      )}
+      {/* Floating credits animation — central portal */}
+      {creditsAnim && createPortal(
+        <div key={creditsAnim.key} className={`credits-float-portal ${creditsAnim.positive ? "credits-float-up" : "credits-float-down"}`}>
+          <div className="credits-float-icon">{creditsAnim.positive ? "💳" : "💸"}</div>
+          <div className="credits-float-amount">
+            {creditsAnim.positive ? "+" : ""}{creditsAnim.delta > 0 ? creditsAnim.delta.toFixed(2) : (-creditsAnim.delta).toFixed(2)}
+          </div>
+          <div className="credits-float-label">CREDITS</div>
+        </div>,
+        document.body
+      )}
       <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
         <div className="hdr-inner">
           <div className="hdr-l">
@@ -2485,6 +2548,22 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 <span className="hdr-badge-label">PTS</span>
               </div>
             )}
+            {/* ── Credits badge — shown for ALL users ── */}
+            <div className="hdr-credits-badge" style={{position:"relative"}} onClick={() => switchTab("menu")} title="Your credit balance">
+              <div className="hdr-credits-icon">💳</div>
+              <div className="hdr-credits-info">
+                <span className="hdr-credits-value">
+                  ${animatedCredits.toFixed(2)}
+                </span>
+                <span className="hdr-credits-label">CREDITS</span>
+              </div>
+              {/* Mini badge flash on change */}
+              {creditsAnim && (
+                <span key={creditsAnim.key} className={`hdr-credits-delta ${creditsAnim.positive ? "hdr-credits-delta-up" : "hdr-credits-delta-down"}`}>
+                  {creditsAnim.positive ? "+" : "-"}${Math.abs(creditsAnim.delta).toFixed(2)}
+                </span>
+              )}
+            </div>
             {isAdmin && <span className="admin-badge">ADMIN</span>}
             <button className="lang-toggle" onClick={toggleLang} title="Switch language">
               {lang === "en" ? "🇳🇱 NL" : "🇬🇧 EN"}
@@ -2773,20 +2852,14 @@ function PredictionCountdown({ lockMs, firstMatch }) {
   );
 }
 
-/* ═══ MATCH PULSE — Live prediction stats when a match is on ══════════════ */
-function MatchPulse({ matches, allPreds }) {
+/* ═══ MATCH PULSE — Broadcast-style live atmosphere ══════════════════════ */
+function MatchPulse({ matches, allPreds, user, getPred }) {
   const [now, setNow] = useState(Date.now());
-  const [elapsedPulse, setElapsedPulse] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(id);
-  }, []);
-  useEffect(() => {
-    const id = setInterval(() => setElapsedPulse(p => p + 1), 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Show pulse from 60 min before kickoff through 90 min after
   const liveMatches = matches.filter(m => {
     const ko = matchKickoff(m);
     if (!ko) return false;
@@ -2797,103 +2870,125 @@ function MatchPulse({ matches, allPreds }) {
   if (liveMatches.length === 0) return null;
 
   return (
-    <div className="pulse-wrap">
-      {liveMatches.map(m => {
-        const ko = matchKickoff(m);
-        const koMs = ko ? ko.getTime() : 0;
-        const isPreKickoff = now < koMs;
-        const minsUntil = isPreKickoff ? Math.ceil((koMs - now) / 60000) : 0;
-        const elapsed = !isPreKickoff && ko ? Math.floor((now - koMs) / 60000) : 0;
-        const half = elapsed <= 45 ? 1 : 2;
-        const minute = elapsed <= 45 ? elapsed : elapsed - 15; // 15min halftime
+    <div className="broadcast-wrap">
+      {liveMatches.map(m => (
+        <BroadcastCard key={m.id} m={m} now={now} allPreds={allPreds} user={user} myPred={getPred ? getPred(m.id) : null} />
+      ))}
+    </div>
+  );
+}
 
-        // Gather all predictions for this match
-        const predsForMatch = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`));
-        const total = predsForMatch.length;
-        let homeW = 0, draw = 0, awayW = 0;
-        predsForMatch.forEach(([, p]) => {
-          if (p.h > p.a) homeW++;
-          else if (p.h === p.a) draw++;
-          else awayW++;
-        });
-        const homePct = total > 0 ? Math.round(homeW / total * 100) : 0;
-        const drawPct = total > 0 ? Math.round(draw / total * 100) : 0;
-        const awayPct = total > 0 ? 100 - homePct - drawPct : 0;
+function BroadcastCard({ m, now, allPreds, user, myPred }) {
+  const ko = matchKickoff(m);
+  const koMs = ko ? ko.getTime() : 0;
+  const isPreKickoff = now < koMs;
+  const secsUntil = isPreKickoff ? Math.max(0, Math.floor((koMs - now) / 1000)) : 0;
+  const minsUntil = Math.floor(secsUntil / 60);
+  const secsPart = secsUntil % 60;
+  const elapsed = !isPreKickoff && ko ? Math.floor((now - koMs) / 60000) : 0;
+  const minute = elapsed <= 45 ? elapsed : Math.max(elapsed - 15, 45);
 
-        // Most popular exact score
-        const scoreCounts = {};
-        predsForMatch.forEach(([, p]) => {
-          const key = `${p.h}-${p.a}`;
-          scoreCounts[key] = (scoreCounts[key] || 0) + 1;
-        });
-        const topScore = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1])[0];
+  const predsForMatch = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`));
+  const total = predsForMatch.length;
+  let homeW = 0, draw = 0, awayW = 0;
+  predsForMatch.forEach(([, p]) => {
+    if (p.h > p.a) homeW++;
+    else if (p.h === p.a) draw++;
+    else awayW++;
+  });
+  const homePct = total > 0 ? Math.round(homeW / total * 100) : 33;
+  const drawPct = total > 0 ? Math.round(draw / total * 100) : 34;
+  const awayPct = total > 0 ? 100 - homePct - drawPct : 33;
 
-        return (
-          <div key={m.id} className="pulse-card">
-            {/* Animated background rings */}
-            <div className="pulse-ring"/>
-            <div className="pulse-ring pulse-ring-2"/>
+  const scoreCounts = {};
+  predsForMatch.forEach(([, p]) => {
+    const key = `${p.h}-${p.a}`;
+    scoreCounts[key] = (scoreCounts[key] || 0) + 1;
+  });
+  const topScore = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1])[0];
 
-            {/* Header: pre-kickoff or LIVE */}
-            <div className="pulse-header">
-              <div className="pulse-live">
-                <span className="pulse-live-dot" style={isPreKickoff ? {background:"#fbbf24",boxShadow:"0 0 8px #fbbf24"} : {}}/>
-                <span className="pulse-live-text" style={isPreKickoff ? {color:"#fbbf24"} : {}}>{isPreKickoff ? "SOON" : "LIVE"}</span>
+  return (
+    <div className="broadcast-card">
+      {/* Animated glow background */}
+      <div className={`broadcast-glow ${isPreKickoff ? "broadcast-glow-soon" : "broadcast-glow-live"}`} />
+
+      {/* ── Top bar ── */}
+      <div className="broadcast-topbar">
+        <div className={`broadcast-badge ${isPreKickoff ? "broadcast-badge-soon" : "broadcast-badge-live"}`}>
+          <span className="broadcast-badge-dot" />
+          {isPreKickoff ? "SOON" : "LIVE"}
+        </div>
+        <div className="broadcast-timer">
+          {isPreKickoff
+            ? <span>KO in <strong>{minsUntil}:{String(secsPart).padStart(2,"0")}</strong></span>
+            : <span>{minute > 0 ? `${minute}'` : "KO"}</span>
+          }
+        </div>
+        {m.stage && <div className="broadcast-stage">{m.stage}</div>}
+      </div>
+
+      {/* ── Teams ── */}
+      <div className="broadcast-teams">
+        <div className="broadcast-team">
+          <div className="broadcast-flag-big">{flag(m.home)}</div>
+          <div className="broadcast-team-name">{m.home}</div>
+        </div>
+        <div className="broadcast-vs-col">
+          <div className="broadcast-vs-text">VS</div>
+          {m.date && <div className="broadcast-match-date">{m.date}{m.time ? ` · ${m.time}` : ""}</div>}
+        </div>
+        <div className="broadcast-team">
+          <div className="broadcast-flag-big">{flag(m.away)}</div>
+          <div className="broadcast-team-name">{m.away}</div>
+        </div>
+      </div>
+
+      {/* ── Community Pulse ── */}
+      <div className="broadcast-pulse-section">
+        <div className="broadcast-pulse-header">
+          <span className="broadcast-pulse-label">📡 COMMUNITY PULSE</span>
+          {total > 0 && <span className="broadcast-pulse-count">{total} prediction{total !== 1 ? "s" : ""}</span>}
+        </div>
+
+        {total > 0 ? (
+          <>
+            <div className="broadcast-bar-outer">
+              <div className="broadcast-bar-seg broadcast-bar-home" style={{width:`${Math.max(homePct,8)}%`}}>
+                {homePct > 14 && <span>{homePct}%</span>}
               </div>
-              <span className="pulse-live-min">
-                {isPreKickoff ? `in ${minsUntil}m` : minute > 0 ? `${minute}'` : "KICK OFF"}
-              </span>
+              <div className="broadcast-bar-seg broadcast-bar-draw" style={{width:`${Math.max(drawPct,8)}%`}}>
+                {drawPct > 14 && <span>{drawPct}%</span>}
+              </div>
+              <div className="broadcast-bar-seg broadcast-bar-away" style={{width:`${Math.max(awayPct,8)}%`}}>
+                {awayPct > 14 && <span>{awayPct}%</span>}
+              </div>
             </div>
-
-            {/* Teams row */}
-            <div className="pulse-teams">
-              <div className="pulse-team">
-                <span className="pulse-flag">{flag(m.home)}</span>
-                <span className="pulse-tname">{m.home}</span>
-              </div>
-              <div className="pulse-vs">VS</div>
-              <div className="pulse-team">
-                <span className="pulse-flag">{flag(m.away)}</span>
-                <span className="pulse-tname">{m.away}</span>
-              </div>
+            <div className="broadcast-legend">
+              <span><span className="bleg-dot" style={{background:"#4ade80"}}/>{m.home} {homePct}%</span>
+              <span><span className="bleg-dot" style={{background:"#94a3b8"}}/>Draw {drawPct}%</span>
+              <span><span className="bleg-dot" style={{background:"#f87171"}}/>{m.away} {awayPct}%</span>
             </div>
-
-            {/* Prediction distribution bar */}
-            {total > 0 && (
-              <div className="pulse-dist">
-                <div className="pulse-dist-header">
-                  <span className="pulse-dist-label">COMMUNITY PREDICTIONS</span>
-                  <span className="pulse-dist-total">{total} prediction{total !== 1 ? "s" : ""}</span>
-                </div>
-                <div className="pulse-bar">
-                  <div className="pulse-bar-home" style={{ width: `${Math.max(homePct, 5)}%` }}>
-                    {homePct > 15 && <span>{homePct}%</span>}
-                  </div>
-                  <div className="pulse-bar-draw" style={{ width: `${Math.max(drawPct, 5)}%` }}>
-                    {drawPct > 15 && <span>{drawPct}%</span>}
-                  </div>
-                  <div className="pulse-bar-away" style={{ width: `${Math.max(awayPct, 5)}%` }}>
-                    {awayPct > 15 && <span>{awayPct}%</span>}
-                  </div>
-                </div>
-                <div className="pulse-bar-legend">
-                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#4ade80"}}/>{m.home} {homePct}%</span>
-                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#94a3b8"}}/>DRAW {drawPct}%</span>
-                  <span className="pulse-leg"><span className="pulse-leg-dot" style={{background:"#f87171"}}/>{m.away} {awayPct}%</span>
-                </div>
+            {topScore && (
+              <div className="broadcast-top-score">
+                <span className="broadcast-top-icon">🎯</span>
+                <span>Most predicted: <strong>{topScore[0]}</strong></span>
+                <span className="broadcast-top-count"> · {topScore[1]} player{topScore[1]!==1?"s":""}</span>
               </div>
             )}
+          </>
+        ) : (
+          <div className="broadcast-no-preds">Be the first to predict this match!</div>
+        )}
+      </div>
 
-            {/* Most predicted score — inline */}
-            {topScore && total > 0 && (
-              <div className="pulse-top-score">
-                <span className="pulse-top-icon">🎯</span>
-                <span className="pulse-top-text">Most predicted: <strong>{topScore[0]}</strong> by {topScore[1]} player{topScore[1]!==1?"s":""}</span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {/* ── Your prediction ── */}
+      {myPred && (
+        <div className="broadcast-mypred">
+          <span className="broadcast-mypred-label">YOUR PICK</span>
+          <span className="broadcast-mypred-score">{myPred.h} – {myPred.a}</span>
+          <span className="broadcast-mypred-hint">{myPred.h > myPred.a ? m.home : myPred.h < myPred.a ? m.away : "DRAW"} wins</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2942,8 +3037,8 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
       {/* ── Premium global countdown ── */}
       {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
 
-      {/* ── Match Pulse — live prediction stats ── */}
-      <MatchPulse matches={matches} allPreds={allPreds} />
+      {/* ── Match Pulse — broadcast-style live atmosphere ── */}
+      <MatchPulse matches={matches} allPreds={allPreds} user={user} getPred={getPred} />
 
       {/* ── Upcoming / Results tabs ── */}
       <div className="match-tab-bar">
@@ -5697,6 +5792,9 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
         );
       })()}
 
+      {/* ── PREDICTION JOURNEY ── */}
+      <PredictionJourney matches={matches} preds={preds} user={user} />
+
       {/* ── SPONSORS SECTION ── */}
       <SponsorsSection />
     </div>
@@ -6243,6 +6341,208 @@ function TVAdSlideB() {
   );
 }
 
+/* ═══ PREDICTION JOURNEY — Animated SVG cumulative points chart ══════════ */
+function PredictionJourney({ matches, preds, user }) {
+  const svgRef    = useRef(null);
+  const [animated, setAnimated] = useState(false);
+  const [pathLen,  setPathLen]  = useState(1200);
+  const [tooltip,  setTooltip]  = useState(null); // {x,y,point}
+
+  const finMatches = useMemo(() =>
+    sortMatches(matches.filter(m => m.status === "finished" && m.hs != null && m.as != null)),
+    [matches]
+  );
+
+  const points = useMemo(() => {
+    let cum = 0;
+    return finMatches.map((m, i) => {
+      const p = preds[`${user.id}__${m.id}`];
+      const earned = p ? calcPts(p, m.hs, m.as) : 0;
+      const outcome = !p ? "missed" : earned === 5 ? "exact" : earned === 1 ? "winner" : "wrong";
+      cum += earned;
+      return { i, pts: cum, earned, outcome, m };
+    });
+  }, [finMatches, preds, user.id]);
+
+  const PAD = { x: 18, y: 18 };
+  const VW = 340, VH = 148;
+  const chartW = VW - PAD.x * 2;
+  const chartH = VH - PAD.y * 2;
+  const maxPts = Math.max(...points.map(p => p.pts), 5);
+  const n = points.length;
+
+  const toX = i  => PAD.x + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
+  const toY = pt => PAD.y + chartH - (pt / maxPts) * chartH;
+
+  const pathD = n < 2 ? "" : points.map((p, i) => {
+    const x = toX(i), y = toY(p.pts);
+    if (i === 0) return `M ${x} ${y}`;
+    const px = toX(i - 1), py = toY(points[i - 1].pts);
+    const cpx = (px + x) / 2;
+    return `C ${cpx} ${py} ${cpx} ${y} ${x} ${y}`;
+  }).join(" ");
+
+  const fillD = pathD
+    ? `${pathD} L ${toX(n - 1)} ${VH - PAD.y} L ${toX(0)} ${VH - PAD.y} Z`
+    : "";
+
+  const dotColor = o => o === "exact" ? "#F0C040" : o === "winner" ? "#4ade80" : o === "wrong" ? "#f87171" : "#334155";
+
+  // Animate on mount
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 120);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const el = svgRef.current?.querySelector(".journey-line-path");
+    if (el) setPathLen(el.getTotalLength() || 1200);
+  }, [pathD]);
+
+  if (n < 2) return null;
+
+  const totalPts = points[n - 1]?.pts ?? 0;
+  const exactCount = points.filter(p => p.outcome === "exact").length;
+  const winnerCount = points.filter(p => p.outcome === "winner").length;
+
+  return (
+    <div className="journey-wrap">
+      {/* Header */}
+      <div className="journey-header">
+        <div>
+          <div className="journey-title">🗺️ PREDICTION JOURNEY</div>
+          <div className="journey-sub">{n} matches completed</div>
+        </div>
+        <div className="journey-total-pts">{totalPts} PTS</div>
+      </div>
+
+      {/* SVG chart */}
+      <div className="journey-chart-outer" onMouseLeave={() => setTooltip(null)} onTouchEnd={() => setTimeout(() => setTooltip(null), 2000)}>
+        <svg ref={svgRef} viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{display:"block",overflow:"visible"}}>
+          <defs>
+            <linearGradient id="jFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor="#F0C040" stopOpacity="0.22"/>
+              <stop offset="100%" stopColor="#F0C040" stopOpacity="0"/>
+            </linearGradient>
+            <linearGradient id="jLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stopColor="#F0C040" stopOpacity="0.4"/>
+              <stop offset="100%" stopColor="#F0C040" stopOpacity="1"/>
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          {/* Horizontal grid */}
+          {[0, 0.33, 0.66, 1].map((t, i) => (
+            <line key={i}
+              x1={PAD.x} y1={PAD.y + chartH * (1 - t)}
+              x2={VW - PAD.x} y2={PAD.y + chartH * (1 - t)}
+              stroke="rgba(255,255,255,.05)" strokeWidth="1"
+            />
+          ))}
+
+          {/* Fill area */}
+          {fillD && (
+            <path d={fillD} fill="url(#jFill)"
+              style={{opacity: animated ? 1 : 0, transition:"opacity 1.2s ease .6s"}}
+            />
+          )}
+
+          {/* Animated line */}
+          {pathD && (
+            <path
+              className="journey-line-path"
+              d={pathD} fill="none"
+              stroke="url(#jLine)" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round"
+              filter="url(#glow)"
+              style={{
+                strokeDasharray: pathLen,
+                strokeDashoffset: animated ? 0 : pathLen,
+                transition: `stroke-dashoffset ${Math.min(n * 0.25, 2.8)}s cubic-bezier(.4,0,.2,1) .1s`,
+              }}
+            />
+          )}
+
+          {/* Dots */}
+          {points.map((p, i) => {
+            const cx = toX(i), cy = toY(p.pts);
+            const isExact = p.outcome === "exact";
+            return (
+              <g key={i} style={{cursor:"pointer"}}
+                onClick={() => setTooltip(t => t?.i === i ? null : {i, x: cx, y: cy, point: p})}
+                onMouseEnter={() => setTooltip({i, x: cx, y: cy, point: p})}
+              >
+                {isExact && (
+                  <circle cx={cx} cy={cy} r={9}
+                    fill="rgba(240,192,64,.18)" stroke="rgba(240,192,64,.45)" strokeWidth="1.5"
+                    style={{opacity: animated ? 1 : 0, transition:`opacity .3s ease ${.5 + i * 0.07}s`}}
+                  />
+                )}
+                <circle cx={cx} cy={cy} r={isExact ? 5.5 : 4}
+                  fill={dotColor(p.outcome)}
+                  stroke={isExact ? "rgba(240,192,64,.5)" : "rgba(0,0,0,.5)"} strokeWidth={isExact ? 2 : 1}
+                  filter={isExact ? "url(#glow)" : "none"}
+                  style={{opacity: animated ? 1 : 0, transition:`opacity .3s ease ${.5 + i * 0.07}s`}}
+                />
+              </g>
+            );
+          })}
+
+          {/* Tooltip */}
+          {tooltip && (() => {
+            const { x, y, point: tp } = tooltip;
+            const isLeft = x < VW / 2;
+            const tx = isLeft ? x + 8 : x - 8;
+            const ty = Math.max(y - 38, PAD.y);
+            const pts = tp.earned > 0 ? `+${tp.earned} pts` : "0 pts";
+            const score = tp.m.hs != null ? `${tp.m.hs}–${tp.m.as}` : "";
+            const pick  = (() => { const pp = preds[`${user.id}__${tp.m.id}`]; return pp ? `${pp.h}–${pp.a}` : "—"; })();
+            const label = `${tp.m.home} vs ${tp.m.away}`;
+            return (
+              <g>
+                <rect
+                  x={isLeft ? tx : tx - 130} y={ty}
+                  width={130} height={52} rx={6}
+                  fill="rgba(10,10,20,.9)" stroke="rgba(255,255,255,.12)" strokeWidth="1"
+                />
+                <text x={isLeft ? tx + 8 : tx - 122} y={ty + 14}
+                  fontFamily="Anton" fontSize="9" fill="#F0C040" letterSpacing="1">
+                  {pts.toUpperCase()} · TOTAL {tp.pts}
+                </text>
+                <text x={isLeft ? tx + 8 : tx - 122} y={ty + 26}
+                  fontFamily="Outfit" fontSize="8.5" fill="rgba(255,255,255,.65)">
+                  Result {score} · Pick {pick}
+                </text>
+                <text x={isLeft ? tx + 8 : tx - 122} y={ty + 40}
+                  fontFamily="Outfit" fontSize="8" fill="rgba(255,255,255,.35)">
+                  {label.length > 22 ? label.slice(0, 20) + "…" : label}
+                </text>
+              </g>
+            );
+          })()}
+        </svg>
+      </div>
+
+      {/* Legend + mini stats */}
+      <div className="journey-footer">
+        <div className="journey-legend">
+          <span><span className="jleg" style={{background:"#F0C040"}}/> Exact +5</span>
+          <span><span className="jleg" style={{background:"#4ade80"}}/> Winner +1</span>
+          <span><span className="jleg" style={{background:"#f87171"}}/> Wrong</span>
+          <span><span className="jleg" style={{background:"#334155"}}/> Missed</span>
+        </div>
+        <div className="journey-mini-stats">
+          {exactCount > 0 && <span className="journey-exact-badge">⚡ {exactCount} exact</span>}
+          {winnerCount > 0 && <span className="journey-win-badge">✓ {winnerCount} correct</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* A — "WHO WILL WIN WORLD CUP 2026?" — DRAMATIC TYPOGRAPHY REVEAL */
 function TVAdSlideA() {
   const G = {background:"linear-gradient(135deg,#ffe97a,#F0C040,#fff8d6,#c8901c)",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent"};
@@ -6689,18 +6989,231 @@ function TVAdSlideQR() {
   );
 }
 
+/* ── EXACT SCORE CINEMATIC CELEBRATION ──────────────────────────────────── */
+function ExactScoreCelebration({ data, onClose }) {
+  const { match: m, pred, prevRank, newRank } = data;
+  const canvasRef       = useRef(null);
+  const rafRef          = useRef(null);
+  const partsRef        = useRef([]);
+  const confettiStarted = useRef(false);   // prevent restart on phase change
+  const [phase, setPhase] = useState(0);
+
+  // Phase timeline
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setPhase(1), 900),
+      setTimeout(() => setPhase(2), 2400),
+      setTimeout(() => setPhase(3), 3200),
+      setTimeout(() => setPhase(4), 5000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  // Canvas confetti + gold burst — fires ONCE when phase reaches 3
+  useEffect(() => {
+    if (phase < 3 || confettiStarted.current) return;
+    confettiStarted.current = true;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width = window.innerWidth;
+    const H = canvas.height = window.innerHeight;
+    const cx = W / 2, cy = H * 0.4;
+
+    const COLS = ["#F0C040","#FFD700","#fff","#FF6B6B","#4ECDC4","#45B7D1","#F8B4D9","#96CEB4","#FFA500"];
+    const particles = [];
+
+    // Gold star burst radiating from center
+    for (let i = 0; i < 100; i++) {
+      const angle = (i / 100) * Math.PI * 2;
+      const speed = 3 + Math.random() * 12;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+        color: i % 3 === 0 ? "#fff" : "#F0C040",
+        r: 2.5 + Math.random() * 5.5,
+        life: 1, decay: 0.008 + Math.random() * 0.007,
+        rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.25,
+        type: "star",
+      });
+    }
+    // Coloured confetti rain from top
+    for (let i = 0; i < 160; i++) {
+      const col = COLS[Math.floor(Math.random() * COLS.length)];
+      particles.push({
+        x: Math.random() * W, y: -20 - Math.random() * 160,
+        vx: (Math.random() - 0.5) * 4, vy: 1.5 + Math.random() * 5,
+        color: col,
+        w: 6 + Math.random() * 10, h: 3 + Math.random() * 5,
+        life: 1, decay: 0.0025 + Math.random() * 0.004,
+        rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.20,
+        type: "rect",
+      });
+    }
+    partsRef.current = particles;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      partsRef.current = partsRef.current.filter(p => p.life > 0.02);
+      partsRef.current.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = Math.min(p.life * 1.2, 0.98);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        if (p.type === "star") {
+          ctx.beginPath();
+          for (let j = 0; j < 5; j++) {
+            const a = (j * 4 * Math.PI / 5) - Math.PI / 2;
+            const r = j % 2 === 0 ? p.r : p.r * 0.42;
+            j === 0 ? ctx.moveTo(Math.cos(a)*r, Math.sin(a)*r) : ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+          }
+          ctx.closePath();
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+        }
+        ctx.restore();
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.06; p.vx *= 0.994;
+        p.rot += p.rotV; p.life -= p.decay;
+      });
+      if (partsRef.current.length > 0) {
+        rafRef.current = requestAnimationFrame(draw);
+      }
+    };
+    rafRef.current = requestAnimationFrame(draw);
+
+    return () => { /* intentionally no cancel — let particles finish */ };
+  }, [phase]);
+
+  // Cleanup RAF on unmount only
+  useEffect(() => {
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  const rankMoved = prevRank > 0 && newRank > 0 && newRank !== prevRank;
+
+  return createPortal(
+    <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,.93)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+      <canvas ref={canvasRef} style={{position:"absolute",inset:0,pointerEvents:"none"}}/>
+      <div style={{position:"relative",zIndex:1,textAlign:"center",padding:"0 28px",width:"100%",maxWidth:420}}>
+
+        {/* YOU NAILED IT */}
+        <div style={{
+          fontFamily:"'Anton',sans-serif",
+          fontSize:"clamp(26px,9vw,62px)",
+          letterSpacing:3,
+          color:"#F0C040",
+          textShadow:"0 0 60px rgba(240,192,64,.9)",
+          transform: phase >= 0 ? "translateY(0) scale(1)" : "translateY(40px) scale(.7)",
+          opacity: phase >= 0 ? 1 : 0,
+          transition:"all .9s cubic-bezier(.34,1.56,.64,1)",
+          lineHeight:1, marginBottom:6,
+        }}>YOU NAILED IT</div>
+        <div style={{
+          fontFamily:"'Outfit',sans-serif",fontSize:"clamp(9px,2.2vw,13px)",
+          letterSpacing:7,color:"rgba(255,255,255,.4)",
+          opacity: phase >= 0 ? 1 : 0,
+          transition:"opacity .7s ease .4s",
+          marginBottom:32,
+        }}>EXACT SCORE PREDICTION</div>
+
+        {/* Score comparison — phase 1 */}
+        <div style={{
+          display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(12px,5vw,32px)",
+          marginBottom:28,
+          opacity: phase >= 1 ? 1 : 0,
+          transform: phase >= 1 ? "translateY(0)" : "translateY(20px)",
+          transition:"all .7s cubic-bezier(.34,1.56,.64,1)",
+        }}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:5,color:"rgba(255,255,255,.3)",marginBottom:8}}>RESULT</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(38px,12vw,80px)",color:"#fff",lineHeight:1,textShadow:"0 0 24px rgba(255,255,255,.25)"}}>{m.hs}–{m.as}</div>
+          </div>
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,color:"rgba(255,255,255,.18)"}}>≡</div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:5,color:"rgba(255,255,255,.3)",marginBottom:8}}>YOUR PICK</div>
+            <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(38px,12vw,80px)",color:"#F0C040",lineHeight:1,textShadow:"0 0 40px rgba(240,192,64,.7)"}}>{pred.h}–{pred.a}</div>
+          </div>
+        </div>
+
+        {/* EXACT SCORE badge — phase 2 */}
+        {phase >= 2 && (
+          <div style={{
+            display:"inline-block",
+            fontFamily:"'Anton',sans-serif",
+            fontSize:"clamp(16px,4.5vw,36px)",
+            letterSpacing:5,
+            color:"#000",
+            background:"linear-gradient(135deg,#F0C040,#FFD700)",
+            padding:"10px 28px",borderRadius:4,
+            marginBottom:24,
+            animation:"exactBadgePop .55s cubic-bezier(.34,1.56,.64,1) both",
+            boxShadow:"0 0 70px rgba(240,192,64,.9), 0 0 140px rgba(240,192,64,.4)",
+          }}>EXACT SCORE ✓</div>
+        )}
+
+        {/* +5 PTS — phase 3 */}
+        {phase >= 3 && (
+          <div style={{
+            fontFamily:"'Anton',sans-serif",
+            fontSize:"clamp(44px,14vw,100px)",
+            color:"#F0C040",lineHeight:1,
+            animation:"pts5Erupt .9s cubic-bezier(.34,1.56,.64,1) both",
+            textShadow:"0 0 100px rgba(240,192,64,1), 0 0 40px rgba(240,192,64,.8)",
+            marginBottom:14,
+          }}>+5 PTS</div>
+        )}
+
+        {/* Match name */}
+        {phase >= 1 && (
+          <div style={{fontFamily:"'Anton',sans-serif",fontSize:"clamp(10px,2vw,14px)",letterSpacing:2,color:"rgba(255,255,255,.28)",marginBottom:14}}>
+            {m.home} vs {m.away}
+          </div>
+        )}
+
+        {/* Rank movement — phase 4 */}
+        {phase >= 4 && rankMoved && (
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.5)",marginBottom:10,animation:"tvadFadeUp .5s ease both"}}>
+            📈 Rank: #{prevRank} → #{newRank}
+          </div>
+        )}
+
+        {/* Close — phase 4 */}
+        {phase >= 4 && (
+          <button onClick={onClose} style={{
+            fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:4,
+            background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.18)",
+            color:"rgba(255,255,255,.65)",padding:"13px 40px",borderRadius:4,
+            cursor:"pointer",animation:"tvadFadeUp .5s ease .1s both",marginTop:4,
+          }}>CLOSE</button>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ── POST-MATCH RESULT CARD ──────────────────────────────────────────────── */
 function PostMatchCard({ data, onClose }) {
   const { match: m, pred, earned, prevRank, newRank } = data;
-  const exact  = earned === 5;
+
+  // Exact score → cinematic celebration
+  if (earned === 5) return <ExactScoreCelebration data={data} onClose={onClose} />;
+
   const winner = earned === 1;
   const wrong  = pred && earned === 0;
   const missed = !pred;
 
-  const accentColor = exact ? "#F0C040" : winner ? "#4ade80" : wrong ? "#f87171" : "rgba(255,255,255,.3)";
-  const borderColor = exact ? "rgba(240,192,64,.45)" : winner ? "rgba(74,222,128,.35)" : "rgba(255,255,255,.1)";
-  const emoji       = exact ? "⚽" : winner ? "✅" : wrong ? "😬" : "😶";
-  const headline    = exact ? "EXACT SCORE!" : winner ? "CORRECT WINNER" : wrong ? "WRONG PREDICTION" : "NO PREDICTION MADE";
+  const accentColor = winner ? "#4ade80" : wrong ? "#f87171" : "rgba(255,255,255,.3)";
+  const borderColor = winner ? "rgba(74,222,128,.35)" : "rgba(255,255,255,.1)";
+  const emoji       = winner ? "✅" : wrong ? "😬" : "😶";
+  const headline    = winner ? "CORRECT WINNER" : wrong ? "WRONG PREDICTION" : "NO PREDICTION MADE";
 
   const rankMoved = prevRank > 0 && newRank > 0 && newRank !== prevRank;
 
