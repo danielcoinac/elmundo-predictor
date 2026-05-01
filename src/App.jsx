@@ -2411,6 +2411,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   // Animated display value for the credits badge
   const animatedCredits = useAnimatedNumber(myCredits, 900);
 
+  // Initial sub-tab to open inside MenuView (e.g. "wallet" when credit badge tapped)
+  const [menuInitTab, setMenuInitTab] = useState(null);
+
   const [animKey, setAnimKey] = useState(appTab);
   const [showTVAd, setShowTVAd] = useState(false);
 
@@ -2582,52 +2585,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         </div>,
         document.body
       )}
-      {/* Majestic CREDITS animation — full-screen ceremony */}
-      {creditsAnim && createPortal(
-        <div key={creditsAnim.key} className={`award-overlay award-credits ${creditsAnim.positive ? "award-up" : "award-down"}`}>
-          <div className="award-vignette" />
-          <div className={`award-rays ${creditsAnim.positive ? "award-rays-emerald" : "award-rays-red"}`} />
-          <div className="award-rings">
-            <div className="award-ring award-ring-1" />
-            <div className="award-ring award-ring-2" />
-            <div className="award-ring award-ring-3" />
-          </div>
-          <div className="award-particles">
-            {Array.from({length:14}).map((_,i)=>(
-              <span key={i} className={`award-particle ap-${i}`} />
-            ))}
-          </div>
-          <div className="award-stage">
-            <div className={`award-emblem ${creditsAnim.positive ? "award-emblem-emerald" : "award-emblem-red"}`}>
-              <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
-                <defs>
-                  <linearGradient id={`crG-${creditsAnim.key}`} x1="0" y1="0" x2="0" y2="1">
-                    {creditsAnim.positive ? (<>
-                      <stop offset="0%" stopColor="#6EE7B7"/>
-                      <stop offset="55%" stopColor="#10B981"/>
-                      <stop offset="100%" stopColor="#065F46"/>
-                    </>) : (<>
-                      <stop offset="0%" stopColor="#FCA5A5"/>
-                      <stop offset="55%" stopColor="#EF4444"/>
-                      <stop offset="100%" stopColor="#7F1D1D"/>
-                    </>)}
-                  </linearGradient>
-                </defs>
-                <rect x="8" y="16" width="48" height="32" rx="5" fill={`url(#crG-${creditsAnim.key})`} stroke="#ffffff66" strokeWidth="0.6"/>
-                <rect x="8" y="22" width="48" height="6" fill="#00000033"/>
-                <rect x="13" y="36" width="14" height="4" rx="1" fill="#ffffff55"/>
-                <rect x="13" y="42" width="9" height="2.5" rx="1" fill="#ffffff33"/>
-              </svg>
-            </div>
-            <div className="award-eyebrow">{creditsAnim.positive ? "CREDITS ADDED" : "CREDITS USED"}</div>
-            <div className={`award-amount ${creditsAnim.positive ? "award-amount-emerald" : "award-amount-red"}`}>
-              <span className="award-shine">{creditsAnim.positive ? "+" : "−"}${Math.abs(creditsAnim.delta).toFixed(2)}</span>
-            </div>
-            <div className="award-label">CREDITS</div>
-          </div>
-        </div>,
-        document.body
-      )}
       <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
         <div className="hdr-inner">
           <div className="hdr-l">
@@ -2660,8 +2617,13 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 <span className="hdr-badge-label">PTS</span>
               </div>
             )}
-            {/* ── Credits badge — shown for ALL users ── */}
-            <div className="hdr-credits-badge" style={{position:"relative"}} onClick={() => switchTab("menu")} title="Your credit balance">
+            {/* ── Credits badge — shown for ALL users. Tap → wallet ── */}
+            <div
+              className={`hdr-credits-badge ${creditsAnim ? (creditsAnim.positive ? "hdr-credits-badge-pulse-up" : "hdr-credits-badge-pulse-down") : ""}`}
+              style={{position:"relative"}}
+              onClick={() => { setMenuInitTab("wallet"); switchTab("menu"); }}
+              title="Open your wallet"
+            >
               <div className="hdr-credits-icon">💳</div>
               <div className="hdr-credits-info">
                 <span className="hdr-credits-value">
@@ -2669,11 +2631,22 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 </span>
                 <span className="hdr-credits-label">CREDITS</span>
               </div>
-              {/* Mini badge flash on change */}
+              {/* Premium localized animation: shimmer sweep + delta pop + sparkle particles */}
               {creditsAnim && (
-                <span key={creditsAnim.key} className={`hdr-credits-delta ${creditsAnim.positive ? "hdr-credits-delta-up" : "hdr-credits-delta-down"}`}>
-                  {creditsAnim.positive ? "+" : "-"}${Math.abs(creditsAnim.delta).toFixed(2)}
-                </span>
+                <>
+                  <span className="hdr-credits-shimmer" key={`shim-${creditsAnim.key}`} />
+                  <span
+                    key={creditsAnim.key}
+                    className={`hdr-credits-delta ${creditsAnim.positive ? "hdr-credits-delta-up" : "hdr-credits-delta-down"}`}
+                  >
+                    {creditsAnim.positive ? "+" : "−"}${Math.abs(creditsAnim.delta).toFixed(2)}
+                  </span>
+                  <span className={`hdr-credits-sparks ${creditsAnim.positive ? "hcs-up" : "hcs-down"}`} key={`spk-${creditsAnim.key}`}>
+                    {Array.from({length:6}).map((_,i)=>(
+                      <span key={i} className={`hcs-particle hcs-p${i}`} />
+                    ))}
+                  </span>
+                </>
               )}
             </div>
             {isAdmin && <span className="admin-badge">ADMIN</span>}
@@ -2711,6 +2684,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             outdoorZones={OUTDOOR_ZONES}
             printOutdoorReceipt={printOutdoorReceipt}
             setMyCredits={setMyCredits}
+            initialTab={menuInitTab}
+            onInitialTabConsumed={() => setMenuInitTab(null)}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
           {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} passportStamps={passportStamps} onOpenPassport={() => setShowPassport(true)} gifts={gifts} onOpenGifts={() => setShowGifts(true)} /></ErrorBoundary>}
@@ -10929,12 +10904,21 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   resetGroupToLobby, printOrderReceipt, stripeCheckout, onToast, qrTable = "",
   gifts = [], pendingGiftItems = [], onClearPendingGifts = () => {},
   isOutside = false, outdoorZone = null, onChangeLocation = ()=>{}, onChangeZone = ()=>{},
-  outdoorZones = [], printOutdoorReceipt = ()=>{}, setMyCredits = ()=>{} }) {
+  outdoorZones = [], printOutdoorReceipt = ()=>{}, setMyCredits = ()=>{},
+  initialTab = null, onInitialTabConsumed = ()=>{} }) {
   const { t } = useLang();
   const [cart,        setCart]        = useState({});
   const [cartNotes,   setCartNotes]   = useState({}); // { [itemId]: noteString }
   const [noteOpen,    setNoteOpen]    = useState({}); // { [itemId]: bool }
-  const [tab,         setTab]         = useState("menu");
+  const [tab,         setTab]         = useState(initialTab || "menu");
+  // Honor initialTab even when MenuView is already mounted (e.g. user re-taps
+  // the credits badge while menu tab is already active)
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+      onInitialTabConsumed();
+    }
+  }, [initialTab]); // eslint-disable-line
   const [table,       setTable]       = useState(qrTable);
   const [placing,     setPlacing]     = useState(false);
   const [tableErr,    setTableErr]    = useState("");
