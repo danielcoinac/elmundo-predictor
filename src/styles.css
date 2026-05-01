@@ -2678,11 +2678,103 @@
   @keyframes exactBadgePop{0%{opacity:0;transform:scale(.4) rotate(-6deg)}60%{transform:scale(1.1) rotate(1.5deg)}80%{transform:scale(.96) rotate(-.5deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
   @keyframes pts5Erupt{0%{opacity:0;transform:scale(.3) translateY(30px)}50%{opacity:1;transform:scale(1.18) translateY(-8px)}70%{transform:scale(.95) translateY(2px)}100%{opacity:1;transform:scale(1) translateY(0)}}
 
-  /* ── Floating +PTS portal animation (visible to everyone) ── */
-  .pts-float-portal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8000;text-align:center;pointer-events:none;animation:ptsFloatUp 2.6s cubic-bezier(.22,1,.36,1) forwards}
-  .pts-float-text{font-family:'Anton',sans-serif;font-size:clamp(36px,12vw,72px);color:#F0C040;letter-spacing:4px;line-height:1;text-shadow:0 0 60px rgba(240,192,64,.9),0 0 120px rgba(240,192,64,.4);filter:drop-shadow(0 4px 20px rgba(240,192,64,.7))}
-  .pts-float-stars{font-size:clamp(18px,5vw,30px);margin-top:6px;filter:drop-shadow(0 0 8px rgba(255,215,0,.8))}
-  @keyframes ptsFloatUp{0%{opacity:0;transform:translate(-50%,0%) scale(.6)}12%{opacity:1;transform:translate(-50%,-20%) scale(1.15)}25%{transform:translate(-50%,-30%) scale(1)}70%{opacity:1;transform:translate(-50%,-60%) scale(1)}100%{opacity:0;transform:translate(-50%,-90%) scale(.85)}}
+  /* ══════════════════════════════════════════════════════════════════════════
+     ✨ MAJESTIC AWARD OVERLAY — shared by PTS + CREDITS animations
+  ══════════════════════════════════════════════════════════════════════════ */
+  .award-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none;display:flex;align-items:center;justify-content:center;animation:awardFade 3.6s cubic-bezier(.22,1,.36,1) forwards;overflow:hidden}
+  @keyframes awardFade{0%{opacity:0}5%{opacity:1}85%{opacity:1}100%{opacity:0}}
+
+  /* Cinematic vignette backdrop */
+  .award-vignette{position:absolute;inset:0;background:radial-gradient(circle at center,rgba(0,0,0,.55) 0%,rgba(0,0,0,.78) 70%,rgba(0,0,0,.92) 100%);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:awardVignette 3.6s ease forwards}
+  @keyframes awardVignette{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
+
+  /* Rotating sun-rays behind the emblem */
+  .award-rays{position:absolute;left:50%;top:50%;width:140vmin;height:140vmin;transform:translate(-50%,-50%);animation:awardRaysSpin 16s linear infinite,awardRaysIn 3.6s cubic-bezier(.22,1,.36,1) forwards;opacity:0;mix-blend-mode:screen}
+  .award-rays-gold{background:conic-gradient(from 0deg,rgba(240,192,64,.55) 0deg,transparent 12deg,transparent 18deg,rgba(255,210,90,.32) 30deg,transparent 42deg,transparent 60deg,rgba(240,192,64,.5) 72deg,transparent 84deg,transparent 120deg,rgba(255,210,90,.4) 132deg,transparent 144deg,transparent 180deg,rgba(240,192,64,.55) 192deg,transparent 204deg,transparent 240deg,rgba(255,210,90,.35) 252deg,transparent 264deg,transparent 300deg,rgba(240,192,64,.5) 312deg,transparent 324deg,transparent 360deg);filter:blur(1px)}
+  .award-rays-emerald{background:conic-gradient(from 0deg,rgba(16,185,129,.55) 0deg,transparent 12deg,transparent 18deg,rgba(110,231,183,.35) 30deg,transparent 42deg,transparent 60deg,rgba(16,185,129,.5) 72deg,transparent 84deg,transparent 120deg,rgba(110,231,183,.4) 132deg,transparent 144deg,transparent 180deg,rgba(16,185,129,.55) 192deg,transparent 204deg,transparent 240deg,rgba(110,231,183,.35) 252deg,transparent 264deg,transparent 300deg,rgba(16,185,129,.5) 312deg,transparent 324deg,transparent 360deg);filter:blur(1px)}
+  .award-rays-red{background:conic-gradient(from 0deg,rgba(248,113,113,.5) 0deg,transparent 14deg,transparent 30deg,rgba(252,165,165,.3) 42deg,transparent 56deg,transparent 90deg,rgba(248,113,113,.45) 102deg,transparent 116deg,transparent 180deg,rgba(248,113,113,.5) 192deg,transparent 206deg,transparent 270deg,rgba(252,165,165,.3) 282deg,transparent 296deg,transparent 360deg);filter:blur(1px)}
+  @keyframes awardRaysSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+  @keyframes awardRaysIn{0%{opacity:0}15%{opacity:1}80%{opacity:.85}100%{opacity:0}}
+
+  /* Concentric expanding rings */
+  .award-rings{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+  .award-ring{position:absolute;left:50%;top:50%;width:120px;height:120px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.18);opacity:0}
+  .award-pts .award-ring{border-color:rgba(240,192,64,.5)}
+  .award-credits.award-up .award-ring{border-color:rgba(16,185,129,.5)}
+  .award-credits.award-down .award-ring{border-color:rgba(248,113,113,.45)}
+  .award-ring-1{animation:awardRingPulse 2.4s cubic-bezier(.16,1,.3,1) .15s forwards}
+  .award-ring-2{animation:awardRingPulse 2.4s cubic-bezier(.16,1,.3,1) .45s forwards}
+  .award-ring-3{animation:awardRingPulse 2.4s cubic-bezier(.16,1,.3,1) .75s forwards}
+  @keyframes awardRingPulse{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}30%{opacity:.9}100%{opacity:0;transform:translate(-50%,-50%) scale(4)}}
+
+  /* Floating particles */
+  .award-particles{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:0;height:0;pointer-events:none}
+  .award-particle{position:absolute;width:8px;height:8px;border-radius:50%;left:0;top:0;opacity:0}
+  .award-pts .award-particle{background:radial-gradient(circle,#FFE08A 0%,#F0C040 60%,transparent 100%);box-shadow:0 0 14px rgba(240,192,64,.85)}
+  .award-credits.award-up .award-particle{background:radial-gradient(circle,#A7F3D0 0%,#10B981 60%,transparent 100%);box-shadow:0 0 14px rgba(16,185,129,.8)}
+  .award-credits.award-down .award-particle{background:radial-gradient(circle,#FCA5A5 0%,#EF4444 60%,transparent 100%);box-shadow:0 0 14px rgba(248,113,113,.7)}
+  .ap-0 {animation:awardParticle 2.8s cubic-bezier(.16,1,.3,1) .3s forwards;--ax: 180px;--ay:-220px}
+  .ap-1 {animation:awardParticle 2.6s cubic-bezier(.16,1,.3,1) .35s forwards;--ax:-220px;--ay:-160px}
+  .ap-2 {animation:awardParticle 3.0s cubic-bezier(.16,1,.3,1) .25s forwards;--ax: 240px;--ay: 100px}
+  .ap-3 {animation:awardParticle 2.7s cubic-bezier(.16,1,.3,1) .4s  forwards;--ax:-180px;--ay: 200px}
+  .ap-4 {animation:awardParticle 2.9s cubic-bezier(.16,1,.3,1) .5s  forwards;--ax: 100px;--ay:-260px}
+  .ap-5 {animation:awardParticle 2.5s cubic-bezier(.16,1,.3,1) .55s forwards;--ax:-260px;--ay:  60px}
+  .ap-6 {animation:awardParticle 3.0s cubic-bezier(.16,1,.3,1) .35s forwards;--ax: 280px;--ay:-100px}
+  .ap-7 {animation:awardParticle 2.8s cubic-bezier(.16,1,.3,1) .45s forwards;--ax:-120px;--ay:-220px}
+  .ap-8 {animation:awardParticle 2.6s cubic-bezier(.16,1,.3,1) .6s  forwards;--ax: 220px;--ay: 220px}
+  .ap-9 {animation:awardParticle 2.9s cubic-bezier(.16,1,.3,1) .5s  forwards;--ax:-260px;--ay:-100px}
+  .ap-10{animation:awardParticle 2.7s cubic-bezier(.16,1,.3,1) .65s forwards;--ax: 60px; --ay: 280px}
+  .ap-11{animation:awardParticle 3.0s cubic-bezier(.16,1,.3,1) .4s  forwards;--ax:-200px;--ay: 140px}
+  .ap-12{animation:awardParticle 2.8s cubic-bezier(.16,1,.3,1) .55s forwards;--ax: 160px;--ay:-180px}
+  .ap-13{animation:awardParticle 2.6s cubic-bezier(.16,1,.3,1) .7s  forwards;--ax:-100px;--ay: 240px}
+  @keyframes awardParticle{
+    0%{opacity:0;transform:translate(0,0) scale(.4)}
+    15%{opacity:1;transform:translate(calc(var(--ax)*.2),calc(var(--ay)*.2)) scale(1.1)}
+    100%{opacity:0;transform:translate(var(--ax),var(--ay)) scale(.4)}
+  }
+
+  /* Centerpiece stage */
+  .award-stage{position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;animation:awardStage 3.6s cubic-bezier(.16,1,.3,1) forwards;opacity:0}
+  @keyframes awardStage{0%{opacity:0;transform:translateY(14px) scale(.7)}10%{opacity:1;transform:translateY(-4px) scale(1.06)}18%{transform:translateY(0) scale(1)}80%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-30px) scale(.94)}}
+
+  /* Emblem (icon) */
+  .award-emblem{width:clamp(64px,16vw,96px);height:clamp(64px,16vw,96px);position:relative;animation:awardEmblemSpin 1.4s cubic-bezier(.34,1.56,.64,1) both,awardEmblemFloat 3s ease-in-out 1.4s infinite}
+  .award-emblem-gold{filter:drop-shadow(0 0 20px rgba(240,192,64,.9)) drop-shadow(0 6px 18px rgba(0,0,0,.5))}
+  .award-emblem-emerald{filter:drop-shadow(0 0 20px rgba(16,185,129,.9)) drop-shadow(0 6px 18px rgba(0,0,0,.5))}
+  .award-emblem-red{filter:drop-shadow(0 0 20px rgba(248,113,113,.85)) drop-shadow(0 6px 18px rgba(0,0,0,.5))}
+  @keyframes awardEmblemSpin{0%{opacity:0;transform:rotate(-360deg) scale(0)}60%{opacity:1;transform:rotate(20deg) scale(1.15)}80%{transform:rotate(-6deg) scale(.96)}100%{opacity:1;transform:rotate(0) scale(1)}}
+  @keyframes awardEmblemFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+  /* Eyebrow text above the number */
+  .award-eyebrow{font-family:'Outfit',sans-serif;font-size:clamp(10px,2.6vw,13px);letter-spacing:6px;color:rgba(255,255,255,.7);margin-top:8px;text-transform:uppercase;font-weight:600}
+
+  /* Main amount with shimmer sweep */
+  .award-amount{font-family:'Anton',sans-serif;font-size:clamp(56px,16vw,112px);line-height:1;letter-spacing:2px;position:relative;overflow:hidden;padding:0 6px}
+  .award-amount-gold{background:linear-gradient(180deg,#FFF1B8 0%,#FFE08A 30%,#F0C040 55%,#A8770F 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 0 30px rgba(240,192,64,.7)) drop-shadow(0 4px 14px rgba(0,0,0,.5))}
+  .award-amount-emerald{background:linear-gradient(180deg,#D1FAE5 0%,#6EE7B7 28%,#10B981 60%,#065F46 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 0 30px rgba(16,185,129,.7)) drop-shadow(0 4px 14px rgba(0,0,0,.5))}
+  .award-amount-red{background:linear-gradient(180deg,#FEE2E2 0%,#FCA5A5 28%,#EF4444 60%,#7F1D1D 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 0 30px rgba(248,113,113,.6)) drop-shadow(0 4px 14px rgba(0,0,0,.5))}
+
+  /* Shimmer sweep across the number */
+  .award-shine{position:relative;display:inline-block}
+  .award-shine::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.85) 50%,transparent 70%);-webkit-background-clip:text;background-clip:text;color:transparent;animation:awardShine 2.4s ease 0.6s 1 both;mix-blend-mode:overlay}
+  @keyframes awardShine{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+
+  /* Bottom label */
+  .award-label{font-family:'Anton',sans-serif;font-size:clamp(11px,2.6vw,14px);letter-spacing:9px;color:rgba(255,255,255,.85);margin-top:2px}
+  .award-pts .award-label{color:rgba(240,192,64,.85)}
+  .award-credits.award-up .award-label{color:rgba(16,185,129,.85)}
+  .award-credits.award-down .award-label{color:rgba(248,113,113,.8)}
+
+  /* Stars row (PTS only) */
+  .award-stars{font-size:clamp(16px,4.5vw,26px);letter-spacing:6px;color:#F0C040;filter:drop-shadow(0 0 10px rgba(240,192,64,.85));margin-top:6px;animation:awardStarsIn .9s cubic-bezier(.34,1.56,.64,1) .8s both}
+  @keyframes awardStarsIn{0%{opacity:0;transform:translateY(8px) scale(.6)}60%{opacity:1;transform:translateY(-2px) scale(1.15)}100%{opacity:1;transform:translateY(0) scale(1)}}
+
+  /* Reduced-motion fallback */
+  @media (prefers-reduced-motion: reduce){
+    .award-rays,.award-ring,.award-particle{display:none}
+    .award-overlay{animation-duration:1.5s}
+    .award-stage{animation-duration:1.5s}
+  }
 
   /* ══════════════════════════════════════════════════════════════════════════
      🗺️ PREDICTION JOURNEY — Profile Chart

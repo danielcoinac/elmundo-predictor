@@ -775,6 +775,11 @@ export default function App() {
       setActiveGroup(null); setGroupMembers([]); setGroupItems([]);
     }
     await supabase.auth.signOut();
+    // Clear device-scoped staff state so the next person who signs in starts clean
+    try {
+      localStorage.removeItem("em-printer-zone");
+      localStorage.removeItem("em-printer-seen");
+    } catch {}
     setUser(null); setPage("auth");
     setForm({ name:"", email:"", phone:"", password:"" });
     setPreds({}); setUsers({});
@@ -2332,6 +2337,19 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const prevPtsRef      = useRef(null); // null = not yet initialised
   const prevRankRef     = useRef(myRank);
 
+  // Reset all delta-tracking refs when a different user signs in on this device.
+  // Otherwise +PTS / credit deltas fire against the previous user's baseline.
+  const userIdRef = useRef(user?.id);
+  useEffect(() => {
+    if (userIdRef.current !== user?.id) {
+      userIdRef.current      = user?.id;
+      seenFinishedRef.current = null;
+      prevPtsRef.current      = null;
+      prevRankRef.current     = myRank;
+      // prevCreditsRef declared below — reset via the closure pattern in its own effect
+    }
+  }, [user?.id]); // eslint-disable-line
+
   // Detect newly-finished matches (realtime push from admin) — order matters:
   // this effect runs BEFORE the myPts effect so prevRankRef still holds old rank
   useEffect(() => {
@@ -2367,7 +2385,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     prevRankRef.current = myRank;
     if (delta > 0) {
       setPtsAnim({ delta, key: Date.now() });
-      const t = setTimeout(() => setPtsAnim(null), 2600);
+      const t = setTimeout(() => setPtsAnim(null), 3600);
       return () => clearTimeout(t);
     }
   }, [myPts]); // eslint-disable-line
@@ -2376,13 +2394,16 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
   const [creditsAnim, setCreditsAnim] = useState(null); // {delta, key, positive}
   const prevCreditsRef = useRef(null);
 
+  // Reset on user switch so we don't animate a delta against the previous user
+  useEffect(() => { prevCreditsRef.current = null; }, [user?.id]);
+
   useEffect(() => {
     if (prevCreditsRef.current === null) { prevCreditsRef.current = myCredits; return; }
     const delta = myCredits - prevCreditsRef.current;
     prevCreditsRef.current = myCredits;
     if (Math.abs(delta) > 0.001) {
       setCreditsAnim({ delta, key: Date.now(), positive: delta > 0 });
-      const t = setTimeout(() => setCreditsAnim(null), 3000);
+      const t = setTimeout(() => setCreditsAnim(null), 3600);
       return () => clearTimeout(t);
     }
   }, [myCredits]); // eslint-disable-line
@@ -2523,22 +2544,87 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
     <div className="shell">
       {/* Post-match result card */}
       {postMatchCard && <PostMatchCard data={postMatchCard} onClose={() => setPostMatchCard(null)} />}
-      {/* Floating pts animation — central portal */}
+      {/* Majestic PTS award animation — full-screen ceremony */}
       {ptsAnim && createPortal(
-        <div key={ptsAnim.key} className="pts-float-portal">
-          <div className="pts-float-text">+{ptsAnim.delta} PTS</div>
-          <div className="pts-float-stars">{"⭐".repeat(Math.min(ptsAnim.delta, 5))}</div>
+        <div key={ptsAnim.key} className="award-overlay award-pts">
+          <div className="award-vignette" />
+          <div className="award-rays award-rays-gold" />
+          <div className="award-rings">
+            <div className="award-ring award-ring-1" />
+            <div className="award-ring award-ring-2" />
+            <div className="award-ring award-ring-3" />
+          </div>
+          <div className="award-particles">
+            {Array.from({length:14}).map((_,i)=>(
+              <span key={i} className={`award-particle ap-${i}`} />
+            ))}
+          </div>
+          <div className="award-stage">
+            <div className="award-emblem award-emblem-gold">
+              <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ptsG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#FFE08A"/>
+                    <stop offset="50%" stopColor="#F0C040"/>
+                    <stop offset="100%" stopColor="#A8770F"/>
+                  </linearGradient>
+                </defs>
+                <path d="M32 6l7.6 15.4 17 2.5-12.3 12 2.9 16.9L32 44.8 16.8 52.8l2.9-16.9L7.4 23.9l17-2.5z" fill="url(#ptsG)" stroke="#fff5d1" strokeWidth="0.6"/>
+              </svg>
+            </div>
+            <div className="award-eyebrow">YOU EARNED</div>
+            <div className="award-amount award-amount-gold">
+              <span className="award-shine">+{ptsAnim.delta}</span>
+            </div>
+            <div className="award-label">{ptsAnim.delta === 1 ? "POINT" : "POINTS"}</div>
+            <div className="award-stars">{"★".repeat(Math.min(ptsAnim.delta, 5))}</div>
+          </div>
         </div>,
         document.body
       )}
-      {/* Floating credits animation — central portal */}
+      {/* Majestic CREDITS animation — full-screen ceremony */}
       {creditsAnim && createPortal(
-        <div key={creditsAnim.key} className={`credits-float-portal ${creditsAnim.positive ? "credits-float-up" : "credits-float-down"}`}>
-          <div className="credits-float-icon">{creditsAnim.positive ? "💳" : "💸"}</div>
-          <div className="credits-float-amount">
-            {creditsAnim.positive ? "+" : ""}{creditsAnim.delta > 0 ? creditsAnim.delta.toFixed(2) : (-creditsAnim.delta).toFixed(2)}
+        <div key={creditsAnim.key} className={`award-overlay award-credits ${creditsAnim.positive ? "award-up" : "award-down"}`}>
+          <div className="award-vignette" />
+          <div className={`award-rays ${creditsAnim.positive ? "award-rays-emerald" : "award-rays-red"}`} />
+          <div className="award-rings">
+            <div className="award-ring award-ring-1" />
+            <div className="award-ring award-ring-2" />
+            <div className="award-ring award-ring-3" />
           </div>
-          <div className="credits-float-label">CREDITS</div>
+          <div className="award-particles">
+            {Array.from({length:14}).map((_,i)=>(
+              <span key={i} className={`award-particle ap-${i}`} />
+            ))}
+          </div>
+          <div className="award-stage">
+            <div className={`award-emblem ${creditsAnim.positive ? "award-emblem-emerald" : "award-emblem-red"}`}>
+              <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+                <defs>
+                  <linearGradient id={`crG-${creditsAnim.key}`} x1="0" y1="0" x2="0" y2="1">
+                    {creditsAnim.positive ? (<>
+                      <stop offset="0%" stopColor="#6EE7B7"/>
+                      <stop offset="55%" stopColor="#10B981"/>
+                      <stop offset="100%" stopColor="#065F46"/>
+                    </>) : (<>
+                      <stop offset="0%" stopColor="#FCA5A5"/>
+                      <stop offset="55%" stopColor="#EF4444"/>
+                      <stop offset="100%" stopColor="#7F1D1D"/>
+                    </>)}
+                  </linearGradient>
+                </defs>
+                <rect x="8" y="16" width="48" height="32" rx="5" fill={`url(#crG-${creditsAnim.key})`} stroke="#ffffff66" strokeWidth="0.6"/>
+                <rect x="8" y="22" width="48" height="6" fill="#00000033"/>
+                <rect x="13" y="36" width="14" height="4" rx="1" fill="#ffffff55"/>
+                <rect x="13" y="42" width="9" height="2.5" rx="1" fill="#ffffff33"/>
+              </svg>
+            </div>
+            <div className="award-eyebrow">{creditsAnim.positive ? "CREDITS ADDED" : "CREDITS USED"}</div>
+            <div className={`award-amount ${creditsAnim.positive ? "award-amount-emerald" : "award-amount-red"}`}>
+              <span className="award-shine">{creditsAnim.positive ? "+" : "−"}${Math.abs(creditsAnim.delta).toFixed(2)}</span>
+            </div>
+            <div className="award-label">CREDITS</div>
+          </div>
         </div>,
         document.body
       )}
@@ -2632,7 +2718,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
           {appTab === "floorplan" && user?.floorplan_access && (
-            <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} /></ErrorBoundary>
+            <ErrorBoundary name="floorplan"><FloorPlan allOrders={allOrders} onLoad={loadAllOrders} onUpdateStatus={updateOrderStatus} onDeleteOrder={deleteOrder} onToast={onToast} userId={user?.id} /></ErrorBoundary>
           )}
           {appTab === "keepups" && user?.keepups_access && (
             <ErrorBoundary name="keepups"><KeepupsView user={user} users={users} /></ErrorBoundary>

@@ -545,10 +545,22 @@ const FP_DEFAULT_P2 = [
   { id:9, color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
 ];
 
-// Module-level set — survives FloorPlan remounts (tab switches)
+// Module-level set — survives FloorPlan remounts (tab switches).
+// Cleared when the signed-in user changes (see useEffect below).
 const _seenOrderIds = new Set();
+let _seenOrderIdsOwner = null; // user id that owns the current set
 
-function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{} }) {
+function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{}, userId = null }) {
+  // Clear the seen-orders set when a different user signs in on this device.
+  // Without this, a previous staffer's order IDs are remembered and the next
+  // staffer never gets flashes/prints for those orders.
+  useEffect(() => {
+    if (_seenOrderIdsOwner !== userId) {
+      _seenOrderIds.clear();
+      _seenOrderIdsOwner = userId;
+    }
+  }, [userId]);
+
   const [activePlan, setActivePlan] = useState(() => {
     const pz = localStorage.getItem("em-printer-zone");
     return pz === "outside" ? "2" : "1";
