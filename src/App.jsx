@@ -10305,22 +10305,55 @@ function GroupOrderView({
   const [goMenuSection, setGoMenuSection] = useState("DRINKS");
   const [goMenuCat, setGoMenuCat] = useState("all");
 
-  // 10-min payment countdown — starts when group enters awaiting_payment
+  // 10-min payment countdown — starts when group enters awaiting_payment.
+  //
+  // The original implementation read `activeGroup.updated_at`, but that
+  // column is bumped on every row write (members joining, items added,
+  // payment_status flips, etc.), so any of those events would restart the
+  // countdown from 10:00 — and remounts on tab switch saw the bumped value
+  // too, looking like the timer "resets".
+  //
+  // Fix: latch the start time the FIRST time we see this group enter
+  // awaiting_payment, persist per-group in localStorage so remounts and tab
+  // switches resume the same deadline, and clean up when status leaves.
   useEffect(() => {
-    if (activeGroup?.status !== "awaiting_payment") { setPaySecsLeft(null); return; }
-    const started = activeGroup.updated_at ? new Date(activeGroup.updated_at).getTime() : Date.now();
+    if (activeGroup?.status !== "awaiting_payment") {
+      setPaySecsLeft(null);
+      // If group has settled (placed/cancelled), drop its latched timestamp
+      if (activeGroup?.id && (activeGroup.status === "placed" || activeGroup.status === "cancelled")) {
+        try { localStorage.removeItem(`em-grp-paystart-${activeGroup.id}`); } catch {}
+      }
+      return;
+    }
+    const key = `em-grp-paystart-${activeGroup.id}`;
+    let started;
+    try {
+      const stored = parseInt(localStorage.getItem(key) || "0", 10);
+      if (stored > 0) {
+        started = stored;
+      } else {
+        // First time — use updated_at if it looks recent, otherwise now()
+        const fromCol = activeGroup.updated_at ? new Date(activeGroup.updated_at).getTime() : 0;
+        const isRecent = fromCol > 0 && Date.now() - fromCol < 10 * 60 * 1000;
+        started = isRecent ? fromCol : Date.now();
+        localStorage.setItem(key, String(started));
+      }
+    } catch {
+      started = Date.now();
+    }
     const deadline = started + 10 * 60 * 1000;
     const tick = () => {
       const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setPaySecsLeft(left);
       if (left === 0) {
         supabase.from("group_orders").update({ status: "cancelled" }).eq("id", activeGroup.id);
+        try { localStorage.removeItem(key); } catch {}
       }
     };
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, [activeGroup?.status, activeGroup?.updated_at]);
+  }, [activeGroup?.status, activeGroup?.id]); // updated_at intentionally omitted
 
   // Auto-add unredeemed gifts to group order when entering lobby
   const addedGiftIdsRef = useRef(new Set());
