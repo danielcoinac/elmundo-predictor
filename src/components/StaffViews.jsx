@@ -682,17 +682,31 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     return () => { Object.values(flashTimersRef.current).forEach(clearTimeout); };
   }, []);
 
-  // Detect new orders → flash table green + spawn floating toast
+  // Detect new orders → flash table green + spawn floating toast.
+  //
+  // We track a "last-seen order timestamp" in localStorage so that orders that
+  // arrive while the floor plan tab isn't mounted (e.g. staff was on another
+  // tab, or just signed in) still flash and print when the staffer returns.
+  // The 20s wall-clock fallback remains for the very first install on a device
+  // that has no last-seen timestamp.
+  const LAST_SEEN_KEY = "em-fp-last-seen-order-ts";
   useEffect(() => {
     if (!allOrders.length) return;
-    const FLASH_WINDOW_MS = 20000; // only flash orders placed in the last 20s
+    const FLASH_WINDOW_MS = 20000;
     const now = Date.now();
+    const lastSeenTs = parseInt(localStorage.getItem(LAST_SEEN_KEY) || "0", 10) || 0;
+    let maxTs = lastSeenTs;
     const newEntries = []; // { key, label, tbl }
     allOrders.forEach(o => {
+      const orderTs = new Date(o.created_at).getTime();
+      if (orderTs > maxTs) maxTs = orderTs;
       if (!seenOrderIds.current.has(o.id)) {
         seenOrderIds.current.add(o.id);
-        const age = now - new Date(o.created_at).getTime();
-        if (age > FLASH_WINDOW_MS) return; // historical order — seed silently, no flash
+        const age = now - orderTs;
+        // Treat as "new" if this order is newer than the last one we processed
+        // on this device, OR (first run with no marker) within the 20s window.
+        const isNew = lastSeenTs > 0 ? orderTs > lastSeenTs : age <= FLASH_WINDOW_MS;
+        if (!isNew) return; // historical — seed silently
         const isOut = String(o.table_number).startsWith("OUT-");
         const key   = String(o.table_number);
         const label = isOut
@@ -705,6 +719,10 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         newEntries.push({ key, label, tbl, ord: o });
       }
     });
+    // Persist the high-water mark so the next mount/remount knows what's been processed
+    if (maxTs > lastSeenTs) {
+      try { localStorage.setItem(LAST_SEEN_KEY, String(maxTs)); } catch {}
+    }
     if (newEntries.length === 0) return;
     // Print receipt — only print orders that match this device's zone
     newEntries.forEach(({ ord }) => {

@@ -34,7 +34,7 @@ export default function App() {
   const [matches,  setMatches]  = useState(DEFAULT_MATCHES);
   const [rules,    setRules]    = useState(DEFAULT_RULES);
   const [sponsors, setSponsors] = useState(DEFAULT_SPONSORS);
-  const [toast,    setToast]    = useState(null);
+  const [toasts,   setToasts]   = useState([]); // stack of {id, msg, ok, kind}
   const toastTimerRef = useRef(null);
   const globalChannelRef = useRef(null);
   const [lang,     setLang]     = useState(() => localStorage.getItem("lang") || "en");
@@ -472,11 +472,26 @@ export default function App() {
     const fallback = setInterval(async () => {
       const { data: cred } = await supabase.from("user_credits")
         .select("balance").eq("user_id", uid).maybeSingle();
-      if (cred) setMyCredits(cred.balance || 0);
+      // Only update if the polled value actually differs — prevents the
+      // fallback from clobbering a fresher realtime value with a stale read,
+      // and keeps the +/-credits animation from firing on equal-value writes.
+      if (cred) {
+        const next = cred.balance || 0;
+        setMyCredits(prev => (Math.abs(prev - next) > 0.0001 ? next : prev));
+      }
 
       const { data: ords } = await supabase.from("orders")
         .select("*").eq("user_id", uid).order("created_at", { ascending:false });
-      if (ords) setMyOrders(ords);
+      if (ords) {
+        // Only replace the array if it actually changed (length or any id/status differs)
+        setMyOrders(prev => {
+          if (prev.length !== ords.length) return ords;
+          for (let i = 0; i < ords.length; i++) {
+            if (prev[i]?.id !== ords[i].id || prev[i]?.status !== ords[i].status) return ords;
+          }
+          return prev;
+        });
+      }
     }, 60000);
 
     return () => {
@@ -580,9 +595,13 @@ export default function App() {
   };
 
   const toast$ = (msg, ok = true) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ msg, ok });
-    toastTimerRef.current = setTimeout(() => { setToast(null); toastTimerRef.current = null; }, 3200);
+    const id = Date.now() + Math.random();
+    // Auto-classify for icon + accent: errors → red; messages with check/✓ → green; else neutral
+    const kind = ok === false ? "err" : (typeof msg === "string" && /warn|caution|⚠/i.test(msg)) ? "warn" : "ok";
+    setToasts(prev => [...prev.slice(-3), { id, msg, ok, kind }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3600);
   };
 
   // ── Push Notifications ──────────────────────────────────────────────────
@@ -1510,10 +1529,18 @@ export default function App() {
           <button onClick={() => updateServiceWorker(true)} style={{fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1.5,padding:"7px 16px",background:"rgba(74,222,128,.15)",border:"1px solid rgba(74,222,128,.6)",color:"#4ade80",borderRadius:8,cursor:"pointer"}}>UPDATE NOW</button>
         </div>
       )}
-      {toast && (
-        <div className={`notification ${toast.ok ? "notif-ok" : "notif-err"}`}>
-          <span className="notif-dot">{toast.ok ? "✓" : "!"}</span>
-          <span className="notif-msg">{toast.msg}</span>
+      {toasts.length > 0 && (
+        <div className="toast-stack">
+          {toasts.map(t => (
+            <div key={t.id} className={`toast toast-${t.kind}`}>
+              <span className="toast-stripe" />
+              <span className="toast-icon">
+                {t.kind === "err" ? "⚠" : t.kind === "warn" ? "!" : "✓"}
+              </span>
+              <span className="toast-msg">{t.msg}</span>
+              <span className="toast-progress" />
+            </div>
+          ))}
         </div>
       )}
       {page === "loading" && <div style={{position:"fixed",inset:0,background:"#000",zIndex:999}} />}
@@ -2276,23 +2303,95 @@ function TVLeaderboard({ board, onBack, inAd = false }) {
 }
 
 /* ── Animated number hook — smooth easeOutExpo counter ─────────────────── */
+// Pull-to-refresh wrapper. Touch only. Wire `onRefresh` to whatever should run
+// when the user pulls past ~60px and releases (realtime already streams data,
+// so a small delay is fine — the spinner is the value here).
+function PullToRefresh({ onRefresh, children }) {
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef(null);
+  const ref = useRef(null);
+  const scrollerRef = useRef(null);
+
+  useEffect(() => {
+    let el = ref.current;
+    while (el) {
+      const oy = window.getComputedStyle(el).overflowY;
+      if (oy === "auto" || oy === "scroll") { scrollerRef.current = el; break; }
+      el = el.parentElement;
+    }
+  }, []);
+
+  const onTouchStart = e => {
+    const sc = scrollerRef.current || document.scrollingElement;
+    if (!sc || sc.scrollTop > 1 || refreshing) { startY.current = null; return; }
+    startY.current = e.touches[0].clientY;
+  };
+  const onTouchMove = e => {
+    if (startY.current === null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 0) setPull(Math.min(dy * 0.45, 90));
+    else setPull(0);
+  };
+  const onTouchEnd = async () => {
+    if (startY.current === null) return;
+    const wasReady = pull > 60;
+    startY.current = null;
+    if (wasReady) {
+      setRefreshing(true);
+      try {
+        await Promise.resolve(onRefresh?.());
+      } finally {
+        // Brief minimum spin so the gesture feels intentional even on fast networks
+        setTimeout(() => { setRefreshing(false); setPull(0); }, 600);
+      }
+    } else setPull(0);
+  };
+
+  return (
+    <div ref={ref} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} style={{position:"relative"}}>
+      <div className={`ptr-indicator ${refreshing ? "ptr-refreshing" : ""}`} style={{
+        marginLeft:-18,
+        top:0,
+        transform:`translateY(${refreshing ? 24 : Math.max(pull - 38, -38)}px) ${refreshing ? "rotate(0deg)" : ""}`,
+        opacity: refreshing ? 1 : Math.min(pull/55, 1),
+        transition: refreshing ? "transform .35s ease" : (pull === 0 ? "transform .25s ease,opacity .25s ease" : "none"),
+        zIndex:5
+      }}>
+        <Logo w={20} />
+      </div>
+      <div style={{
+        transform:`translateY(${pull}px)`,
+        transition: refreshing ? "transform .35s ease" : (pull === 0 ? "transform .25s ease" : "none")
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function useAnimatedNumber(target, duration = 700) {
   const [display, setDisplay] = useState(target);
-  const fromRef = useRef(target);
+  const displayRef = useRef(target);
   const rafRef  = useRef(null);
 
   useEffect(() => {
-    const from = fromRef.current;
+    // Always tween from the CURRENT visible value, not the previous "from".
+    // This prevents snapping when target changes back-to-back: if a tween
+    // was in flight at value X heading to Y, a new target Z restarts from X.
+    const from = displayRef.current;
     if (from === target) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const startTs = performance.now();
     const animate = (now) => {
       const t = Math.min((now - startTs) / duration, 1);
       const ease = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-      setDisplay(from + (target - from) * ease);
+      const v = from + (target - from) * ease;
+      displayRef.current = v;
+      setDisplay(v);
       if (t < 1) { rafRef.current = requestAnimationFrame(animate); }
-      else { fromRef.current = target; setDisplay(target); }
+      else { displayRef.current = target; setDisplay(target); rafRef.current = null; }
     };
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(animate);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [target, duration]);
@@ -2413,6 +2512,22 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
 
   // Initial sub-tab to open inside MenuView (e.g. "wallet" when credit badge tapped)
   const [menuInitTab, setMenuInitTab] = useState(null);
+
+  // Header glassmorphism kicks in once the page is scrolled
+  const [hdrScrolled, setHdrScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => {
+      const sc = document.querySelector(".body")?.scrollTop || window.scrollY || 0;
+      setHdrScrolled(sc > 8);
+    };
+    const body = document.querySelector(".body");
+    body?.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      body?.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [appTab]);
 
   const [animKey, setAnimKey] = useState(appTab);
   const [showTVAd, setShowTVAd] = useState(false);
@@ -2585,7 +2700,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
         </div>,
         document.body
       )}
-      <header className="hdr" style={appTab === "moments" ? {display:"none"} : undefined}>
+      <header className={`hdr ${hdrScrolled ? "hdr-scrolled" : ""}`} style={appTab === "moments" ? {display:"none"} : undefined}>
         <div className="hdr-inner">
           <div className="hdr-l">
             <button className="hdr-logo-btn" onClick={() => switchTab("matches")} title="Go to Matches">
@@ -2659,9 +2774,9 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       </header>
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
-          {appTab === "matches" && <ErrorBoundary name="matches"><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></ErrorBoundary>}
+          {appTab === "matches" && <ErrorBoundary name="matches"><PullToRefresh onRefresh={() => new Promise(r => setTimeout(r, 700))}><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></PullToRefresh></ErrorBoundary>}
           {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} sendPush={sendPush} /></ErrorBoundary>}
-          {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} preds={preds} /></ErrorBoundary>}
+          {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><PullToRefresh onRefresh={() => new Promise(r => setTimeout(r, 700))}><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} preds={preds} /></PullToRefresh></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
             onCancelOrder={cancelOrder}
             activeGroup={activeGroup} groupMembers={groupMembers} groupItems={groupItems}
@@ -2826,7 +2941,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       )}
 
       <nav className="bot-nav">
-        <div className="bot-nav-inner">
+        <div className="bot-nav-inner" style={{"--tabs":tabs.length, "--idx": Math.max(0, tabs.findIndex(t => t.id === appTab))}}>
+          <span className="bnav-pill" />
           {tabs.map(({ id, label, ico }) => (
             <button key={id} className={`bnav-btn ${appTab===id?"bnav-on":""}`} onClick={()=>switchTab(id)}>
               <span className="bnav-ico" style={{position:"relative"}}>
@@ -2836,7 +2952,6 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 )}
               </span>
               <span className="bnav-lbl">{label}</span>
-              {appTab===id && <span className="bnav-indicator"/>}
             </button>
           ))}
         </div>
@@ -4639,6 +4754,22 @@ function PlayerProfileModal({ player, rank, matches, preds, onClose }) {
 }
 
 function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
+  // Skeleton while board hydrates — empty board on first paint of this tab
+  if (!board || board.length === 0) {
+    return (
+      <div className="lb-root">
+        <div className="section-banner"><span className="section-banner-title">LEADERBOARD</span></div>
+        <div className="lb-skel-podium">
+          <div className="lb-skel-podium-card lb-skel-2" />
+          <div className="lb-skel-podium-card lb-skel-1" />
+          <div className="lb-skel-podium-card lb-skel-3" />
+        </div>
+        <div className="lb-skel-list">
+          {[1,2,3,4,5,6,7].map(i => <div key={i} className="lb-skel-row" />)}
+        </div>
+      </div>
+    );
+  }
   const filtered = board.filter(u => u.is_admin !== true && u.is_admin !== 1 && u.is_admin !== "true");
   const top3   = filtered.slice(0, 3);
   const top4to10 = filtered.slice(3, 10); // positions 4–10 only
@@ -5443,6 +5574,12 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
   const corr = fin.filter(m => { const p=preds[`${user.id}__${m.id}`]; return p&&p.h===m.hs&&p.a===m.as; }).length;
   const acc  = sub>0 ? Math.round(corr/sub*100) : 0;
 
+  // Hero rolling counters — tween from 0 on mount, then track live values
+  const aPts  = useAnimatedNumber(myPts, 1200);
+  const aRank = useAnimatedNumber(myRank > 0 ? myRank : 0, 900);
+  const aCorr = useAnimatedNumber(corr, 900);
+  const aAcc  = useAnimatedNumber(acc, 900);
+
   // ── Streak calculation ─────────────────────────────────────────────────
   const finSorted = [...fin].sort((a,b) => new Date(a.kickoff||a.date||0) - new Date(b.kickoff||b.date||0));
   // Current streak: walk backwards from most recent finished match
@@ -5707,10 +5844,10 @@ function ProfileView({ user, myPts, myRank, preds, matches, sponsors, onAvatarUp
 
       <div className="stats-grid">
         {[
-          {v:myPts,                      u:"PTS", l:"Total Points"},
-          {v:myRank>0?`#${myRank}`:"—", u:"",    l:"Your Rank"},
-          {v:corr,                       u:`/${sub}`,l:"Correct"},
-          {v:acc,                        u:"%",   l:"Accuracy"},
+          {v:Math.round(aPts),                          u:"PTS",     l:"Total Points"},
+          {v:myRank>0 ? `#${Math.round(aRank)||myRank}` : "—", u:"", l:"Your Rank"},
+          {v:Math.round(aCorr),                         u:`/${sub}`, l:"Correct"},
+          {v:Math.round(aAcc),                          u:"%",       l:"Accuracy"},
         ].map(s => (
           <div key={s.l} className="scard">
             <div className="sval">{s.v}<span className="sunit">{s.u}</span></div>
@@ -10126,9 +10263,9 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
                 ))}
               </div>
             )}
-            <button className="order-place-btn" style={{background:`linear-gradient(135deg,${m.color},${m.color}cc)`,color:"#000"}}
+            <button className={`order-place-btn ${placing ? "btn-loading btn-loading-dark" : ""}`} style={{background:`linear-gradient(135deg,${m.color},${m.color}cc)`,color:"#000"}}
               onClick={handleOrder} disabled={placing || cartItems.length === 0}>
-              {placing ? "PLACING ORDER…" : `🎁 ORDER COMPLIMENTARY GIFTS`}
+              {`🎁 ORDER COMPLIMENTARY GIFTS`}
             </button>
           </div>
         </div>
@@ -11588,16 +11725,16 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                   )}
                 </div>
                 {cartPayMethod === "credits" ? (
-                  <button className="order-place-btn"
+                  <button className={`order-place-btn ${placing ? "btn-loading btn-loading-dark" : ""}`}
                     disabled={placing}
                     onClick={() => openOrderModal("credits")}>
-                    {placing ? t('placing') : `${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
+                    {`${t('placeOrder')} · $${cartTotal.toFixed(2)}`}
                   </button>
                 ) : (
-                  <button className="order-place-btn stripe-pay-btn"
+                  <button className={`order-place-btn stripe-pay-btn ${placing ? "btn-loading btn-loading-dark" : ""}`}
                     disabled={placing}
                     onClick={() => openOrderModal("card")}>
-                    {placing ? "PROCESSING…" : `💳 PAY WITH CARD · $${cartTotal.toFixed(2)}`}
+                    {`💳 PAY WITH CARD · $${cartTotal.toFixed(2)}`}
                   </button>
                 )}
               </div>

@@ -2858,3 +2858,208 @@
     .hdr-credits-shimmer,.hdr-credits-sparks{display:none}
     .hdr-credits-badge-pulse-up,.hdr-credits-badge-pulse-down{animation:none}
   }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     ✨ PREMIUM POLISH — tabular nums, header glass, card tilt, button morph,
+        sliding tab pill, Stripe-style toasts, leaderboard skeleton
+  ══════════════════════════════════════════════════════════════════════════ */
+
+  /* Tabular nums — prevents digit jitter on every animated balance/score */
+  .hdr-credits-value,.hdr-badge-pts,.sval,.wallet-balance,.wallet-card-amount,
+  .journey-total-pts,.streak-num,.match-score,.score-num,.lb-pts,.bal-amt,
+  .price,.qty,.total-amt,.broadcast-mypred-score{
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Header glassmorphism — kicks in once the page is scrolled */
+  .hdr{transition:background .28s ease,backdrop-filter .28s ease,border-color .28s ease}
+  .hdr-scrolled{
+    background:rgba(8,8,8,.55) !important;
+    backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    border-bottom:1px solid rgba(255,255,255,.08);
+    box-shadow:0 6px 22px rgba(0,0,0,.35);
+  }
+
+  /* Match card press tilt — gives the cards weight on tap */
+  .mcard,.match-card{transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s ease}
+  .mcard:active,.match-card:active{
+    transform:perspective(900px) rotateX(2deg) scale(.985);
+    box-shadow:0 18px 40px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)
+  }
+
+  /* Sponsor card 3D tilt + shine on hover/tap */
+  .sponsor-card,.vip-perk-card,.sponsor-tile{
+    transition:transform .35s cubic-bezier(.22,1,.36,1),box-shadow .35s ease;
+    transform-style:preserve-3d;
+    will-change:transform
+  }
+  .sponsor-card:hover,.vip-perk-card:hover,.sponsor-tile:hover{
+    transform:perspective(800px) rotateX(3deg) rotateY(-3deg) translateY(-3px) scale(1.01);
+    box-shadow:0 22px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1)
+  }
+  .sponsor-card:active,.vip-perk-card:active,.sponsor-tile:active{
+    transform:perspective(800px) rotateX(1deg) scale(.99);
+    transition:transform .12s ease
+  }
+
+  /* Loading button — morph: label fades, spinner appears inside */
+  .btn-loading{position:relative;pointer-events:none;color:transparent !important;text-shadow:none !important}
+  .btn-loading::after{
+    content:"";position:absolute;left:50%;top:50%;
+    width:18px;height:18px;margin:-9px 0 0 -9px;
+    border:2px solid rgba(255,255,255,.25);
+    border-top-color:#fff;
+    border-radius:50%;
+    animation:btnSpin .7s linear infinite
+  }
+  .btn-loading-dark::after{border-color:rgba(0,0,0,.18);border-top-color:#000}
+  @keyframes btnSpin{to{transform:rotate(360deg)}}
+
+  /* ── Bottom-tab sliding pill indicator ── */
+  .bot-nav-inner{position:relative}
+  .bnav-pill{
+    position:absolute;
+    top:0;
+    height:3px;
+    width:calc(100% / var(--tabs, 5));
+    left:0;
+    transform:translateX(calc(var(--idx, 0) * 100%));
+    background:linear-gradient(90deg,transparent,#fff,transparent);
+    border-radius:0 0 6px 6px;
+    box-shadow:0 0 12px rgba(255,255,255,.45);
+    transition:transform .42s cubic-bezier(.22,1,.36,1);
+    pointer-events:none;
+    z-index:2
+  }
+  .bnav-pill::before{
+    content:"";position:absolute;left:50%;top:0;width:60%;height:100%;
+    transform:translateX(-50%);
+    background:#fff;
+    border-radius:0 0 4px 4px;
+    box-shadow:0 0 8px rgba(255,255,255,.7)
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     STRIPE-STYLE TOAST STACK
+  ══════════════════════════════════════════════════════════════════════════ */
+  .toast-stack{
+    position:fixed;
+    top:calc(env(safe-area-inset-top,0px) + 64px);
+    right:14px;
+    z-index:10000;
+    display:flex;flex-direction:column;gap:10px;
+    pointer-events:none;
+    max-width:min(360px,calc(100vw - 28px))
+  }
+  .toast{
+    position:relative;
+    display:flex;align-items:flex-start;gap:11px;
+    padding:13px 16px 13px 18px;
+    background:rgba(15,15,15,.94);
+    color:#fff;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 14px 40px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
+    backdrop-filter:blur(18px) saturate(150%);
+    -webkit-backdrop-filter:blur(18px) saturate(150%);
+    overflow:hidden;
+    pointer-events:auto;
+    animation:toastIn .55s cubic-bezier(.34,1.56,.64,1) both,toastOut .35s ease 3.25s forwards;
+    transform-origin:top right
+  }
+  /* Left accent stripe */
+  .toast-stripe{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:12px 0 0 12px}
+  .toast-ok   .toast-stripe{background:linear-gradient(180deg,#34D399,#10B981)}
+  .toast-err  .toast-stripe{background:linear-gradient(180deg,#F87171,#EF4444)}
+  .toast-warn .toast-stripe{background:linear-gradient(180deg,#FBBF24,#F59E0B)}
+  /* Icon */
+  .toast-icon{
+    flex-shrink:0;width:22px;height:22px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-family:'Anton',sans-serif;font-size:13px;line-height:1;
+    margin-top:1px
+  }
+  .toast-ok   .toast-icon{background:rgba(16,185,129,.18);color:#34D399;border:1px solid rgba(16,185,129,.4)}
+  .toast-err  .toast-icon{background:rgba(239,68,68,.18); color:#F87171;border:1px solid rgba(239,68,68,.4)}
+  .toast-warn .toast-icon{background:rgba(245,158,11,.18);color:#FBBF24;border:1px solid rgba(245,158,11,.4)}
+  /* Message */
+  .toast-msg{font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;line-height:1.4;color:rgba(255,255,255,.92);letter-spacing:.1px;flex:1;padding-top:1px}
+  /* Auto-dismiss progress */
+  .toast-progress{position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:0 0 12px 12px;transform-origin:left;animation:toastProgress 3.4s linear forwards;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)}
+  .toast-ok   .toast-progress{background:linear-gradient(90deg,rgba(52,211,153,.7),rgba(52,211,153,.2))}
+  .toast-err  .toast-progress{background:linear-gradient(90deg,rgba(248,113,113,.7),rgba(248,113,113,.2))}
+  .toast-warn .toast-progress{background:linear-gradient(90deg,rgba(251,191,36,.7),rgba(251,191,36,.2))}
+  @keyframes toastIn{
+    0%  {opacity:0;transform:translateX(28px) scale(.92)}
+    60% {opacity:1;transform:translateX(-3px) scale(1.02)}
+    100%{opacity:1;transform:translateX(0) scale(1)}
+  }
+  @keyframes toastOut{
+    0%  {opacity:1;transform:translateX(0) scale(1)}
+    100%{opacity:0;transform:translateX(28px) scale(.96)}
+  }
+  @keyframes toastProgress{0%{transform:scaleX(1)}100%{transform:scaleX(0)}}
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LEADERBOARD SKELETON
+  ══════════════════════════════════════════════════════════════════════════ */
+  .lb-skel-podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:24px 12px 12px}
+  .lb-skel-podium-card{
+    flex:1;max-width:110px;border-radius:14px;
+    background:linear-gradient(135deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.06);
+    animation:skelPulse 1.6s ease-in-out infinite
+  }
+  .lb-skel-1{height:130px}
+  .lb-skel-2{height:100px}
+  .lb-skel-3{height:84px}
+  .lb-skel-list{padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+  .lb-skel-row{
+    height:46px;border-radius:10px;
+    background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);
+    background-size:200% 100%;
+    animation:skelShimmer 1.6s linear infinite
+  }
+  @keyframes skelPulse{0%,100%{opacity:.6}50%{opacity:1}}
+  @keyframes skelShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* Polished match-card skeleton (better than the original solid bar) */
+  .mcard-skeleton{
+    height:138px;
+    background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018));
+    border-bottom:1px solid rgba(255,255,255,.05);
+    position:relative;
+    overflow:hidden;
+    animation:skelPulse 2s ease-in-out infinite
+  }
+  .mcard-skeleton::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg,transparent 30%,rgba(255,255,255,.08) 50%,transparent 70%);
+    background-size:200% 100%;
+    animation:skelShimmer 1.8s linear infinite
+  }
+
+  /* Pull-to-refresh indicator (used by future PTR wrapper) */
+  .ptr-indicator{
+    position:absolute;top:0;left:50%;
+    width:36px;height:36px;
+    border-radius:50%;
+    background:rgba(15,15,15,.85);
+    border:1px solid rgba(255,255,255,.1);
+    box-shadow:0 6px 18px rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(8px);
+    pointer-events:none;
+    transition:opacity .2s
+  }
+  .ptr-indicator.ptr-refreshing{animation:ptrSpin 1s linear infinite}
+  @keyframes ptrSpin{to{transform:translateX(-50%) rotate(360deg)}}
+
+  @media (prefers-reduced-motion: reduce){
+    .toast{animation-duration:.25s}
+    .bnav-pill{transition:none}
+    .sponsor-card:hover,.vip-perk-card:hover,.sponsor-tile:hover{transform:none}
+    .mcard:active,.match-card:active{transform:scale(.985)}
+  }
