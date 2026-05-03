@@ -7623,67 +7623,67 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
     },
   ];
 
-  // Derive which group the current section belongs to
-  const activeGroup = GROUPS.find(g => g.tabs.some(t => t.id === section)) || GROUPS[0];
-  const subTabs = activeGroup.tabs;
-
-  const goGroup = (g) => { setSection(g.tabs[0].id); };
-
   return (
     <div className="vpad">
-      {/* ── Level 1: Group nav ── */}
-      <div style={{display:"flex",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.07)",gap:0}}>
-        {GROUPS.map(g => {
-          const on = g.id === activeGroup.id;
-          return (
-            <button key={g.id} onClick={()=>goGroup(g)} style={{
-              display:"flex",alignItems:"center",gap:6,
-              padding:"13px 20px",
-              background: on ? "rgba(255,255,255,.06)" : "transparent",
-              border:"none",
-              borderBottom: on ? "2px solid #fff" : "2px solid transparent",
-              fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,
-              color: on ? "#fff" : "rgba(255,255,255,.35)",
-              cursor:"pointer",transition:"all .18s",whiteSpace:"nowrap",
-              marginBottom:-1,
-            }}>
-              <span style={{opacity: on ? 1 : 0.5}}>{g.ico}</span>
+      {/* ── Single flat nav: every section visible, grouped with subtle dividers ── */}
+      <div style={{
+        display:"flex",alignItems:"center",
+        borderBottom:"1px solid rgba(255,255,255,.07)",
+        background:"rgba(255,255,255,.02)",
+        overflowX:"auto",
+        overflowY:"hidden",
+        WebkitOverflowScrolling:"touch",
+        scrollbarWidth:"thin",
+      }}>
+        {GROUPS.map((g, gi) => (
+          <React.Fragment key={g.id}>
+            {gi > 0 && (
+              <span style={{
+                width:1,height:22,margin:"0 6px",
+                background:"rgba(255,255,255,.1)",flexShrink:0
+              }} aria-hidden="true" />
+            )}
+            <span style={{
+              display:"inline-flex",alignItems:"center",gap:5,
+              padding:"0 8px 0 10px",
+              fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
+              color:"rgba(255,255,255,.32)",
+              flexShrink:0,
+            }} aria-hidden="true">
+              <span style={{opacity:.55}}>{g.ico}</span>
               {g.label}
-            </button>
-          );
-        })}
-        {/* Announce Winner lives in the group bar, right-aligned */}
+            </span>
+            {g.tabs.map(t => {
+              const on = section === t.id;
+              return (
+                <button key={t.id} onClick={()=>setSection(t.id)} style={{
+                  padding:"11px 13px",
+                  background: on ? "rgba(255,255,255,.06)" : "transparent",
+                  border:"none",
+                  borderBottom: on ? "2px solid #fff" : "2px solid transparent",
+                  fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight: on ? 700 : 500,
+                  color: on ? "#fff" : "rgba(255,255,255,.55)",
+                  cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",
+                  marginBottom:-1,letterSpacing:.3,flexShrink:0,
+                }}>
+                  {t.label}
+                </button>
+              );
+            })}
+          </React.Fragment>
+        ))}
+        {/* Announce Winner — right-aligned */}
         {onAnnounceWinner && (
           <button onClick={onAnnounceWinner} style={{
             marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
-            padding:"8px 14px",margin:"6px 12px 6px auto",
+            padding:"7px 14px",margin:"6px 12px 6px auto",
             background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",
             fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-            color:"rgba(255,255,255,.85)",cursor:"pointer",whiteSpace:"nowrap",
+            color:"rgba(255,255,255,.85)",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,
           }}>
             🏆 WINNER
           </button>
         )}
-      </div>
-
-      {/* ── Level 2: Sub-tab nav ── */}
-      <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,.05)",background:"rgba(255,255,255,.02)"}}>
-        {subTabs.map(t => {
-          const on = section === t.id;
-          return (
-            <button key={t.id} onClick={()=>setSection(t.id)} style={{
-              padding:"9px 16px",
-              background:"transparent",border:"none",
-              borderBottom: on ? "2px solid rgba(255,255,255,.5)" : "2px solid transparent",
-              fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight: on ? 700 : 500,
-              color: on ? "#fff" : "rgba(255,255,255,.3)",
-              cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",
-              marginBottom:-1,letterSpacing:.5,
-            }}>
-              {t.label}
-            </button>
-          );
-        })}
       </div>
 
       {/* ── Content ── */}
