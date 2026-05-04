@@ -7589,101 +7589,115 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
     {
       id: "live",
       label: "LIVE OPS",
-      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      ico: "⚡",
+      color: "#ff9500",
       tabs: [
-        { id:"dashboard", label:"Dashboard" },
+        { id:"dashboard", label:"Dashboard", ico:"📊" },
       ]
     },
     {
       id: "service",
       label: "SERVICE",
-      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+      ico: "🍽️",
+      color: "#30d158",
       tabs: [
-        { id:"menu",        label:"Menu"        },
-        { id:"tables",      label:"Tables"      },
-        { id:"tableqr",     label:"Table QR"    },
-        { id:"credits",     label:"Credits"     },
-        { id:"fpAccess",    label:"Floor Plan"  },
-        { id:"keepupsAccess", label:"Keep-Ups" },
-        { id:"appSettings", label:"App Settings"},
+        { id:"menu",          label:"Menu",         ico:"🍔" },
+        { id:"tables",        label:"Tables",       ico:"🪑" },
+        { id:"tableqr",       label:"Table QR",     ico:"📱" },
+        { id:"credits",       label:"Credits",      ico:"💰" },
+        { id:"fpAccess",      label:"Floor Plan",   ico:"🗺️" },
+        { id:"keepupsAccess", label:"Keep-Ups",     ico:"🔔" },
+        { id:"appSettings",   label:"App Settings", ico:"⚙️" },
       ]
     },
     {
       id: "game",
       label: "GAME",
-      ico: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><line x1="2" y1="12" x2="22" y2="12"/></svg>,
+      ico: "⚽",
+      color: "#0a84ff",
       tabs: [
-        { id:"matches",   label:"Matches"   },
-        { id:"rules",     label:"Rules"     },
-        { id:"vip",       label:"VIP Perks" },
-        { id:"gifts",     label:"Gifts"     },
-        { id:"passGifts", label:"Passport Gifts" },
-        { id:"integrity", label:"Integrity" },
+        { id:"matches",   label:"Matches",        ico:"🏟️" },
+        { id:"rules",     label:"Rules",          ico:"📋" },
+        { id:"vip",       label:"VIP Perks",      ico:"👑" },
+        { id:"gifts",     label:"Gifts",          ico:"🎁" },
+        { id:"passGifts", label:"Passport Gifts", ico:"🛂" },
+        { id:"integrity", label:"Integrity",      ico:"🔒" },
       ]
     },
   ];
 
+  // Find active group
+  const activeGroup = GROUPS.find(g => g.tabs.some(t => t.id === section)) || GROUPS[0];
+
   return (
     <div className="vpad">
-      {/* ── Single flat nav: every section visible, grouped with subtle dividers ── */}
+      {/* ── Row 1: Group selectors ── */}
       <div style={{
-        display:"flex",alignItems:"center",
+        display:"flex",alignItems:"stretch",gap:0,
         borderBottom:"1px solid rgba(255,255,255,.07)",
-        background:"rgba(255,255,255,.02)",
-        overflowX:"auto",
-        overflowY:"hidden",
-        WebkitOverflowScrolling:"touch",
-        scrollbarWidth:"thin",
+        background:"rgba(0,0,0,.25)",
       }}>
-        {GROUPS.map((g, gi) => (
-          <React.Fragment key={g.id}>
-            {gi > 0 && (
+        {GROUPS.map(g => {
+          const isActive = g.id === activeGroup.id;
+          return (
+            <button key={g.id} onClick={()=>{ if (!isActive) setSection(g.tabs[0].id); }} style={{
+              flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              gap:3,padding:"10px 4px 9px",
+              background: isActive ? "rgba(255,255,255,.07)" : "transparent",
+              border:"none",
+              borderBottom: isActive ? `2px solid ${g.color}` : "2px solid transparent",
+              cursor:"pointer",transition:"all .18s",
+            }}>
+              <span style={{fontSize:17,lineHeight:1}}>{g.ico}</span>
               <span style={{
-                width:1,height:22,margin:"0 6px",
-                background:"rgba(255,255,255,.1)",flexShrink:0
-              }} aria-hidden="true" />
-            )}
-            <span style={{
-              display:"inline-flex",alignItems:"center",gap:5,
-              padding:"0 8px 0 10px",
-              fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-              color:"rgba(255,255,255,.32)",
-              flexShrink:0,
-            }} aria-hidden="true">
-              <span style={{opacity:.55}}>{g.ico}</span>
-              {g.label}
-            </span>
-            {g.tabs.map(t => {
-              const on = section === t.id;
-              return (
-                <button key={t.id} onClick={()=>setSection(t.id)} style={{
-                  padding:"11px 13px",
-                  background: on ? "rgba(255,255,255,.06)" : "transparent",
-                  border:"none",
-                  borderBottom: on ? "2px solid #fff" : "2px solid transparent",
-                  fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight: on ? 700 : 500,
-                  color: on ? "#fff" : "rgba(255,255,255,.55)",
-                  cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",
-                  marginBottom:-1,letterSpacing:.3,flexShrink:0,
-                }}>
-                  {t.label}
-                </button>
-              );
-            })}
-          </React.Fragment>
-        ))}
-        {/* Announce Winner — right-aligned */}
+                fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
+                color: isActive ? "#fff" : "rgba(255,255,255,.4)",
+                transition:"color .18s",whiteSpace:"nowrap",
+              }}>{g.label}</span>
+            </button>
+          );
+        })}
         {onAnnounceWinner && (
           <button onClick={onAnnounceWinner} style={{
-            marginLeft:"auto",display:"flex",alignItems:"center",gap:6,
-            padding:"7px 14px",margin:"6px 12px 6px auto",
-            background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.25)",
-            fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-            color:"rgba(255,255,255,.85)",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+            gap:3,padding:"10px 10px 9px",
+            background:"transparent",border:"none",
+            borderBottom:"2px solid transparent",
+            cursor:"pointer",flexShrink:0,
           }}>
-            🏆 WINNER
+            <span style={{fontSize:17,lineHeight:1}}>🏆</span>
+            <span style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,color:"rgba(255,200,0,.75)",whiteSpace:"nowrap"}}>WINNER</span>
           </button>
         )}
+      </div>
+
+      {/* ── Row 2: Sub-tabs for active group ── */}
+      <div style={{
+        display:"flex",alignItems:"center",gap:4,
+        padding:"8px 10px",
+        borderBottom:"1px solid rgba(255,255,255,.06)",
+        background:"rgba(255,255,255,.02)",
+        overflowX:"auto",overflowY:"hidden",
+        WebkitOverflowScrolling:"touch",scrollbarWidth:"none",
+      }}>
+        {activeGroup.tabs.map(t => {
+          const on = section === t.id;
+          return (
+            <button key={t.id} onClick={()=>setSection(t.id)} style={{
+              display:"inline-flex",alignItems:"center",gap:5,
+              padding:"7px 12px",borderRadius:20,
+              background: on ? "#fff" : "rgba(255,255,255,.06)",
+              border: on ? "none" : "1px solid rgba(255,255,255,.1)",
+              fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight: on ? 700 : 500,
+              color: on ? "#000" : "rgba(255,255,255,.65)",
+              cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",flexShrink:0,
+              letterSpacing:.2,
+            }}>
+              <span style={{fontSize:13,lineHeight:1}}>{t.ico}</span>
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Content ── */}
