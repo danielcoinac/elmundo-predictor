@@ -2797,66 +2797,37 @@
   ══════════════════════════════════════════════════════════════════════════ */
 
   /* Header badge */
-  .hdr-credits-badge{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.08));border:1px solid rgba(16,185,129,.3);cursor:pointer;transition:background .2s,border-color .2s;position:relative;overflow:visible}
+  /* Credits badge + side-delta wrapper */
+  .hdr-credits-wrap{position:relative;display:inline-flex;align-items:center}
+  .hdr-credits-badge{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.08));border:1px solid rgba(16,185,129,.3);cursor:pointer;transition:background .2s,border-color .2s}
   .hdr-credits-badge:hover{background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(5,150,105,.14));border-color:rgba(16,185,129,.5)}
   .hdr-credits-icon{font-size:14px;line-height:1;flex-shrink:0}
   .hdr-credits-info{display:flex;flex-direction:column;align-items:flex-start;line-height:1}
-  .hdr-credits-value{font-family:'Anton',sans-serif;font-size:14px;color:#10b981;letter-spacing:.5px;line-height:1;animation:creditsFlip .35s ease both}
+  .hdr-credits-value{font-family:'Anton',sans-serif;font-size:14px;color:#10b981;letter-spacing:.5px;line-height:1}
   .hdr-credits-label{font-family:'Outfit',sans-serif;font-size:8px;letter-spacing:2.5px;color:rgba(16,185,129,.5);margin-top:2px}
-  /* Mini delta badge on credit badge */
-  .hdr-credits-delta{position:absolute;top:-8px;right:-4px;font-family:'Anton',sans-serif;font-size:11px;padding:2px 7px;border-radius:20px;pointer-events:none;white-space:nowrap;animation:creditsDeltaPop 3s cubic-bezier(.22,1,.36,1) forwards}
-  .hdr-credits-delta-up{color:#10b981;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);text-shadow:0 0 8px rgba(16,185,129,.6)}
-  .hdr-credits-delta-down{color:#f87171;background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.35);text-shadow:0 0 8px rgba(248,113,113,.5)}
 
-  /* Animated number flip */
-  @keyframes creditsFlip{0%{opacity:0;transform:translateY(6px) scale(.85)}60%{transform:translateY(-2px) scale(1.05)}100%{opacity:1;transform:translateY(0) scale(1)}}
-
-  /* Mini delta pop+float */
-  @keyframes creditsDeltaPop{0%{opacity:0;transform:translateY(4px) scale(.7)}10%{opacity:1;transform:translateY(-2px) scale(1.15)}20%{transform:translateY(0) scale(1)}70%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-12px) scale(.85)}}
-
-  /* ── Localized PREMIUM badge animation (replaces full-screen ceremony) ── */
-  /* Pulse the whole badge (border + glow) */
-  .hdr-credits-badge-pulse-up{animation:hcbPulseUp 2.4s cubic-bezier(.22,1,.36,1) forwards}
-  .hdr-credits-badge-pulse-down{animation:hcbPulseDown 2.4s cubic-bezier(.22,1,.36,1) forwards}
-  @keyframes hcbPulseUp{
-    0%  {box-shadow:0 0 0 0 rgba(16,185,129,0);    border-color:rgba(16,185,129,.3)}
-    20% {box-shadow:0 0 0 6px rgba(16,185,129,.18),0 0 28px rgba(16,185,129,.55); border-color:rgba(16,185,129,.85);transform:scale(1.04)}
-    50% {box-shadow:0 0 0 10px rgba(16,185,129,0),0 0 18px rgba(16,185,129,.35); border-color:rgba(16,185,129,.6)}
-    100%{box-shadow:0 0 0 0 rgba(16,185,129,0);    border-color:rgba(16,185,129,.3);transform:scale(1)}
+  /* Delta chip — appears to the RIGHT of the badge, floats up and fades */
+  .hdr-credits-delta{
+    position:absolute;left:calc(100% + 6px);top:50%;
+    transform:translateY(-50%);
+    font-family:'Anton',sans-serif;font-size:12px;
+    padding:3px 8px;border-radius:20px;
+    pointer-events:none;white-space:nowrap;z-index:10;
+    animation:creditsDeltaSide 2.8s cubic-bezier(.22,1,.36,1) forwards
   }
-  @keyframes hcbPulseDown{
-    0%  {box-shadow:0 0 0 0 rgba(248,113,113,0);   border-color:rgba(16,185,129,.3)}
-    20% {box-shadow:0 0 0 6px rgba(248,113,113,.18),0 0 28px rgba(248,113,113,.5);  border-color:rgba(248,113,113,.8); transform:scale(1.04)}
-    50% {box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 18px rgba(248,113,113,.3);   border-color:rgba(248,113,113,.5)}
-    100%{box-shadow:0 0 0 0 rgba(248,113,113,0);   border-color:rgba(16,185,129,.3);transform:scale(1)}
+  .hdr-credits-delta-up{color:#10b981;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4)}
+  .hdr-credits-delta-down{color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35)}
+
+  @keyframes creditsDeltaSide{
+    0%  {opacity:0;transform:translateY(calc(-50% + 6px))}
+    12% {opacity:1;transform:translateY(calc(-50% - 2px))}
+    25% {transform:translateY(-50%)}
+    72% {opacity:1;transform:translateY(-50%)}
+    100%{opacity:0;transform:translateY(calc(-50% - 18px))}
   }
 
-  /* Diagonal shimmer sweep across the badge */
-  .hdr-credits-shimmer{position:absolute;inset:0;border-radius:10px;overflow:hidden;pointer-events:none}
-  .hdr-credits-shimmer::after{content:"";position:absolute;top:-100%;left:-60%;width:60%;height:300%;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:rotate(8deg);animation:hcbShimmer 1.4s cubic-bezier(.22,1,.36,1) .15s 1 forwards}
-  @keyframes hcbShimmer{0%{transform:translateX(-50%) rotate(8deg);opacity:0}10%{opacity:1}100%{transform:translateX(420%) rotate(8deg);opacity:0}}
-
-  /* Sparkle particles bursting from the badge */
-  .hdr-credits-sparks{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:5}
-  .hcs-particle{position:absolute;left:0;top:0;width:5px;height:5px;border-radius:50%;opacity:0}
-  .hcs-up   .hcs-particle{background:radial-gradient(circle,#A7F3D0 0%,#10B981 70%,transparent 100%);box-shadow:0 0 8px rgba(16,185,129,.85)}
-  .hcs-down .hcs-particle{background:radial-gradient(circle,#FCA5A5 0%,#EF4444 70%,transparent 100%);box-shadow:0 0 8px rgba(248,113,113,.7)}
-  .hcs-p0{animation:hcsBurst 1.4s cubic-bezier(.16,1,.3,1) .1s forwards;--hx:  46px;--hy:-26px}
-  .hcs-p1{animation:hcsBurst 1.5s cubic-bezier(.16,1,.3,1) .15s forwards;--hx: -38px;--hy:-30px}
-  .hcs-p2{animation:hcsBurst 1.3s cubic-bezier(.16,1,.3,1) .2s  forwards;--hx:  56px;--hy: 14px}
-  .hcs-p3{animation:hcsBurst 1.6s cubic-bezier(.16,1,.3,1) .12s forwards;--hx: -50px;--hy: 18px}
-  .hcs-p4{animation:hcsBurst 1.4s cubic-bezier(.16,1,.3,1) .25s forwards;--hx:  18px;--hy:-42px}
-  .hcs-p5{animation:hcsBurst 1.5s cubic-bezier(.16,1,.3,1) .18s forwards;--hx: -16px;--hy: 38px}
-  @keyframes hcsBurst{
-    0%  {opacity:0;transform:translate(-50%,-50%) scale(.4)}
-    20% {opacity:1;transform:translate(calc(var(--hx)*.3 - 50%),calc(var(--hy)*.3 - 50%)) scale(1.1)}
-    100%{opacity:0;transform:translate(calc(var(--hx) - 50%),calc(var(--hy) - 50%)) scale(.3)}
-  }
-
-  /* Reduced-motion: keep the static delta only */
   @media (prefers-reduced-motion: reduce){
-    .hdr-credits-shimmer,.hdr-credits-sparks{display:none}
-    .hdr-credits-badge-pulse-up,.hdr-credits-badge-pulse-down{animation:none}
+    .hdr-credits-delta{animation:none;opacity:1}
   }
 
   /* ══════════════════════════════════════════════════════════════════════════

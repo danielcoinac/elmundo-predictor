@@ -2733,35 +2733,28 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
               </div>
             )}
             {/* ── Credits badge — shown for ALL users. Tap → wallet ── */}
-            <div
-              className={`hdr-credits-badge ${creditsAnim ? (creditsAnim.positive ? "hdr-credits-badge-pulse-up" : "hdr-credits-badge-pulse-down") : ""}`}
-              style={{position:"relative"}}
-              onClick={() => { setMenuInitTab("wallet"); switchTab("menu"); }}
-              title="Open your wallet"
-            >
-              <div className="hdr-credits-icon">💳</div>
-              <div className="hdr-credits-info">
-                <span className="hdr-credits-value">
-                  ${animatedCredits.toFixed(2)}
-                </span>
-                <span className="hdr-credits-label">CREDITS</span>
+            <div className="hdr-credits-wrap">
+              <div
+                className="hdr-credits-badge"
+                onClick={() => { setMenuInitTab("wallet"); switchTab("menu"); }}
+                title="Open your wallet"
+              >
+                <div className="hdr-credits-icon">💳</div>
+                <div className="hdr-credits-info">
+                  <span className="hdr-credits-value">
+                    ${animatedCredits.toFixed(2)}
+                  </span>
+                  <span className="hdr-credits-label">CREDITS</span>
+                </div>
               </div>
-              {/* Premium localized animation: shimmer sweep + delta pop + sparkle particles */}
+              {/* Delta floats up to the right of the badge */}
               {creditsAnim && (
-                <>
-                  <span className="hdr-credits-shimmer" key={`shim-${creditsAnim.key}`} />
-                  <span
-                    key={creditsAnim.key}
-                    className={`hdr-credits-delta ${creditsAnim.positive ? "hdr-credits-delta-up" : "hdr-credits-delta-down"}`}
-                  >
-                    {creditsAnim.positive ? "+" : "−"}${Math.abs(creditsAnim.delta).toFixed(2)}
-                  </span>
-                  <span className={`hdr-credits-sparks ${creditsAnim.positive ? "hcs-up" : "hcs-down"}`} key={`spk-${creditsAnim.key}`}>
-                    {Array.from({length:6}).map((_,i)=>(
-                      <span key={i} className={`hcs-particle hcs-p${i}`} />
-                    ))}
-                  </span>
-                </>
+                <span
+                  key={creditsAnim.key}
+                  className={`hdr-credits-delta ${creditsAnim.positive ? "hdr-credits-delta-up" : "hdr-credits-delta-down"}`}
+                >
+                  {creditsAnim.positive ? "+" : "−"}${Math.abs(creditsAnim.delta).toFixed(2)}
+                </span>
               )}
             </div>
             {isAdmin && <span className="admin-badge">ADMIN</span>}
