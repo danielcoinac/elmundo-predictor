@@ -2808,7 +2808,7 @@
 
   /* Delta chip — appears to the RIGHT of the badge, floats up and fades */
   .hdr-credits-delta{
-    position:absolute;left:calc(100% + 6px);top:50%;
+    position:absolute;right:calc(100% + 6px);top:50%;
     transform:translateY(-50%);
     font-family:'Anton',sans-serif;font-size:12px;
     padding:3px 8px;border-radius:20px;
