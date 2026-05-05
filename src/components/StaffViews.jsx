@@ -126,7 +126,7 @@ function AdminHistory({ allOrders }) {
                     {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
                     <span className="history-order-table">Table {ord.table_number}</span>
                   </div>
-                  <div className="history-order-items-inline">{ord.items.map(it=>`${it.qty}x ${it.name}`).join(" · ")}</div>
+                  <div className="history-order-items-inline">{(ord.items||[]).map(it=>`${it.qty}x ${it.name}`).join(" · ")}</div>
                   <div className="order-card-date">{new Date(ord.created_at).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -728,6 +728,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     newEntries.forEach(({ ord }) => {
       if (!ord) return;
       const zone = localStorage.getItem("em-printer-zone");
+      if (!zone) return; // No zone configured — this device doesn't auto-print
       const orderIsOutside = String(ord.table_number).startsWith("OUT-");
       if (zone === "inside"  &&  orderIsOutside) return; // outside order → skip on inside device
       if (zone === "outside" && !orderIsOutside) return; // inside order  → skip on outside device
@@ -806,6 +807,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     const pos = getPos(e);
     const rect = canvasRef.current.getBoundingClientRect();
     const t = curTables.find(t => t.id === id);
+    if (!t) return; // table may have been deleted concurrently
     setDragging({ id, ox: pos.x - rect.left - t.x, oy: pos.y - rect.top - t.y });
     setEditSel(id);
   };
@@ -814,6 +816,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     e.stopPropagation(); e.preventDefault();
     const pos = getPos(e);
     const t = curTables.find(t => t.id === id);
+    if (!t) return; // table may have been deleted concurrently
     setResizing({ id, sx: pos.x, sy: pos.y, sw: t.w, sh: t.h });
   };
 

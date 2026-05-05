@@ -15,6 +15,20 @@ function getEventLabel() {
   try { const s = JSON.parse(localStorage.getItem("em_app_settings")||"{}"); return `${s.eventName||"WORLD CUP"} ${s.eventYear||2026}`; } catch { return "WORLD CUP 2026"; }
 }
 
+// Module-level constant — stable reference, never recreated on render
+const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
+
+// Shared AudioContext — reuse across all sound calls; browsers limit to ~6 concurrent
+let _sharedAudioCtx = null;
+const getAudioCtx = () => {
+  try {
+    if (!_sharedAudioCtx || _sharedAudioCtx.state === "closed") {
+      _sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return _sharedAudioCtx;
+  } catch { return null; }
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    ROOT
 ═══════════════════════════════════════════════════════════════════════════ */
@@ -60,7 +74,6 @@ export default function App() {
   const [showGifts,      setShowGifts]      = useState(false);
   const [passportCompletion, setPassportCompletion] = useState(null);
   const [pendingGiftItems, setPendingGiftItems] = useState([]); // gift(s) queued to add to menu cart
-  const APP_SETTINGS_DEF = { showMatches:true, showLeaderboard:true, showMundogram:true, showMenu:true, noEventMode:false, eventYear:2026, eventName:"WORLD CUP" };
   const [appSettings, setAppSettings] = useState(APP_SETTINGS_DEF);
   // Online/offline detection
   useEffect(() => {
@@ -336,16 +349,7 @@ export default function App() {
         setPreds(p => ({ ...p, [`${r.user_id}__${r.match_id}`]: { h: r.home_pred, a: r.away_pred } }));
       }).subscribe();
 
-    // ── 6. MY CREDITS — Realtime ─────────────────────────────────────────────
-    const creditSub = supabase.channel("rt-credits")
-      .on("postgres_changes", {
-        event:"*", schema:"public", table:"user_credits",
-        filter:`user_id=eq.${uid}`
-      }, payload => {
-        if (payload.new) setMyCredits(payload.new.balance || 0);
-      }).subscribe();
-
-    // ── 6b. CREDIT TOP-UP NOTIFICATION ───────────────────────────────────────
+    // ── 6. MY CREDITS — Realtime (single channel handles balance + notification) ─
     const creditNotifSub = supabase.channel("rt-credits-user")
       .on("postgres_changes", { event:"UPDATE", schema:"public", table:"user_credits", filter:`user_id=eq.${uid}` }, payload => {
         const newBal = payload.new?.balance;
@@ -499,7 +503,6 @@ export default function App() {
       supabase.removeChannel(menuSub);
       supabase.removeChannel(profileSub);
       supabase.removeChannel(predSub);
-      supabase.removeChannel(creditSub);
       supabase.removeChannel(orderSub);
       supabase.removeChannel(creditNotifSub);
       if (adminOrderSub) supabase.removeChannel(adminOrderSub);
@@ -564,7 +567,7 @@ export default function App() {
 
   const playOrderAlert = () => {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = getAudioCtx(); if (!ctx) return;
       [[880, 0], [1100, 0.18], [1320, 0.34]].forEach(([freq, delay]) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -581,7 +584,7 @@ export default function App() {
 
   const playMatchAlert = () => {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = getAudioCtx(); if (!ctx) return;
       [[523, 0], [659, 0.2]].forEach(([freq, delay]) => {
         const osc = ctx.createOscillator(); const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
@@ -733,6 +736,8 @@ export default function App() {
     const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`;
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) return setFormErr(error.message);
+    // When email confirmation is required, data.user is null — prompt the user
+    if (!data?.user) return setFormErr("Check your email to confirm your account, then log in.");
     // Auto-assign next player number atomically via DB sequence (no race condition)
     const { data: seqNum } = await supabase.rpc("next_player_number");
     const playerNumber = seqNum || 1;
@@ -920,9 +925,8 @@ export default function App() {
   // Full board includes ALL users (admins too) so the rank anchor can always
   // locate the current user regardless of their admin status.
   // LeaderView filters admins out of the visible podium/table itself.
-  const board = Object.values(users)
-    .map(u => ({ ...u, pts: pts(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const board = useMemo(() => Object.values(users).map(u => ({ ...u, pts: pts(u.id) })).sort((a, b) => b.pts - a.pts), [users, pts]);
 
   const isAdmin = user?.is_admin === true || user?.is_admin === 1 || user?.is_admin === "true"
     || user?.badge === "developer" || user?.badge === "owner";
@@ -1128,9 +1132,8 @@ export default function App() {
 
   const adminAddCredits = async (userId, amount, userName) => {
     if (!amount || +amount <= 0) { toast$("Enter a valid amount", false); return; }
-    const { data: cur } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
-    const newBal = +((cur?.balance || 0) + amount).toFixed(2);
-    const { error: upsertErr } = await supabase.from("user_credits").upsert({ user_id: userId, balance: newBal, updated_at: new Date().toISOString() });
+    // Use atomic RPC to avoid read-modify-write race with concurrent admin sessions
+    const { data: newBal, error: upsertErr } = await supabase.rpc("add_credits", { p_user_id: userId, p_amount: +amount });
     if (upsertErr) { toast$("Error adding credits: " + upsertErr.message, false); return; }
     await supabase.from("credit_topups").insert({ user_id: userId, amount, method: "cash", added_by: user.id });
     // Audit log for accountability
@@ -1352,6 +1355,8 @@ export default function App() {
         await supabase.from("group_order_items").delete().eq("group_order_id", activeGroup.id).eq("added_by_user_id", user.id);
       }
     }
+    // Clean up payment timer so it doesn't ghost on re-use of the same group id
+    try { if (activeGroup?.id) localStorage.removeItem(`em-grp-paystart-${activeGroup.id}`); } catch {}
     setActiveGroup(null); setGroupMembers([]); setGroupItems([]);
   };
 
@@ -1417,7 +1422,8 @@ export default function App() {
 
   const checkAndPlaceGroupOrder = async (groupId) => {
     const { data: members } = await supabase.from("group_order_members").select("*").eq("group_order_id", groupId);
-    if (!members?.every(m => m.payment_status === "paid")) return false;
+    // Accept both "paid" and "assigned" — assigned members have their share covered by someone else
+    if (!members?.every(m => m.payment_status === "paid" || m.payment_status === "assigned")) return false;
     const { data: items } = await supabase.from("group_order_items").select("*").eq("group_order_id", groupId);
     const { data: order } = await supabase.from("group_orders").select("*").eq("id", groupId).maybeSingle();
     if (!items || !order) return false;
@@ -1429,6 +1435,7 @@ export default function App() {
     }
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
     const { data: hostProfile } = await supabase.from("profiles").select("name").eq("id", order.host_user_id).maybeSingle();
+    // Use upsert with conflict on group_order_id to prevent double-order race
     const { error: orderError } = await supabase.from("orders").insert({
       user_id: order.host_user_id,
       user_name: hostProfile?.name || "Group Order",
@@ -1438,8 +1445,15 @@ export default function App() {
       payment_method: order.payment_mode === "host" ? "group_host" : "group_individual",
       status: "completed",
     });
-    if (orderError) { toast$("Error placing group order — please contact staff", false); return false; }
-    const { error: statusError } = await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId);
+    if (orderError) {
+      // If unique constraint violation — another device already placed it; sync local state
+      if (orderError.code === "23505") {
+        setActiveGroup(prev => prev ? { ...prev, status: "placed" } : prev);
+        return true;
+      }
+      toast$("Error placing group order — please contact staff", false); return false;
+    }
+    const { error: statusError } = await supabase.from("group_orders").update({ status: "placed" }).eq("id", groupId).eq("status", "awaiting_payment");
     if (statusError) { toast$("Order sent but status update failed — contact staff", false); return false; }
     // Immediately update local state — don't wait for realtime which can be slow
     setActiveGroup(prev => prev ? { ...prev, status: "placed" } : prev);
@@ -1480,7 +1494,9 @@ export default function App() {
 
   const hostPayAllCredits = async () => {
     if (!activeGroup) return false;
-    const total = groupItems.reduce((s, i) => s + i.price * i.qty, 0);
+    // Always fetch fresh items — local state may be stale if members added/removed items
+    const { data: freshItems } = await supabase.from("group_order_items").select("*").eq("group_order_id", activeGroup.id);
+    const total = (freshItems || groupItems).reduce((s, i) => s + i.price * i.qty, 0);
     // Atomic credit deduction — DB lock prevents double-spend
     const { data: newBal, error: deductErr } = await supabase.rpc("deduct_credits", {
       p_user_id: user.id, p_amount: +total.toFixed(2)
@@ -1512,6 +1528,8 @@ export default function App() {
     if (data) setActiveGroup(data);
     const { data: mems } = await supabase.from("group_order_members").select("*").eq("group_order_id", activeGroup.id);
     if (mems) setGroupMembers(mems);
+    // Clear the payment countdown timer so it resets cleanly for the next checkout attempt
+    try { localStorage.removeItem(`em-grp-paystart-${activeGroup.id}`); } catch {}
   };
 
   return (
@@ -4926,10 +4944,14 @@ function SponsorShowcase({ onClose }) {
   const [animKey, setAnimKey] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const SLIDE_MS = 5000;
+  const transTimerRef = useRef(null);
+
+  // Cleanup transition timer on unmount to prevent setState on dead component
+  useEffect(() => () => { if (transTimerRef.current) clearTimeout(transTimerRef.current); }, []);
 
   const advance = (next) => {
     setLeaving(true);
-    setTimeout(() => {
+    transTimerRef.current = setTimeout(() => {
       setIdx(next);
       setAnimKey(k => k+1);
       setLeaving(false);
@@ -5281,7 +5303,7 @@ function PassportView({ user, stamps, matches = [], onClose }) {
   // Stamp slam sound effect (Web Audio API — no files needed)
   const playStampSound = useCallback(() => {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = getAudioCtx(); if (!ctx) return;
       // Impact thud
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -10998,11 +11020,11 @@ function GroupOrderView({
               <div className="go-section-title" style={{marginBottom:8}}>YOUR SHARE · ${myShare.toFixed(2)}</div>
 
               {/* Assign to someone else — only show unpaid members who aren't already paying for someone else */}
-              {otherMembers.filter(m => m.payment_status !== "paid").length > 0 && (
+              {otherMembers.filter(m => m.payment_status !== "paid" && m.payment_status !== "assigned").length > 0 && (
                 <div style={{marginBottom:16}}>
                   <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:8,letterSpacing:1}}>ASSIGN TO SOMEONE ELSE</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {otherMembers.filter(m => m.payment_status !== "paid").map(m => (
+                    {otherMembers.filter(m => m.payment_status !== "paid" && m.payment_status !== "assigned").map(m => (
                       <button key={m.id} className="go-assign-btn"
                         onClick={() => assignMyPaymentTo(m.user_id)}>
                         {m.display_name} pays for me
