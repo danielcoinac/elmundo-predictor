@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import jsQR from "jsqr";
 import { supabase } from "./lib/supabase";
 import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
@@ -1625,6 +1626,7 @@ export default function App() {
         />
       )}
     </div>
+    <SpeedInsights />
     </LangContext.Provider>
   );
 }
