@@ -83,6 +83,10 @@ export default function App() {
   const [form,     setForm]     = useState({ name:"", email:"", phone:"", password:"" });
   const [formErr,  setFormErr]  = useState("");
   const [publicBoard, setPublicBoard] = useState([]);
+  // Server-side leaderboard scores — avoids the 1000-row PostgREST cap.
+  // Populated from get_leaderboard_scores() RPC; used for board computation
+  // so other users' pts don't depend on the current-user-only preds state.
+  const [leaderScores, setLeaderScores] = useState({});
   const [menuItems,   setMenuItems]   = useState([]);
   const [myCredits,   setMyCredits]   = useState(0);
   const [myOrders,    setMyOrders]    = useState([]);
@@ -182,21 +186,20 @@ export default function App() {
       }
       setMatchesLoaded(true);
 
-      // Load public leaderboard (available before login, for TV screen)
+      // Load public leaderboard (available before login, for TV screen).
+      // Scores are computed server-side via get_leaderboard_scores() to avoid
+      // the PostgREST 1000-row cap that would silently truncate predictions.
       const { data: pubProfiles } = await supabase.from("profiles").select("*");
-      const { data: pubPreds }    = await supabase.from("predictions").select("*");
-      if (pubProfiles && pubPreds && mRows) {
-        const predMap = {};
-        pubPreds.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
-        const finished = mRows.filter(r => r.status === "finished");
+      if (pubProfiles) {
+        const { data: scores } = await supabase.rpc("get_leaderboard_scores");
+        const scoreMap = {};
+        (scores || []).forEach(s => { scoreMap[s.user_id] = s.pts; });
+        setLeaderScores(scoreMap);
         const noAdmins = pubProfiles.filter(u => !u.is_admin);
-        const pubBoard = noAdmins.map(u => ({
-          ...u,
-          pts: finished.reduce((acc, m) => {
-            const p = predMap[`${u.id}__${m.id}`];
-            return acc + calcPts(p, m.home_score, m.away_score);
-          }, 0)
-        })).sort((a,b) => b.pts - a.pts).slice(0, 10);
+        const pubBoard = noAdmins
+          .map(u => ({ ...u, pts: scoreMap[u.id] || 0 }))
+          .sort((a, b) => b.pts - a.pts)
+          .slice(0, 10);
         setPublicBoard(pubBoard);
       }
 
@@ -205,11 +208,14 @@ export default function App() {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
         if (profile) {
           setUser({ ...session.user, ...profile });
-          const { data: predRows } = await supabase.from("predictions").select("*");
+          // Filter to current user only — avoids PostgREST's 1000-row cap
+          // which would silently drop predictions for later-registered users.
+          const { data: predRows } = await supabase.from("predictions").select("*").eq("user_id", session.user.id);
           if (predRows) {
             const predMap = {};
             predRows.forEach(p => { predMap[`${p.user_id}__${p.match_id}`] = { h: p.home_pred, a: p.away_pred }; });
-            setPreds(predMap);
+            // Merge: keep any optimistic saves already in state (race-condition guard)
+            setPreds(prev => ({ ...predMap, ...prev }));
           }
           const { data: allProfiles } = await supabase.from("profiles").select("*");
           if (allProfiles) {
@@ -296,6 +302,17 @@ export default function App() {
             // Push to ALL users (even those with app closed)
             if (isAdminRef.current) sendPush({ title: "Match Result", body: `${r.home} ${r.home_score} – ${r.away_score} ${r.away}`, tag: `result-${r.id}` });
             try { navigator.vibrate?.([100, 50, 100]); } catch {}
+            // Refresh server-side leaderboard scores so the board updates instantly
+            supabase.rpc("get_leaderboard_scores").then(({ data: lbData }) => {
+              if (lbData) {
+                const lm = {}; lbData.forEach(s => { lm[s.user_id] = s.pts; });
+                setLeaderScores(lm);
+                setPublicBoard(prev => {
+                  const updated = prev.map(u => ({ ...u, pts: lm[u.id] ?? u.pts }));
+                  return updated.sort((a, b) => b.pts - a.pts);
+                });
+              }
+            });
           }
         }
       }).subscribe();
@@ -680,7 +697,7 @@ export default function App() {
     setUser({ ...data.user, ...profile });
     // Load all user data in parallel
     const [predRows, allProfiles, menuRows, credRow, orderRows] = await Promise.all([
-      supabase.from("predictions").select("*").then(r => r.data || []).catch(() => []),
+      supabase.from("predictions").select("*").eq("user_id", data.user.id).then(r => r.data || []).catch(() => []),
       supabase.from("profiles").select("*").then(r => r.data || []).catch(() => []),
       supabase.from("menu_items").select("*").order("sort_order").then(r => r.data || []).catch(() => []),
       supabase.from("user_credits").select("balance").eq("user_id", data.user.id).maybeSingle().then(r => r.data).catch(() => null),
@@ -699,6 +716,13 @@ export default function App() {
     if (menuRows) setMenuItems(menuRows);
     if (credRow) setMyCredits(+credRow.balance);
     if (orderRows) setMyOrders(orderRows);
+    // Fetch server-side leaderboard scores (avoids the 1000-row cap)
+    supabase.rpc("get_leaderboard_scores").then(({ data: lbData }) => {
+      if (lbData) {
+        const lm = {}; lbData.forEach(s => { lm[s.user_id] = s.pts; });
+        setLeaderScores(lm);
+      }
+    });
     setPage("app");
     toast$(`Welcome back, ${profile.name}! ⚽`);
   };
@@ -822,6 +846,10 @@ export default function App() {
 
   /* ── Rooms ── */
 
+  // pts() is kept for the current user only (myPts) — real-time because preds
+  // is updated optimistically on every save.  For the leaderboard board we use
+  // leaderScores (server-side aggregate) so other users' scores aren't limited
+  // to the 1000-row PostgREST cap that would silently drop late-registered users.
   const pts = useCallback((uid) =>
     matches.filter(m => m.status === "finished").reduce((acc, m) => {
       const p = preds[`${uid}__${m.id}`];
@@ -831,8 +859,11 @@ export default function App() {
   // Full board includes ALL users (admins too) so the rank anchor can always
   // locate the current user regardless of their admin status.
   // LeaderView filters admins out of the visible podium/table itself.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const board = useMemo(() => Object.values(users).map(u => ({ ...u, pts: pts(u.id) })).sort((a, b) => b.pts - a.pts), [users, pts]);
+  const board = useMemo(() =>
+    Object.values(users)
+      .map(u => ({ ...u, pts: leaderScores[u.id] ?? 0 }))
+      .sort((a, b) => b.pts - a.pts),
+  [users, leaderScores]);
 
   const isAdmin = user?.is_admin === true || user?.is_admin === 1 || user?.is_admin === "true"
     || user?.badge === "developer" || user?.badge === "owner";
@@ -4192,16 +4223,28 @@ function PlayerSearchView({ allUsers, currentUser, matches }) {
   );
 }
 
-function PlayerProfileModal({ player, rank, matches, preds, onClose }) {
+function PlayerProfileModal({ player, rank, matches, onClose }) {
   const finishedMatches = matches.filter(m => m.status === "finished");
-  const stats = finishedMatches.reduce((acc, m) => {
-    const p = preds[`${player.id}__${m.id}`];
-    if (!p) return acc;
-    const score = calcPts(p, m.hs ?? m.home_score, m.as ?? m.away_score);
-    acc.total++;
-    if (score === 5) acc.exact++;
-    return acc;
-  }, { total: 0, exact: 0 });
+  // Fetch this player's predictions on demand — avoids dependency on global
+  // preds state which only contains the current user's rows after the 1000-row fix.
+  const [stats, setStats] = useState({ total: 0, exact: 0 });
+  useEffect(() => {
+    if (finishedMatches.length === 0) return;
+    supabase.from("predictions").select("*").eq("user_id", player.id)
+      .then(({ data: rows }) => {
+        if (!rows) return;
+        const pm = {}; rows.forEach(p => { pm[p.match_id] = { h: p.home_pred, a: p.away_pred }; });
+        const s = finishedMatches.reduce((acc, m) => {
+          const p = pm[m.id];
+          if (!p) return acc;
+          const score = calcPts(p, m.hs ?? m.home_score, m.as ?? m.away_score);
+          acc.total++;
+          if (score === 5) acc.exact++;
+          return acc;
+        }, { total: 0, exact: 0 });
+        setStats(s);
+      });
+  }, [player.id]); // eslint-disable-line
 
   const acc = stats.total > 0 ? Math.round(stats.exact / stats.total * 100) : null;
   const MEDALS = ["🥇","🥈","🥉"];
@@ -4303,7 +4346,6 @@ function LeaderView({ board, user, allUsers = [], matches = [], preds = {} }) {
           player={profilePlayer}
           rank={profileRank}
           matches={matches}
-          preds={preds}
           onClose={() => setProfilePlayer(null)}
         />
       )}
