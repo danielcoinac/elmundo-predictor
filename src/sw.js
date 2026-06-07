@@ -1,6 +1,6 @@
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst } from 'workbox-strategies';
+import { CacheFirst, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -25,19 +25,15 @@ registerRoute(
     plugins: [new ExpirationPlugin({ maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 })],
   })
 );
-// Supabase REST API
+// Supabase REST API — NetworkOnly: live data must never be served stale.
+// Predictions, profiles, orders, credits all change in real-time; serving
+// a cached response after a save would make predictions "disappear" on refresh.
+// Offline prediction saves are already handled by the in-app localStorage queue.
 registerRoute(
   /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-  new NetworkFirst({
-    cacheName: 'supabase-api-cache',
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 }),
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
-    ],
-    networkTimeoutSeconds: 5,
-  })
+  new NetworkOnly()
 );
-// Supabase Storage (avatars, images)
+// Supabase Storage (avatars, images) — long-lived, safe to cache
 registerRoute(
   /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
   new CacheFirst({
