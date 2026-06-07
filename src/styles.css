@@ -3271,3 +3271,29 @@
     transition:background .2s,border-color .2s;
   }
   .recap-cta-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3)}
+
+  /* ── Pathways tab ── */
+  .pathways-wrap{padding-bottom:80px}
+  .pathways-round-bar{display:flex;overflow-x:auto;gap:8px;padding:14px 16px;scrollbar-width:none;border-bottom:1px solid rgba(255,255,255,.07)}
+  .pathways-round-bar::-webkit-scrollbar{display:none}
+  .pathways-round-btn{flex-shrink:0;padding:7px 16px;background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.38);font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2px;border-radius:100px;cursor:pointer;transition:all .2s;white-space:nowrap}
+  .pathways-round-btn:hover{border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.7)}
+  .pathways-round-btn-on{border-color:#fff;color:#fff;background:rgba(255,255,255,.06)}
+  .pathways-round-hd{display:flex;align-items:center;gap:10px;padding:16px 16px 10px}
+  .pathways-round-icon{font-size:18px;line-height:1}
+  .pathways-round-name{font-family:'Anton',sans-serif;font-size:16px;letter-spacing:2.5px;color:#fff;text-transform:uppercase;flex:1}
+  .pathways-round-prog{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.35);font-weight:500}
+  .pathways-matches{display:flex;flex-direction:column}
+  .pw-card{border-bottom:1px solid rgba(255,255,255,.055);padding:14px 16px 16px;transition:background .15s}
+  .pw-card:hover{background:rgba(255,255,255,.02)}
+  .pw-card-date{font-family:'Outfit',sans-serif;font-size:12px;color:rgba(255,255,255,.32);margin-bottom:12px;letter-spacing:.3px}
+  .pw-card-body{display:flex;flex-direction:column}
+  .pw-row{display:flex;align-items:center;gap:10px;padding:10px 0}
+  .pw-sep{height:1px;background:rgba(255,255,255,.055);margin:0 4px}
+  .pw-flag{font-size:22px;width:30px;flex-shrink:0;text-align:center}
+  .pw-team-name{flex:1;font-family:'Outfit',sans-serif;font-size:14px;color:rgba(255,255,255,.65);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pw-score{font-family:'Anton',sans-serif;font-size:22px;color:rgba(255,255,255,.2);min-width:26px;text-align:right;flex-shrink:0}
+  .pw-score-tbd{color:rgba(255,255,255,.15)}
+  .pw-score-win{color:#fff}
+  .pw-row-win .pw-team-name{color:#fff;font-weight:600}
+  .pw-row-lose .pw-team-name{color:rgba(255,255,255,.3)}

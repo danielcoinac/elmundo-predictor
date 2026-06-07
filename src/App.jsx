@@ -2809,7 +2809,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
       {/* ── Match Pulse — broadcast-style live atmosphere ── */}
       <MatchPulse matches={matches} pulseCounts={pulseCounts} user={user} getPred={getPred} />
 
-      {/* ── Upcoming / Results tabs ── */}
+      {/* ── Upcoming / Pathways / Results tabs ── */}
       <div className="match-tab-bar">
         <button
           className={`match-tab-btn ${matchTab === "upcoming" ? "match-tab-btn-on" : ""}`}
@@ -2817,6 +2817,12 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
           <span className="match-tab-icon">⏱</span>
           <span>UPCOMING</span>
           {upcoming.length > 0 && <span className="match-tab-count">{upcoming.length}</span>}
+        </button>
+        <button
+          className={`match-tab-btn ${matchTab === "pathways" ? "match-tab-btn-on" : ""}`}
+          onClick={() => setMatchTab("pathways")}>
+          <span className="match-tab-icon">🏆</span>
+          <span>PATHWAYS</span>
         </button>
         <button
           className={`match-tab-btn ${matchTab === "results" ? "match-tab-btn-on" : ""}`}
@@ -2827,8 +2833,8 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
         </button>
       </div>
 
-      {/* Date filter */}
-      {allDates.length > 1 && (
+      {/* Date filter — hidden on Pathways tab */}
+      {allDates.length > 1 && matchTab !== "pathways" && (
         <div className="date-filter-bar">
           <button className={`date-chip ${selDate==="all"?"date-chip-on":""}`} onClick={()=>setSelDate("all")}>ALL DATES</button>
           {allDates.map(d => (
@@ -2867,6 +2873,112 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
           {visFinished.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} allPreds={allPreds} user={user} />)}
         </div>
       )}
+
+      {matchTab === "pathways" && (
+        <PathwaysView matches={matches} />
+      )}
+    </div>
+  );
+}
+
+// ── Pathways (knockout bracket) ──────────────────────────────────────────────
+
+const ROUND_ORDER = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','3rd Place','Final'];
+const ROUND_SHORT  = {'Round of 32':'R32','Round of 16':'R16','Quarter-Finals':'QF','Semi-Finals':'SF','3rd Place':'3RD','Final':'FNL'};
+const ROUND_ICON   = {'Round of 32':'⚽','Round of 16':'🔥','Quarter-Finals':'⚡','Semi-Finals':'🌟','3rd Place':'🥉','Final':'🏆'};
+
+function normalizeRound(group) {
+  if (!group) return null;
+  const g = group.toLowerCase().trim().replace(/\s+/g,' ');
+  if (g.includes('32'))                              return 'Round of 32';
+  if (g.includes('16'))                              return 'Round of 16';
+  if (g.includes('quarter') || g.includes('quater')) return 'Quarter-Finals';
+  if (g.includes('semi'))                            return 'Semi-Finals';
+  if (g.includes('third') || g.includes('play off')) return '3rd Place';
+  if (g === 'final')                                 return 'Final';
+  return null;
+}
+
+function PathwaysView({ matches }) {
+  const knockoutMatches = matches
+    .map(m => ({ ...m, _round: normalizeRound(m.group) }))
+    .filter(m => m._round !== null);
+
+  const byRound = {};
+  ROUND_ORDER.forEach(r => { byRound[r] = []; });
+  knockoutMatches.forEach(m => { if (byRound[m._round]) byRound[m._round].push(m); });
+
+  const activeRounds = ROUND_ORDER.filter(r => byRound[r].length > 0);
+
+  const defaultRound = (() => {
+    const first = activeRounds.find(r => byRound[r].some(m => m.status === 'upcoming'));
+    return first || activeRounds[0] || ROUND_ORDER[0];
+  })();
+
+  const [selRound, setSelRound] = useState(defaultRound);
+
+  const visMatches = sortMatches(byRound[selRound] || []);
+  const finishedCount = visMatches.filter(m => m.status === 'finished').length;
+
+  return (
+    <div className="pathways-wrap">
+      {/* Round pill selector */}
+      <div className="pathways-round-bar">
+        {activeRounds.map(r => (
+          <button
+            key={r}
+            className={`pathways-round-btn ${selRound === r ? 'pathways-round-btn-on' : ''}`}
+            onClick={() => setSelRound(r)}>
+            {ROUND_SHORT[r]}
+          </button>
+        ))}
+      </div>
+
+      {/* Round heading */}
+      <div className="pathways-round-hd">
+        <span className="pathways-round-icon">{ROUND_ICON[selRound]}</span>
+        <span className="pathways-round-name">{selRound}</span>
+        {finishedCount > 0 && (
+          <span className="pathways-round-prog">{finishedCount}/{visMatches.length} played</span>
+        )}
+      </div>
+
+      {/* Match cards */}
+      <div className="pathways-matches">
+        {visMatches.map(m => <PathwayMatchCard key={m.id} m={m} />)}
+        {visMatches.length === 0 && (
+          <div className="empty">No matches found for this round</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PathwayMatchCard({ m }) {
+  const isFinished = m.status === 'finished' && m.hs != null && m.as != null;
+  const homeWon = isFinished && m.hs > m.as;
+  const awayWon = isFinished && m.as > m.hs;
+
+  return (
+    <div className="pw-card">
+      <div className="pw-card-date">{m.date}{m.time ? ` · ${m.time} BON` : ''}</div>
+      <div className="pw-card-body">
+        <div className={`pw-row ${homeWon ? 'pw-row-win' : awayWon ? 'pw-row-lose' : ''}`}>
+          <span className="pw-flag">{flag(m.home)}</span>
+          <span className="pw-team-name">{m.home}</span>
+          <span className={`pw-score ${isFinished ? (homeWon ? 'pw-score-win' : '') : 'pw-score-tbd'}`}>
+            {isFinished ? m.hs : '–'}
+          </span>
+        </div>
+        <div className="pw-sep" />
+        <div className={`pw-row ${awayWon ? 'pw-row-win' : homeWon ? 'pw-row-lose' : ''}`}>
+          <span className="pw-flag">{flag(m.away)}</span>
+          <span className="pw-team-name">{m.away}</span>
+          <span className={`pw-score ${isFinished ? (awayWon ? 'pw-score-win' : '') : 'pw-score-tbd'}`}>
+            {isFinished ? m.as : '–'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
