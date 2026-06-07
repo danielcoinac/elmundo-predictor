@@ -9854,7 +9854,6 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
     }
   }, [initialTab]); // eslint-disable-line
   const [placing,     setPlacing]     = useState(false);
-  const [topupAmt,    setTopupAmt]    = useState("");
   const [cartPayMethod, setCartPayMethod] = useState("credits"); // "credits" | "pay_bar"
   const [showOrderTypeModal, setShowOrderTypeModal] = useState(false);
   const [pendingPayMethod,   setPendingPayMethod]   = useState("credits");
@@ -10473,48 +10472,22 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
           {/* Top up section */}
           <div className="wallet-section-title">ADD CREDITS TO YOUR BALANCE</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.55)",marginBottom:16,lineHeight:1.6}}>
-            Select an amount, then visit any <strong style={{color:"#fff"}}>Top-Up Desk</strong> in the restaurant. Pay by cash or card and staff will add the credits to your account instantly.
-          </div>
-          <div className="wallet-topup-amounts">
-            {[5,10,20,50].map(amt => (
-              <button key={amt}
-                className={`wallet-amt-btn ${topupAmt===String(amt)?"wallet-amt-on":""}`}
-                onClick={()=>setTopupAmt(String(amt))}>
-                ${amt}
-              </button>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,255,255,.5)"}}>$</span>
-            <input className="afield-inp" type="number" min="1" placeholder="Other amount"
-              value={topupAmt} onChange={e=>setTopupAmt(e.target.value)}
-              style={{flex:1,fontSize:18,letterSpacing:2}} />
-          </div>
 
-          {/* Pay online with card */}
-          <button
-            className="stripe-topup-btn"
-            disabled={!topupAmt || +topupAmt <= 0}
-            onClick={() => stripeCheckout({
-              type: "topup",
-              amount: +topupAmt,
-              userId: user.id,
-              userEmail: user.email,
-            })}
-          >
-            <span className="stripe-topup-btn-ico">💳</span>
-            <span className="stripe-topup-btn-text">PAY ONLINE · ${topupAmt ? (+topupAmt).toFixed(2) : "0.00"}</span>
-          </button>
-
-          <div className="topup-divider"><span>OR</span></div>
-
-          {/* Top-up desk info */}
+          {/* Top-up at bar */}
           <div className="topup-desk-box">
             <div className="topup-desk-icon">🏧</div>
             <div className="topup-desk-title">TOP UP AT THE BAR</div>
             <div className="topup-desk-body">
-              Visit the <strong>Top-Up Desk</strong> and pay by cash or card — staff will add credits to your account instantly.
+              Visit the bar and pay by cash or card — staff will add credits to your account instantly.
+            </div>
+          </div>
+
+          {/* Gift card */}
+          <div className="topup-desk-box" style={{marginTop:12}}>
+            <div className="topup-desk-icon">🎁</div>
+            <div className="topup-desk-title">BUY A GIFT CARD</div>
+            <div className="topup-desk-body">
+              Gift cards are available at the bar. Load any amount and use them to top up your wallet or give to a friend.
             </div>
           </div>
 
