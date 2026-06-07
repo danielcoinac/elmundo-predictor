@@ -1318,6 +1318,7 @@ export default function App() {
           pendingGiftItems={pendingGiftItems} setPendingGiftItems={setPendingGiftItems}
           sendNotif={sendNotif}
           sendPush={sendPush}
+          pulseCounts={pulseCounts}
         />
       )}
     </div>
@@ -2133,7 +2134,8 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
                 showWinner = false, setShowWinner, winnerData, setWinnerData,
                 gifts = [], showGifts = false, setShowGifts = () => {},
                 pendingGiftItems = [], setPendingGiftItems = () => {},
-                qrTable = "", sendNotif = () => {}, sendPush = () => {} }) {
+                qrTable = "", sendNotif = () => {}, sendPush = () => {},
+                pulseCounts = {} }) {
   const { t, lang, toggleLang } = useLang();
   const myPts  = pts(user.id);
   const myRank = board.findIndex(u => u.id === user.id) + 1;
