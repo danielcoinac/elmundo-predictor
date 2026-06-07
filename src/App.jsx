@@ -87,6 +87,9 @@ export default function App() {
   // Populated from get_leaderboard_scores() RPC; used for board computation
   // so other users' pts don't depend on the current-user-only preds state.
   const [leaderScores, setLeaderScores] = useState({});
+  // Community pulse counts per match — populated from get_match_pulse() RPC
+  // so the distribution bar works correctly even with > 1000 total predictions.
+  const [pulseCounts, setPulseCounts] = useState({});
   const [menuItems,   setMenuItems]   = useState([]);
   const [myCredits,   setMyCredits]   = useState(0);
   const [myOrders,    setMyOrders]    = useState([]);
@@ -201,6 +204,17 @@ export default function App() {
           .sort((a, b) => b.pts - a.pts)
           .slice(0, 10);
         setPublicBoard(pubBoard);
+      }
+
+      // Community pulse — aggregate prediction distribution per match
+      const { data: pulseRows } = await supabase.rpc("get_match_pulse");
+      if (pulseRows) {
+        const pm = {};
+        pulseRows.forEach(r => {
+          pm[r.match_id] = { homeWins: r.home_wins, draws: r.draws, awayWins: r.away_wins,
+            total: r.total, topHome: r.top_home, topAway: r.top_away, topCount: r.top_count };
+        });
+        setPulseCounts(pm);
       }
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -723,6 +737,17 @@ export default function App() {
         setLeaderScores(lm);
       }
     });
+    // Fetch community pulse aggregates (non-blocking)
+    supabase.rpc("get_match_pulse").then(({ data: pd }) => {
+      if (pd) {
+        const pm = {};
+        pd.forEach(r => {
+          pm[r.match_id] = { homeWins: r.home_wins, draws: r.draws, awayWins: r.away_wins,
+            total: r.total, topHome: r.top_home, topAway: r.top_away, topCount: r.top_count };
+        });
+        setPulseCounts(pm);
+      }
+    });
     setPage("app");
     toast$(`Welcome back, ${profile.name}! ⚽`);
   };
@@ -784,6 +809,17 @@ export default function App() {
       setPreds(p => ({ ...p, [k]: { h:+h, a:+a } }));
       toast$("Prediction saved ⚽");
       try { navigator.vibrate?.([60, 30, 60]); } catch {}
+      // Refresh community pulse counts so the broadcast card reflects the new pick
+      supabase.rpc("get_match_pulse").then(({ data: pd }) => {
+        if (pd) {
+          const pm = {};
+          pd.forEach(r => {
+            pm[r.match_id] = { homeWins: r.home_wins, draws: r.draws, awayWins: r.away_wins,
+              total: r.total, topHome: r.top_home, topAway: r.top_away, topCount: r.top_count };
+          });
+          setPulseCounts(pm);
+        }
+      });
     } finally {
       predSavingRef.current.delete(id);
     }
@@ -2374,7 +2410,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
       </header>
       <main className="body">
         <div className="body-inner page-anim" key={animKey}>
-          {appTab === "matches" && <ErrorBoundary name="matches"><PullToRefresh onRefresh={() => new Promise(r => setTimeout(r, 700))}><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} /></PullToRefresh></ErrorBoundary>}
+          {appTab === "matches" && <ErrorBoundary name="matches"><PullToRefresh onRefresh={() => new Promise(r => setTimeout(r, 700))}><MatchesView matches={matches} getPred={getPred} savePred={savePred} loaded={matchesLoaded} isBanned={!!user?.is_banned} allPreds={preds} user={user} pulseCounts={pulseCounts} /></PullToRefresh></ErrorBoundary>}
           {appTab === "moments" && <ErrorBoundary name="moments"><MomentsView user={user} isAdmin={isAdmin} users={users} preds={preds} matches={matches} pts={pts} appSettings={appSettings} sendNotif={sendNotif} sendPush={sendPush} /></ErrorBoundary>}
           {appTab === "leaderboard" && <ErrorBoundary name="leaderboard"><PullToRefresh onRefresh={() => new Promise(r => setTimeout(r, 700))}><LeaderView board={board} user={user} allUsers={Object.values(users)} matches={matches} preds={preds} /></PullToRefresh></ErrorBoundary>}
           {appTab === "menu" && <ErrorBoundary name="menu"><MenuView user={user} menuItems={menuItems} myCredits={myCredits} myOrders={myOrders} onPlaceOrder={placeOrder}
@@ -2590,7 +2626,7 @@ function PredictionCountdown({ lockMs, firstMatch }) {
 }
 
 /* ═══ MATCH PULSE — Broadcast-style live atmosphere ══════════════════════ */
-function MatchPulse({ matches, allPreds, user, getPred }) {
+function MatchPulse({ matches, pulseCounts = {}, user, getPred }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -2609,13 +2645,13 @@ function MatchPulse({ matches, allPreds, user, getPred }) {
   return (
     <div className="broadcast-wrap">
       {liveMatches.map(m => (
-        <BroadcastCard key={m.id} m={m} now={now} allPreds={allPreds} user={user} myPred={getPred ? getPred(m.id) : null} />
+        <BroadcastCard key={m.id} m={m} now={now} pulseData={pulseCounts[m.id] || null} user={user} myPred={getPred ? getPred(m.id) : null} />
       ))}
     </div>
   );
 }
 
-function BroadcastCard({ m, now, allPreds, user, myPred }) {
+function BroadcastCard({ m, now, pulseData, user, myPred }) {
   const ko = matchKickoff(m);
   const koMs = ko ? ko.getTime() : 0;
   const isPreKickoff = now < koMs;
@@ -2625,24 +2661,18 @@ function BroadcastCard({ m, now, allPreds, user, myPred }) {
   const elapsed = !isPreKickoff && ko ? Math.floor((now - koMs) / 60000) : 0;
   const minute = elapsed <= 45 ? elapsed : Math.max(elapsed - 15, 45);
 
-  const predsForMatch = Object.entries(allPreds).filter(([k]) => k.endsWith(`__${m.id}`));
-  const total = predsForMatch.length;
-  let homeW = 0, draw = 0, awayW = 0;
-  predsForMatch.forEach(([, p]) => {
-    if (p.h > p.a) homeW++;
-    else if (p.h === p.a) draw++;
-    else awayW++;
-  });
+  // Use server-side aggregate from get_match_pulse() — avoids the 1000-row cap
+  const total  = pulseData?.total    ?? 0;
+  const homeW  = pulseData?.homeWins ?? 0;
+  const draw   = pulseData?.draws    ?? 0;
+  const awayW  = pulseData?.awayWins ?? 0;
   const homePct = total > 0 ? Math.round(homeW / total * 100) : 33;
-  const drawPct = total > 0 ? Math.round(draw / total * 100) : 34;
-  const awayPct = total > 0 ? 100 - homePct - drawPct : 33;
-
-  const scoreCounts = {};
-  predsForMatch.forEach(([, p]) => {
-    const key = `${p.h}-${p.a}`;
-    scoreCounts[key] = (scoreCounts[key] || 0) + 1;
-  });
-  const topScore = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1])[0];
+  const drawPct = total > 0 ? Math.round(draw  / total * 100) : 34;
+  const awayPct = total > 0 ? 100 - homePct - drawPct         : 33;
+  // Top predicted score: ["H-A", count] format to match the JSX below
+  const topScore = pulseData?.topHome != null && pulseData?.topCount != null
+    ? [`${pulseData.topHome}-${pulseData.topAway}`, pulseData.topCount]
+    : null;
 
   return (
     <div className="broadcast-card">
@@ -2730,7 +2760,7 @@ function BroadcastCard({ m, now, allPreds, user, myPred }) {
   );
 }
 
-function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user }) {
+function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user, pulseCounts = {} }) {
   const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
 
@@ -2775,7 +2805,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
       {globalLockMs && <PredictionCountdown lockMs={globalLockMs} firstMatch={firstMatch} />}
 
       {/* ── Match Pulse — broadcast-style live atmosphere ── */}
-      <MatchPulse matches={matches} allPreds={allPreds} user={user} getPred={getPred} />
+      <MatchPulse matches={matches} pulseCounts={pulseCounts} user={user} getPred={getPred} />
 
       {/* ── Upcoming / Results tabs ── */}
       <div className="match-tab-bar">
