@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 
 function getEventLabelSV() {
@@ -278,7 +279,7 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
     : [{ v:"BAR",l:"BAR" },{ v:"1",l:"1" },{ v:"2",l:"2" },{ v:"3",l:"3" },{ v:"4",l:"4" },{ v:"5",l:"5" },{ v:"6",l:"6" },{ v:"7",l:"7" },{ v:"8",l:"8" }];
   const isCustomTable = !tablePresets.some(p => p.v === tableNum);
 
-  return (
+  return createPortal(
     <>
       {/* Transparent backdrop — captures click-outside but doesn't dim the floor plan */}
       <div className="mo-backdrop" onClick={requestClose} />
@@ -464,7 +465,8 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 

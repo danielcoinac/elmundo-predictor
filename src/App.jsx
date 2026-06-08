@@ -10008,7 +10008,7 @@ function MenuPickerOverlay({ menuItems, tier, tierMeta, alreadyPicked, onPick, o
     grouped[i.category].push(i);
   });
 
-  return (
+  return createPortal(
     <div className="vip-picker-root" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="vip-picker">
         <div className="vip-picker-hd">
@@ -10068,7 +10068,8 @@ function MenuPickerOverlay({ menuItems, tier, tierMeta, alreadyPicked, onPick, o
 
         <button className="vip-picker-done" onClick={onClose}>DONE</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

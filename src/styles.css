@@ -1322,8 +1322,20 @@
   /* ── Manual Order Panel ── */
   @keyframes moSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
   /* Transparent backdrop: captures click-outside to close, but doesn't dim the floor plan behind */
-  .mo-backdrop{position:fixed;inset:0;background:transparent;z-index:499}
-  .mo-panel{position:fixed;top:0;right:0;bottom:0;width:min(430px,94vw);background:#0d0d0d;border-left:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;z-index:500;box-shadow:-20px 0 70px rgba(0,0,0,.9);animation:moSlideIn .26s cubic-bezier(.16,1,.3,1)}
+  .mo-backdrop{position:fixed;inset:0;background:transparent;z-index:9499}
+  .mo-panel{
+    position:fixed;top:0;right:0;
+    /* Leave room for the bottom nav so the PLACE ORDER button stays reachable */
+    bottom:calc(60px + env(safe-area-inset-bottom, 0px));
+    width:min(430px,94vw);background:#0d0d0d;
+    border-left:1px solid rgba(255,255,255,.1);
+    display:flex;flex-direction:column;
+    /* Above bottom nav (200), header (200), and most modals */
+    z-index:9500;
+    box-shadow:-20px 0 70px rgba(0,0,0,.9);
+    animation:moSlideIn .26s cubic-bezier(.16,1,.3,1);
+    overflow:hidden;
+  }
   .mo-header{padding:16px 20px 12px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:linear-gradient(180deg,rgba(255,255,255,.03) 0%,transparent 100%)}
   .mo-title{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:3px;color:#fff}
   .mo-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;letter-spacing:1px}
@@ -4357,14 +4369,18 @@
 
   /* ── Menu picker overlay ── */
   .vip-picker-root{
-    position:fixed;inset:0;z-index:10000;
+    position:fixed;inset:0;z-index:9600;
     background:rgba(0,0,0,.85);backdrop-filter:blur(8px);
     display:flex;align-items:flex-end;justify-content:center;
+    /* Leave room for the bottom nav so DONE stays reachable */
+    padding-bottom:calc(60px + env(safe-area-inset-bottom, 0px));
     animation:vipPickerFade .2s ease;
   }
   @keyframes vipPickerFade{from{opacity:0}to{opacity:1}}
   .vip-picker{
-    width:100%;max-width:560px;max-height:85vh;
+    width:100%;max-width:560px;
+    /* Cap height so the picker never tries to be taller than the visible area */
+    max-height:calc(100vh - 60px - env(safe-area-inset-bottom, 0px) - 24px);
     background:#0a0a0a;border:1px solid rgba(255,255,255,.1);
     border-radius:22px 22px 0 0;
     display:flex;flex-direction:column;
