@@ -2916,12 +2916,28 @@ function PathwaysView({ matches }) {
   })();
 
   const [selRound, setSelRound] = useState(defaultRound);
+  const [mapOpen, setMapOpen]   = useState(false);
 
   const visMatches = sortMatches(byRound[selRound] || []);
   const finishedCount = visMatches.filter(m => m.status === 'finished').length;
 
   return (
     <div className="pathways-wrap">
+      {/* Hero CTA — open the full bracket map */}
+      <button className="pathways-map-cta" onClick={() => setMapOpen(true)}>
+        <div className="pathways-map-cta-shine" />
+        <div className="pathways-map-cta-content">
+          <div className="pathways-map-cta-icon">🗺️</div>
+          <div className="pathways-map-cta-text">
+            <div className="pathways-map-cta-title">VIEW BRACKET MAP</div>
+            <div className="pathways-map-cta-sub">See every match · every round · the road to the cup</div>
+          </div>
+          <svg className="pathways-map-cta-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      </button>
+
       {/* Round pill selector */}
       <div className="pathways-round-bar">
         {activeRounds.map(r => (
@@ -2949,6 +2965,151 @@ function PathwaysView({ matches }) {
         {visMatches.length === 0 && (
           <div className="empty">No matches found for this round</div>
         )}
+      </div>
+
+      {/* Fullscreen bracket map modal */}
+      {mapOpen && (
+        <BracketMapModal
+          byRound={byRound}
+          activeRounds={activeRounds}
+          onClose={() => setMapOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Bracket Map Modal — fullscreen premium visual ─────────────────────────────
+
+function BracketMapModal({ byRound, activeRounds, onClose }) {
+  // Lock body scroll while open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Esc to close
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Final + 3rd place are grouped into a "Final stage" column
+  // Render columns: R32, R16, QF, SF, Final (with 3rd as side card)
+  const mainColumns = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','Final']
+    .filter(r => activeRounds.includes(r));
+  const thirdPlace = byRound['3rd Place'] && byRound['3rd Place'][0];
+
+  // Totals for the header chip
+  const totalMatches  = activeRounds.reduce((sum, r) => sum + (byRound[r]?.length || 0), 0);
+  const playedMatches = activeRounds.reduce(
+    (sum, r) => sum + (byRound[r]?.filter(m => m.status === 'finished').length || 0), 0
+  );
+
+  return (
+    <div className="bracket-modal-root" role="dialog" aria-modal="true" aria-label="Tournament bracket">
+      <div className="bracket-modal-bg" />
+      <div className="bracket-modal-frame">
+        {/* Top bar */}
+        <div className="bracket-modal-topbar">
+          <div className="bracket-modal-title">
+            <span className="bracket-modal-cup">🏆</span>
+            <div>
+              <div className="bracket-modal-title-main">ROAD TO THE CUP</div>
+              <div className="bracket-modal-title-sub">{playedMatches}/{totalMatches} matches played · World Cup 2026</div>
+            </div>
+          </div>
+          <button className="bracket-modal-close" onClick={onClose} aria-label="Close bracket">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Horizontal scrollable bracket canvas */}
+        <div className="bracket-canvas">
+          <div className="bracket-stage-grid">
+            {mainColumns.map((round, colIdx) => {
+              const matches = sortMatches(byRound[round] || []);
+              return (
+                <div key={round} className={`bracket-col bracket-col-${ROUND_SHORT[round].toLowerCase()}`}>
+                  <div className="bracket-col-hd">
+                    <span className="bracket-col-hd-icon">{ROUND_ICON[round]}</span>
+                    <span className="bracket-col-hd-name">{round}</span>
+                    <span className="bracket-col-hd-count">{matches.length}</span>
+                  </div>
+                  <div className="bracket-col-body">
+                    {matches.map((m, i) => (
+                      <BracketMatch
+                        key={m.id}
+                        m={m}
+                        connectorLeft={colIdx > 0}
+                        connectorRight={colIdx < mainColumns.length - 1}
+                        isFinal={round === 'Final'}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 3rd place play-off card pinned below the Final column */}
+          {thirdPlace && (
+            <div className="bracket-third-wrap">
+              <div className="bracket-third-divider"><span>3RD PLACE PLAY-OFF</span></div>
+              <div className="bracket-third-card">
+                <BracketMatch m={thirdPlace} connectorLeft={false} connectorRight={false} isThird />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer hint */}
+        <div className="bracket-modal-foot">
+          <span className="bracket-foot-dot bracket-foot-dot-tbd" /> TBD
+          <span className="bracket-foot-dot bracket-foot-dot-live" /> Live
+          <span className="bracket-foot-dot bracket-foot-dot-done" /> Played
+          <span className="bracket-foot-tip">← swipe to see all rounds →</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BracketMatch({ m, connectorLeft, connectorRight, isFinal, isThird }) {
+  const isFinished = m.status === 'finished' && m.hs != null && m.as != null;
+  const homeWon = isFinished && m.hs > m.as;
+  const awayWon = isFinished && m.as > m.hs;
+  const isLive  = (() => {
+    if (m.status !== 'upcoming') return false;
+    const ko = matchKickoff(m);
+    if (!ko) return false;
+    const now = Date.now();
+    const koMs = ko.getTime();
+    return now >= koMs && now <= koMs + 120 * 60 * 1000;
+  })();
+
+  return (
+    <div className={`bm-wrap ${isFinal ? 'bm-wrap-final' : ''} ${isThird ? 'bm-wrap-third' : ''}`}>
+      {connectorLeft  && <div className="bm-connector bm-connector-left"  />}
+      {connectorRight && <div className="bm-connector bm-connector-right" />}
+      <div className={`bm-card ${isFinished ? 'bm-card-done' : ''} ${isLive ? 'bm-card-live' : ''} ${isFinal ? 'bm-card-final' : ''}`}>
+        {isFinal && <div className="bm-card-crown">★ FINAL ★</div>}
+        {isLive  && <div className="bm-card-live-pill">LIVE</div>}
+        <div className="bm-card-meta">{m.date}{m.time ? ` · ${m.time}` : ''}</div>
+        <div className={`bm-team ${homeWon ? 'bm-team-win' : awayWon ? 'bm-team-lose' : ''}`}>
+          <span className="bm-team-flag">{flag(m.home)}</span>
+          <span className="bm-team-name">{m.home}</span>
+          <span className="bm-team-score">{isFinished ? m.hs : '–'}</span>
+        </div>
+        <div className={`bm-team ${awayWon ? 'bm-team-win' : homeWon ? 'bm-team-lose' : ''}`}>
+          <span className="bm-team-flag">{flag(m.away)}</span>
+          <span className="bm-team-name">{m.away}</span>
+          <span className="bm-team-score">{isFinished ? m.as : '–'}</span>
+        </div>
       </div>
     </div>
   );

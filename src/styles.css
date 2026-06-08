@@ -3297,3 +3297,210 @@
   .pw-score-win{color:#fff}
   .pw-row-win .pw-team-name{color:#fff;font-weight:600}
   .pw-row-lose .pw-team-name{color:rgba(255,255,255,.3)}
+
+  /* ── Bracket Map CTA on Pathways tab ── */
+  .pathways-map-cta{
+    position:relative;display:block;width:calc(100% - 32px);margin:16px;padding:0;
+    background:linear-gradient(135deg,#1a1a1a 0%,#0a0a0a 100%);
+    border:1px solid rgba(255,255,255,.14);border-radius:14px;cursor:pointer;
+    overflow:hidden;transition:transform .15s,border-color .2s,box-shadow .2s;
+  }
+  .pathways-map-cta:hover{
+    border-color:rgba(255,255,255,.32);box-shadow:0 8px 32px rgba(0,0,0,.5);
+    transform:translateY(-1px);
+  }
+  .pathways-map-cta:active{transform:translateY(0)}
+  .pathways-map-cta-shine{
+    position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 90% 0%,rgba(255,215,0,.07),transparent 60%),
+               radial-gradient(80% 100% at 0% 100%,rgba(34,197,94,.05),transparent 60%);
+    pointer-events:none;
+  }
+  .pathways-map-cta-content{position:relative;display:flex;align-items:center;gap:14px;padding:16px 18px}
+  .pathways-map-cta-icon{font-size:28px;line-height:1;filter:drop-shadow(0 2px 8px rgba(255,215,0,.25))}
+  .pathways-map-cta-text{flex:1;text-align:left}
+  .pathways-map-cta-title{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:2.5px;color:#fff;margin-bottom:2px}
+  .pathways-map-cta-sub{font-family:'Outfit',sans-serif;font-size:11.5px;color:rgba(255,255,255,.4);letter-spacing:.4px}
+  .pathways-map-cta-arrow{color:rgba(255,255,255,.55);flex-shrink:0;transition:transform .2s}
+  .pathways-map-cta:hover .pathways-map-cta-arrow{transform:translateX(3px);color:#fff}
+
+  /* ── Bracket Map Fullscreen Modal ── */
+  .bracket-modal-root{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;animation:bmFade .2s ease}
+  @keyframes bmFade{from{opacity:0}to{opacity:1}}
+  .bracket-modal-bg{
+    position:absolute;inset:0;
+    background:
+      radial-gradient(60% 50% at 50% 0%,rgba(255,215,0,.08),transparent 70%),
+      radial-gradient(70% 60% at 50% 100%,rgba(34,197,94,.05),transparent 70%),
+      linear-gradient(180deg,#050505 0%,#000 50%,#050505 100%);
+  }
+  .bracket-modal-bg::before{
+    content:'';position:absolute;inset:0;opacity:.06;
+    background-image:
+      linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);
+    background-size:32px 32px;
+    mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);
+  }
+  .bracket-modal-frame{position:relative;display:flex;flex-direction:column;height:100%;width:100%;color:#fff}
+
+  /* Top bar */
+  .bracket-modal-topbar{
+    flex-shrink:0;display:flex;align-items:center;gap:12px;
+    padding:18px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08);
+    background:linear-gradient(180deg,rgba(0,0,0,.95),rgba(0,0,0,.7));
+    backdrop-filter:blur(10px);
+  }
+  .bracket-modal-title{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+  .bracket-modal-cup{font-size:30px;line-height:1;filter:drop-shadow(0 2px 12px rgba(255,215,0,.35))}
+  .bracket-modal-title-main{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:3px;color:#fff;line-height:1.1}
+  .bracket-modal-title-sub{font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.5px;margin-top:3px}
+  .bracket-modal-close{
+    flex-shrink:0;width:38px;height:38px;border-radius:50%;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+    color:rgba(255,255,255,.75);cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:background .2s,color .2s,border-color .2s;
+  }
+  .bracket-modal-close:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
+
+  /* Canvas — horizontally scrollable bracket */
+  .bracket-canvas{
+    flex:1;overflow:auto;padding:24px 16px 100px;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent;
+    -webkit-overflow-scrolling:touch;
+  }
+  .bracket-canvas::-webkit-scrollbar{height:8px;width:8px}
+  .bracket-canvas::-webkit-scrollbar-track{background:transparent}
+  .bracket-canvas::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
+
+  .bracket-stage-grid{display:flex;gap:28px;align-items:stretch;min-width:max-content;padding:0 8px}
+
+  .bracket-col{display:flex;flex-direction:column;min-width:172px;flex-shrink:0}
+  .bracket-col-hd{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 12px;margin-bottom:12px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:8px;position:sticky;top:0;backdrop-filter:blur(8px);z-index:2;
+  }
+  .bracket-col-hd-icon{font-size:14px;line-height:1}
+  .bracket-col-hd-name{flex:1;font-family:'Anton',sans-serif;font-size:11px;letter-spacing:1.8px;color:rgba(255,255,255,.85);white-space:nowrap}
+  .bracket-col-hd-count{font-family:'Outfit',sans-serif;font-size:10px;color:rgba(255,255,255,.4);font-weight:600}
+  .bracket-col-body{display:flex;flex-direction:column;justify-content:space-around;flex:1;gap:14px}
+
+  /* Match card */
+  .bm-wrap{position:relative;padding:0 8px}
+  .bm-card{
+    position:relative;display:flex;flex-direction:column;
+    background:linear-gradient(160deg,#141414 0%,#0a0a0a 100%);
+    border:1px solid rgba(255,255,255,.08);border-radius:10px;
+    padding:10px 11px;transition:border-color .2s,transform .15s,box-shadow .2s;
+    z-index:1;
+  }
+  .bm-card:hover{border-color:rgba(255,255,255,.22);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+  .bm-card-done{border-color:rgba(34,197,94,.22)}
+  .bm-card-live{border-color:rgba(239,68,68,.4);animation:bmPulse 2s infinite}
+  @keyframes bmPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+  .bm-card-final{
+    background:linear-gradient(160deg,#1f1a08 0%,#0a0a0a 100%);
+    border-color:rgba(255,215,0,.4);
+    box-shadow:0 0 24px rgba(255,215,0,.08);
+  }
+  .bm-card-crown{
+    position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+    background:linear-gradient(90deg,#d4af37,#ffd700,#d4af37);color:#000;
+    font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;
+    padding:2px 8px;border-radius:100px;white-space:nowrap;
+  }
+  .bm-card-live-pill{
+    position:absolute;top:-8px;right:8px;
+    background:#ef4444;color:#fff;
+    font-family:'Anton',sans-serif;font-size:8px;letter-spacing:1.5px;
+    padding:2px 6px;border-radius:100px;animation:bmBlink 1.2s infinite;
+  }
+  @keyframes bmBlink{0%,100%{opacity:1}50%{opacity:.55}}
+  .bm-card-meta{
+    font-family:'Outfit',sans-serif;font-size:9.5px;color:rgba(255,255,255,.3);
+    letter-spacing:.3px;margin-bottom:7px;text-align:center;
+  }
+  .bm-team{
+    display:flex;align-items:center;gap:7px;padding:5px 0;
+  }
+  .bm-team + .bm-team{border-top:1px solid rgba(255,255,255,.05)}
+  .bm-team-flag{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+  .bm-team-name{
+    flex:1;font-family:'Outfit',sans-serif;font-size:11px;color:rgba(255,255,255,.55);
+    font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .bm-team-score{
+    font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,.18);
+    min-width:18px;text-align:right;flex-shrink:0;
+  }
+  .bm-team-win .bm-team-name{color:#fff;font-weight:700}
+  .bm-team-win .bm-team-score{color:#4ade80}
+  .bm-team-lose .bm-team-name{color:rgba(255,255,255,.25)}
+  .bm-team-lose .bm-team-score{color:rgba(255,255,255,.18)}
+
+  /* Connectors between rounds */
+  .bm-connector{
+    position:absolute;top:50%;height:1.5px;width:14px;
+    background:linear-gradient(90deg,rgba(255,255,255,.18),rgba(255,255,255,.06));
+    z-index:0;
+  }
+  .bm-connector-left{left:-8px;background:linear-gradient(270deg,rgba(255,255,255,.18),rgba(255,255,255,.06))}
+  .bm-connector-right{right:-8px}
+
+  /* Final card sizing */
+  .bm-wrap-final{margin:24px 0}
+  .bm-wrap-final .bm-card{
+    padding:14px 12px;
+  }
+  .bm-wrap-final .bm-team-name{font-size:12px}
+  .bm-wrap-final .bm-team-score{font-size:16px}
+
+  /* 3rd place play-off */
+  .bracket-third-wrap{
+    margin-top:32px;padding:0 8px;
+    max-width:520px;margin-left:auto;margin-right:auto;
+  }
+  .bracket-third-divider{
+    display:flex;align-items:center;gap:12px;margin-bottom:14px;
+    color:rgba(255,255,255,.35);
+  }
+  .bracket-third-divider::before,.bracket-third-divider::after{
+    content:'';flex:1;height:1px;background:rgba(255,255,255,.1);
+  }
+  .bracket-third-divider span{
+    font-family:'Anton',sans-serif;font-size:11px;letter-spacing:2.5px;
+  }
+  .bracket-third-card{
+    max-width:200px;margin:0 auto;
+  }
+  .bm-wrap-third .bm-card{border-color:rgba(205,127,50,.3)}
+
+  /* Footer hint */
+  .bracket-modal-foot{
+    position:absolute;bottom:0;left:0;right:0;
+    display:flex;align-items:center;gap:14px;
+    padding:12px 18px;
+    background:linear-gradient(0deg,rgba(0,0,0,.95),rgba(0,0,0,.7));
+    border-top:1px solid rgba(255,255,255,.08);
+    backdrop-filter:blur(10px);
+    font-family:'Outfit',sans-serif;font-size:10.5px;color:rgba(255,255,255,.45);
+    letter-spacing:.5px;
+  }
+  .bracket-foot-dot{
+    display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
+    vertical-align:middle;
+  }
+  .bracket-foot-dot-tbd{background:rgba(255,255,255,.18)}
+  .bracket-foot-dot-live{background:#ef4444;box-shadow:0 0 6px #ef4444}
+  .bracket-foot-dot-done{background:#4ade80}
+  .bracket-foot-tip{margin-left:auto;color:rgba(255,255,255,.3);font-style:italic}
+
+  @media (max-width:520px){
+    .bracket-stage-grid{gap:18px}
+    .bracket-col{min-width:152px}
+    .bracket-modal-title-main{font-size:15px;letter-spacing:2.4px}
+    .bracket-modal-title-sub{font-size:10px}
+    .bracket-foot-tip{display:none}
+  }
