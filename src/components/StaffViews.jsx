@@ -15,7 +15,9 @@ function printReceipt(ord) {
       <td style="padding:7px 0;font-size:20px;font-weight:900;line-height:1.2;">${it.qty}× ${it.name.toUpperCase()}</td>
       <td style="padding:7px 0;font-size:12px;font-weight:600;text-align:right;color:#555;vertical-align:bottom;">${(it.price*it.qty).toFixed(2)}</td>
     </tr>`).join("");
-  const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "cash" ? "CASH / CARD AT BAR" : ord.payment_method === "sponsor_gift" ? "COMPLIMENTARY" : ord.payment_method?.startsWith("group") ? "GROUP ORDER" : "CASH";
+  const isSponsor = ord.payment_method === "sponsor_gift";
+  const payLabel = ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "cash" ? "CASH / CARD AT BAR" : isSponsor ? "COMPLIMENTARY · VIP PERK" : ord.payment_method?.startsWith("group") ? "GROUP ORDER" : "CASH";
+  const sponsorName = (ord.user_name || "SPONSOR").toUpperCase();
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Receipt #${ord.order_number||ord.id}</title>
@@ -53,9 +55,19 @@ function printReceipt(ord) {
       <div class="loc">KRALENDIJK · BONAIRE · EST. 2009</div>
     </div>
 
+    ${isSponsor ? `
+    <div style="text-align:center;margin:8px 0 10px;padding:8px 6px;border:3px double #000;background:#000;color:#fff;">
+      <div style="font-size:9px;font-weight:900;letter-spacing:4px;">⭐ VIP PERK ORDER ⭐</div>
+      <div style="font-size:18px;font-weight:900;letter-spacing:2px;margin-top:3px;line-height:1.1;">${sponsorName}</div>
+      <div style="font-size:8px;font-weight:700;letter-spacing:3px;margin-top:2px;">BRING TO SPONSOR</div>
+    </div>
+    ` : ""}
+
     <div class="meta-row"><span class="meta-lbl">Date</span><span class="meta-val">${dateStr}</span></div>
     <div class="meta-row"><span class="meta-lbl">Time</span><span class="meta-val">${timeStr}</span></div>
-    <div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${String(ord.table_number).startsWith("OUT-") ? "ZONE " + String(ord.table_number).replace("OUT-","") : ord.table_number}</span></div>
+    ${isSponsor
+      ? `<div class="meta-row"><span class="meta-lbl">Sponsor</span><span class="meta-val">${sponsorName}</span></div>`
+      : `<div class="meta-row"><span class="meta-lbl">Table</span><span class="meta-val">${String(ord.table_number).startsWith("OUT-") ? "ZONE " + String(ord.table_number).replace("OUT-","") : ord.table_number}</span></div>`}
     ${ord.order_number ? `<div class="meta-row"><span class="meta-lbl">Order #</span><span class="meta-val">${ord.order_number}</span></div>` : ""}
 
     <div class="divider"></div>

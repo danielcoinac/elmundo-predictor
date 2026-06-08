@@ -4,7 +4,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import jsQR from "jsqr";
 import { supabase } from "./lib/supabase";
 import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
-import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, catMeta } from "./lib/utils";
+import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, FOOD_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FloorPlan, OrderFeed } from "./components/StaffViews";
@@ -1058,7 +1058,12 @@ export default function App() {
     }
     if (gifts.length > 0) {
       await supabase.from("sponsor_gifts").insert(gifts.map(g => ({
-        tier: g.tier, item_name: g.item_name, item_price: +(g.item_price || 0), quantity: +(g.quantity || 1)
+        tier: g.tier,
+        menu_item_id: g.menu_item_id || null,
+        item_name: g.item_name,
+        item_category: g.item_category || null,
+        item_price: +(g.item_price || 0),
+        quantity: +(g.quantity || 1),
       })));
     }
     const { data } = await supabase.from("sponsor_gifts").select("*").order("tier");
@@ -7821,7 +7826,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "giftCards"  && <AdminGiftCards />}
       {section === "tables"     && <AdminTables />}
       {section === "tableqr"    && <AdminTableQR />}
-      {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
+      {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} menuItems={menuItems} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
       {section === "gifts"      && <AdminGifts users={users} sendPush={sendPush} />}
       {section === "integrity"  && <AdminIntegrity users={users} onBanUsers={onBanUsers} />}
       {section === "fpAccess"      && <AdminFloorplanAccess users={users} onSetAccess={onSetFloorplanAccess} />}
@@ -9475,13 +9480,14 @@ const TIER_META = {
   silver: { label:"SILVER", color:"#C0C0C0", bg:"rgba(192,192,192,.12)", icon:"🥈" },
 };
 
-function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
-  const [subTab, setSubTab] = useState("users"); // "users" | "gifts" | "redeemed"
+function AdminSponsorPerks({ users, sponsorGifts, menuItems = [], onSetTier, onSaveGifts }) {
+  const [subTab, setSubTab] = useState("users"); // "users" | "gifts" | "configure"
   const [search, setSearch] = useState("");
   const [gifts, setGifts]   = useState(sponsorGifts.map(g => ({ ...g, _key: g.id || Math.random() })));
   const [saving, setSaving] = useState(false);
-  const [redemptions, setRedemptions] = useState([]); // [{user_id, user_name, tier, items, created_at}]
+  const [redemptions, setRedemptions] = useState([]);
   const [loadingRed, setLoadingRed]   = useState(false);
+  const [pickerTier, setPickerTier]   = useState(null); // when set, the menu picker overlay is open for this tier
   // Keep gifts in sync if sponsorGifts loads async after mount
   useEffect(() => { setGifts(sponsorGifts.map(g => ({ ...g, _key: g.id || Math.random() }))); }, [sponsorGifts.length]);
 
@@ -9511,13 +9517,31 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
     .sort((a,b) => (a.name||"").localeCompare(b.name||""))
     .filter(u => !search || u.name?.toLowerCase().includes(search.toLowerCase()));
 
-  const addGift = (tier) => setGifts(g => [...g, { _key: Date.now(), tier, item_name:"", item_price:0, quantity:1 }]);
+  // Add an item from menu to a tier. If the same item already exists for that tier,
+  // just bump the quantity instead of duplicating the row.
+  const addGiftFromMenu = (tier, menuItem) => {
+    setGifts(g => {
+      const existing = g.find(x => x.tier === tier && x.menu_item_id === menuItem.id);
+      if (existing) {
+        return g.map(x => x._key === existing._key ? { ...x, quantity: (+x.quantity || 0) + 1 } : x);
+      }
+      return [...g, {
+        _key: `${Date.now()}-${Math.random()}`,
+        tier,
+        menu_item_id: menuItem.id,
+        item_name: menuItem.name,
+        item_category: menuItem.category,
+        item_price: 0,
+        quantity: 1,
+      }];
+    });
+  };
   const removeGift = (key) => setGifts(g => g.filter(x => x._key !== key));
   const updateGift = (key, field, val) => setGifts(g => g.map(x => x._key === key ? { ...x, [field]: val } : x));
 
   const handleSave = async () => {
     setSaving(true);
-    await onSaveGifts(gifts.filter(g => g.item_name.trim()));
+    await onSaveGifts(gifts.filter(g => (g.item_name || "").trim()));
     setSaving(false);
   };
 
@@ -9632,48 +9656,165 @@ function AdminSponsorPerks({ users, sponsorGifts, onSetTier, onSaveGifts }) {
       {subTab === "configure" && (
         <div style={{padding:"12px 14px"}}>
           <div className="admin-hint" style={{borderTop:"none",padding:"0 0 12px"}}>
-            Add free items per tier. Sponsors order these at no cost — goes straight to the bar.
+            Pick items from the menu for each tier. Every sponsor on that tier gets the same items free.
           </div>
           {SPONSOR_TIERS.map(tier => {
             const m = TIER_META[tier];
             const tierGifts = gifts.filter(g => g.tier === tier);
+            const totalItems = tierGifts.reduce((s,g) => s + (+g.quantity || 0), 0);
             return (
-              <div key={tier} style={{marginBottom:24}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:m.color}}>
-                    {m.icon} {m.label} GIFTS
+              <div key={tier} className="vip-tier-panel" style={{borderColor: m.color + "33"}}>
+                <div className="vip-tier-hd">
+                  <div className="vip-tier-hd-l" style={{color: m.color}}>
+                    {m.icon} {m.label} TIER
                   </div>
-                  <button className="admin-add-btn" onClick={()=>addGift(tier)}>+ Add Item</button>
+                  <div className="vip-tier-hd-r">{totalItems} item{totalItems === 1 ? "" : "s"} total</div>
                 </div>
-                {tierGifts.length === 0 && (
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"8px 0"}}>
-                    No gifts configured for {m.label} yet.
+
+                {tierGifts.length === 0 ? (
+                  <div className="vip-tier-empty">
+                    No items yet. Tap below to pick from the menu.
+                  </div>
+                ) : (
+                  <div className="vip-tier-list">
+                    {tierGifts.map(g => (
+                      <div key={g._key} className="vip-tier-item">
+                        <div className="vip-tier-item-info">
+                          <div className="vip-tier-item-name">{g.item_name}</div>
+                          {g.item_category && (
+                            <div className="vip-tier-item-cat">{catMeta(g.item_category).icon} {g.item_category}</div>
+                          )}
+                        </div>
+                        <div className="vip-tier-item-qty">
+                          <button className="vip-qty-btn" onClick={()=>updateGift(g._key,"quantity", Math.max(1, (+g.quantity || 1) - 1))}>−</button>
+                          <span className="vip-qty-val">{g.quantity}</span>
+                          <button className="vip-qty-btn" onClick={()=>updateGift(g._key,"quantity", (+g.quantity || 1) + 1)}>+</button>
+                        </div>
+                        <button className="vip-tier-del" onClick={()=>removeGift(g._key)}>✕</button>
+                      </div>
+                    ))}
                   </div>
                 )}
-                {tierGifts.map(g => (
-                  <div key={g._key} className="admin-form-card" style={{marginBottom:8}}>
-                    <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-                      <div style={{flex:1}}>
-                        <div className="admin-form-grid" style={{gridTemplateColumns:"1fr 80px"}}>
-                          <AField label="Item Name" val={g.item_name} ph="e.g. Corona Beer"
-                            on={e=>updateGift(g._key,"item_name",e.target.value)} />
-                          <AField label="Qty" val={g.quantity} ph="1" type="number"
-                            on={e=>updateGift(g._key,"quantity",e.target.value)} />
-                        </div>
-                      </div>
-                      <button className="admin-del-btn" style={{marginTop:22,flexShrink:0}} onClick={()=>removeGift(g._key)}>✕</button>
-                    </div>
-                  </div>
-                ))}
+
+                <button className="vip-tier-add-btn" style={{color: m.color, borderColor: m.color + "55"}}
+                  onClick={() => setPickerTier(tier)}>
+                  + ADD ITEMS FROM MENU
+                </button>
               </div>
             );
           })}
-          <button className="admin-save-btn" style={{width:"100%",padding:14}} onClick={handleSave} disabled={saving}>
-            {saving ? "Saving…" : "Save All Gift Packages"}
+          <button className="admin-save-btn" style={{width:"100%",padding:14,marginTop:8}} onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save All Tier Packages"}
           </button>
         </div>
       )}
 
+      {/* Menu picker overlay */}
+      {pickerTier && (
+        <MenuPickerOverlay
+          menuItems={menuItems}
+          tier={pickerTier}
+          tierMeta={TIER_META[pickerTier]}
+          alreadyPicked={new Set(gifts.filter(g => g.tier === pickerTier && g.menu_item_id).map(g => g.menu_item_id))}
+          onPick={(menuItem) => addGiftFromMenu(pickerTier, menuItem)}
+          onClose={() => setPickerTier(null)}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// Menu picker — used by AdminSponsorPerks to add menu items to a tier
+function MenuPickerOverlay({ menuItems, tier, tierMeta, alreadyPicked, onPick, onClose }) {
+  const [section, setSection] = useState("DRINKS");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+
+  const q = search.toLowerCase().trim();
+  const filtered = menuItems
+    .filter(i => i.available !== false)
+    .filter(i => {
+      const cat = catMeta(i.category);
+      const isFood = FOOD_CATS.has(i.category);
+      const inSection = section === "FOOD" ? isFood : !isFood;
+      return inSection;
+    })
+    .filter(i => !q || (i.name || "").toLowerCase().includes(q) || (i.category || "").toLowerCase().includes(q));
+
+  // Group by category
+  const grouped = {};
+  filtered.forEach(i => {
+    if (!grouped[i.category]) grouped[i.category] = [];
+    grouped[i.category].push(i);
+  });
+
+  return (
+    <div className="vip-picker-root" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="vip-picker">
+        <div className="vip-picker-hd">
+          <div className="vip-picker-hd-title">
+            <span style={{color: tierMeta.color}}>{tierMeta.icon} {tierMeta.label}</span>
+            <span style={{color:"rgba(255,255,255,.4)",marginLeft:8}}>· Pick items</span>
+          </div>
+          <button className="vip-picker-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="vip-picker-tabs">
+          {["DRINKS","FOOD"].map(s => (
+            <button key={s}
+              className={`vip-picker-tab ${section === s ? "vip-picker-tab-on" : ""}`}
+              onClick={() => setSection(s)}>
+              {s === "FOOD" ? "🍔" : "🍺"} {s}
+            </button>
+          ))}
+        </div>
+
+        <input type="text" className="vip-picker-search"
+          placeholder="Search items…"
+          value={search} onChange={e => setSearch(e.target.value)} />
+
+        <div className="vip-picker-body">
+          {Object.keys(grouped).length === 0 ? (
+            <div className="vip-picker-empty">
+              {menuItems.length === 0 ? "No menu items defined — add some in Menu admin first." : "No items found"}
+            </div>
+          ) : (
+            Object.entries(grouped).map(([cat, items]) => {
+              const meta = catMeta(cat);
+              return (
+                <div key={cat} className="vip-picker-cat">
+                  <div className="vip-picker-cat-hd">{meta.icon} {meta.label}</div>
+                  {items.map(it => {
+                    const picked = alreadyPicked.has(it.id);
+                    return (
+                      <button key={it.id}
+                        className={`vip-picker-item ${picked ? "vip-picker-item-picked" : ""}`}
+                        onClick={() => onPick(it)}>
+                        <div className="vip-picker-item-l">
+                          <div className="vip-picker-item-name">{it.name}</div>
+                          <div className="vip-picker-item-price">${(+it.price).toFixed(2)} retail</div>
+                        </div>
+                        <div className="vip-picker-item-r" style={{color: picked ? "#4ade80" : tierMeta.color}}>
+                          {picked ? "+1 MORE" : "+ ADD"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <button className="vip-picker-done" onClick={onClose}>DONE</button>
+      </div>
     </div>
   );
 }
@@ -10095,50 +10236,72 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
         </div>
       ) : (
         <div style={{padding:"16px 16px 0"}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.35)",marginBottom:12}}>
-            YOUR FREE GIFTS
-          </div>
+          {/* Group gifts by FOOD/DRINKS section, then by category */}
           {loadingUsed ? (
             <div style={{textAlign:"center",padding:24,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif",fontSize:13}}>Loading…</div>
-          ) : myGifts.map(g => {
-            const inCart    = cart[String(g.id)] || 0;
-            const remaining = getRemaining(g);
-            const redeemed  = remaining === 0;
-            return (
-              <div key={g.id} className="menu-item-row" style={{borderColor: redeemed ? "rgba(255,255,255,.05)" : "rgba(255,215,0,.15)", opacity: redeemed ? 0.5 : 1}}>
-                <div className="menu-item-info">
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <div className="menu-item-name" style={{textTransform:"capitalize"}}>{g.item_name}</div>
-                    {redeemed ? (
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
-                        color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
-                        REDEEMED
-                      </span>
+          ) : (() => {
+            const drinkGifts = myGifts.filter(g => !FOOD_CATS.has(g.item_category));
+            const foodGifts  = myGifts.filter(g =>  FOOD_CATS.has(g.item_category));
+            const renderGift = (g) => {
+              const inCart    = cart[String(g.id)] || 0;
+              const remaining = getRemaining(g);
+              const redeemed  = remaining === 0;
+              return (
+                <div key={g.id} className="menu-item-row" style={{borderColor: redeemed ? "rgba(255,255,255,.05)" : "rgba(255,215,0,.15)", opacity: redeemed ? 0.5 : 1}}>
+                  <div className="menu-item-info">
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <div className="menu-item-name" style={{textTransform:"capitalize"}}>{g.item_name}</div>
+                      {redeemed ? (
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
+                          color:"rgba(255,255,255,.35)",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",padding:"2px 8px",borderRadius:4}}>
+                          REDEEMED
+                        </span>
+                      ) : (
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
+                          color:"#FFD700",background:"rgba(255,215,0,.1)",border:"1px solid rgba(255,215,0,.35)",padding:"2px 8px",borderRadius:4}}>
+                          FREE × {remaining}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>
+                      {redeemed ? "Already redeemed" : `${remaining} left · complimentary`}
+                    </div>
+                  </div>
+                  <div className="menu-item-actions">
+                    {redeemed ? null : inCart > 0 ? (
+                      <div className="menu-qty-ctrl">
+                        <button className="menu-qty-btn" onClick={()=>removeItem(String(g.id))}>−</button>
+                        <span className="menu-qty-val">{inCart}</span>
+                        <button className="menu-qty-btn" onClick={()=>addItem(String(g.id), remaining)}>+</button>
+                      </div>
                     ) : (
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:8,letterSpacing:1.5,
-                        color:"#FFD700",background:"rgba(255,215,0,.1)",border:"1px solid rgba(255,215,0,.35)",padding:"2px 8px",borderRadius:4}}>
-                        FREE × {remaining}
-                      </span>
+                      <button className="menu-add-btn" onClick={()=>addItem(String(g.id), remaining)}>ADD</button>
                     )}
                   </div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.4)",marginTop:2}}>
-                    {redeemed ? "Already redeemed" : `${remaining} left · $0.00`}
-                  </div>
                 </div>
-                <div className="menu-item-actions">
-                  {redeemed ? null : inCart > 0 ? (
-                    <div className="menu-qty-ctrl">
-                      <button className="menu-qty-btn" onClick={()=>removeItem(String(g.id))}>−</button>
-                      <span className="menu-qty-val">{inCart}</span>
-                      <button className="menu-qty-btn" onClick={()=>addItem(String(g.id), remaining)}>+</button>
+              );
+            };
+            return (
+              <>
+                {drinkGifts.length > 0 && (
+                  <>
+                    <div className="sv-section-hd">
+                      <span className="sv-section-hd-ico">🍺</span> DRINKS
                     </div>
-                  ) : (
-                    <button className="menu-add-btn" onClick={()=>addItem(String(g.id), remaining)}>ADD</button>
-                  )}
-                </div>
-              </div>
+                    {drinkGifts.map(renderGift)}
+                  </>
+                )}
+                {foodGifts.length > 0 && (
+                  <>
+                    <div className="sv-section-hd" style={{marginTop: drinkGifts.length > 0 ? 24 : 0}}>
+                      <span className="sv-section-hd-ico">🍔</span> FOOD
+                    </div>
+                    {foodGifts.map(renderGift)}
+                  </>
+                )}
+              </>
             );
-          })}
+          })()}
 
           {/* Order summary + place button */}
           <div style={{marginTop:24,borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:20}}>
@@ -10444,15 +10607,16 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
   const [activeSection, setActiveSection] = useState("DRINKS");
   const sectionRefs = useRef({});
   const pillsRef    = useRef(null);
-  // Group available items by category in defined order
-  // Food section only visible to sponsors
+  // Group available items by category in defined order.
+  // FOOD is hidden from EVERYONE in the main menu — sponsors get food via VIP PERKS,
+  // regular players don't order food at all.
   const menuSections = MENU_SECTIONS.map(s => ({
     ...s,
     cats: s.cats.map(c => ({ ...c, items: available.filter(i => i.category === c.id) }))
                .filter(c => c.items.length > 0),
   })).filter(s => {
     if (s.cats.length === 0) return false;
-    if (s.section === "FOOD" && !user?.sponsor_tier) return false;
+    if (s.section === "FOOD") return false;
     return true;
   });
   const allActiveCats = menuSections.flatMap(s => s.cats);
