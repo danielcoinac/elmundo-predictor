@@ -4135,3 +4135,39 @@
     border-bottom:1px solid rgba(255,215,0,.18);
   }
   .sv-section-hd-ico{font-size:14px;line-height:1}
+
+  /* ── Active round banner (UPCOMING tab) ── */
+  .round-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    margin:10px 16px 8px;padding:12px 16px;
+    background:linear-gradient(135deg,rgba(74,222,128,.07),rgba(74,222,128,.02));
+    border:1px solid rgba(74,222,128,.25);border-radius:12px;
+    position:relative;overflow:hidden;
+  }
+  .round-banner::before{
+    content:'';position:absolute;top:0;left:0;width:3px;height:100%;
+    background:linear-gradient(180deg,#4ade80,#22c55e);
+    box-shadow:0 0 12px rgba(74,222,128,.6);
+  }
+  .round-banner-l{display:flex;flex-direction:column;gap:2px;padding-left:6px}
+  .round-banner-lbl{
+    font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2.5px;
+    color:#4ade80;text-transform:uppercase;
+  }
+  .round-banner-name{
+    font-family:'Anton',sans-serif;font-size:15px;letter-spacing:2.5px;
+    color:#fff;line-height:1.1;
+  }
+  .round-banner-r{flex-shrink:0}
+  .round-banner-step{
+    font-family:'Anton',sans-serif;font-size:9px;letter-spacing:2px;
+    color:rgba(255,255,255,.4);
+    padding:5px 10px;border-radius:100px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  }
+  .round-banner-done{
+    background:linear-gradient(135deg,rgba(250,204,21,.1),rgba(250,204,21,.02));
+    border-color:rgba(250,204,21,.3);
+  }
+  .round-banner-done::before{background:linear-gradient(180deg,#facc15,#eab308)}
+  .round-banner-done .round-banner-lbl{color:#facc15}

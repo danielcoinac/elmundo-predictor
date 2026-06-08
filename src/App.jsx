@@ -770,6 +770,12 @@ export default function App() {
     if (predSavingRef.current.has(id)) return;
     // Prediction-banned users cannot submit
     if (user?.is_banned) { toast$("⛔ Cheating detected — you are banned from predictions", false); return; }
+    // Round guard: matches outside the active prediction round can't be saved
+    const targetMatch = matches.find(m => m.id === id);
+    const activeRound = getActivePredictionRound(matches);
+    if (!targetMatch || !activeRound || !matchInPredictionRound(targetMatch, activeRound)) {
+      toast$("⛔ This match isn't open for predictions yet", false); return;
+    }
     predSavingRef.current.add(id);
     try {
       // ── Server-side time check (defeats device clock manipulation) ──────
@@ -2768,13 +2774,17 @@ function BroadcastCard({ m, now, pulseData, user, myPred }) {
 }
 
 function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user, pulseCounts = {} }) {
-  const upcoming = sortMatches(matches.filter(m => m.status === "upcoming"));
+  // Active prediction round: only matches in this round are predictable right now.
+  const activeRound = getActivePredictionRound(matches);
+  const upcomingRound = sortMatches(matches.filter(m =>
+    m.status === "upcoming" && activeRound && matchInPredictionRound(m, activeRound)
+  ));
   const finished = sortMatches(matches.filter(m => m.status === "finished"));
 
   const [matchTab, setMatchTab] = useState("upcoming");
 
   // Date filter
-  const allDates = [...new Set(sortMatches(matches).map(m => m.date).filter(Boolean))];
+  const allDates = [...new Set(sortMatches(upcomingRound).map(m => m.date).filter(Boolean))];
   const [selDate, setSelDate] = useState("all");
   const [nowTs,   setNowTs]   = useState(Date.now());
   useEffect(() => {
@@ -2783,7 +2793,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
   }, []);
 
   const filterMatches = arr => selDate === "all" ? arr : arr.filter(m => m.date === selDate);
-  const visUpcoming = filterMatches(upcoming);
+  const visUpcoming = filterMatches(upcomingRound);
   const visFinished = filterMatches(finished);
 
   // Single global lock = 1h before first match of the whole tournament
@@ -2821,7 +2831,7 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
           onClick={() => setMatchTab("upcoming")}>
           <span className="match-tab-icon">⏱</span>
           <span>UPCOMING</span>
-          {upcoming.length > 0 && <span className="match-tab-count">{upcoming.length}</span>}
+          {upcomingRound.length > 0 && <span className="match-tab-count">{upcomingRound.length}</span>}
         </button>
         <button
           className={`match-tab-btn ${matchTab === "pathways" ? "match-tab-btn-on" : ""}`}
@@ -2866,10 +2876,42 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
       )}
 
       {matchTab === "upcoming" && (
-        <div className="card-stack">
-          {visUpcoming.length === 0 && <div className="empty">No upcoming matches{selDate!=="all"?` on ${selDate}`:""}</div>}
-          {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} isBanned={isBanned} allPreds={allPreds} user={user} />)}
-        </div>
+        <>
+          {/* Active round banner */}
+          {activeRound && (
+            <div className="round-banner">
+              <div className="round-banner-l">
+                <div className="round-banner-lbl">NOW PREDICTING</div>
+                <div className="round-banner-name">{activeRound.toUpperCase()}</div>
+              </div>
+              <div className="round-banner-r">
+                <span className="round-banner-step">
+                  STAGE {PREDICTION_ROUNDS.indexOf(activeRound) + 1}/{PREDICTION_ROUNDS.length}
+                </span>
+              </div>
+            </div>
+          )}
+          {!activeRound && (
+            <div className="round-banner round-banner-done">
+              <div className="round-banner-l">
+                <div className="round-banner-lbl">🏆 TOURNAMENT COMPLETE</div>
+                <div className="round-banner-name" style={{color:"#facc15"}}>ALL ROUNDS PLAYED</div>
+              </div>
+            </div>
+          )}
+
+          <div className="card-stack">
+            {visUpcoming.length === 0 && (
+              <div className="empty" style={{padding:"40px 16px",lineHeight:1.55}}>
+                {activeRound
+                  ? <>All matches in this round have already started or finished.<br/><span style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>The next round will unlock as soon as this one ends.</span></>
+                  : "No upcoming matches"}
+                {selDate !== "all" ? <div style={{marginTop:8,fontSize:12,color:"rgba(255,255,255,.4)"}}>(filtered: {selDate})</div> : null}
+              </div>
+            )}
+            {visUpcoming.map(m => <MatchCard key={m.id} m={m} pred={getPred(m.id)} onSave={savePred} globalLockTime={globalLockMs} isBanned={isBanned} allPreds={allPreds} user={user} />)}
+          </div>
+        </>
       )}
 
       {matchTab === "results" && (
@@ -2901,6 +2943,28 @@ function normalizeRound(group) {
   if (g.includes('semi'))                            return 'Semi-Finals';
   if (g.includes('third') || g.includes('play off')) return '3rd Place';
   if (g === 'final')                                 return 'Final';
+  return null;
+}
+
+// Prediction "rounds" — players predict one round at a time.
+// Group stage is round 1; Final Stage groups the 3rd-place + Final into one window.
+const PREDICTION_ROUNDS = ['Group Stage','Round of 32','Round of 16','Quarter-Finals','Semi-Finals','Final Stage'];
+
+function matchInPredictionRound(m, roundName) {
+  const r = normalizeRound(m.group);
+  if (roundName === 'Group Stage')   return r === null;
+  if (roundName === 'Final Stage')   return r === '3rd Place' || r === 'Final';
+  return r === roundName;
+}
+
+// Active prediction round = the first round (in order) that has at least one
+// non-finished match. Returns null only if the tournament is fully complete.
+function getActivePredictionRound(matches) {
+  for (const round of PREDICTION_ROUNDS) {
+    const inRound = matches.filter(m => matchInPredictionRound(m, round));
+    if (inRound.length === 0) continue;
+    if (inRound.some(m => m.status !== 'finished')) return round;
+  }
   return null;
 }
 
@@ -3156,9 +3220,14 @@ function matchKickoff(m) {
   } catch { return null; }
 }
 
-// Single global lock = 1 hour before the very first match of the entire tournament
+// Single global lock = 1 hour before the first match of the CURRENT prediction round.
+// When the active round changes (e.g. group stage → R32) the lock automatically
+// shifts to the new round's first kickoff.
 function getGlobalLockMs(matches) {
+  const activeRound = getActivePredictionRound(matches);
+  if (!activeRound) return null;
   const kickoffs = matches
+    .filter(m => matchInPredictionRound(m, activeRound))
     .map(m => matchKickoff(m))
     .filter(Boolean)
     .map(k => k.getTime());
