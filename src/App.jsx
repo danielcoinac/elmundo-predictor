@@ -10107,6 +10107,196 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
   );
 }
 
+/* ── Wallet Tab — premium balance + redemption + top-up info ── */
+function WalletTab({ user, myCredits, onToast }) {
+  const [code,     setCode]     = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+  const [recent,   setRecent]   = useState([]);
+  const inputRef = useRef(null);
+
+  // Load last 8 transactions for transparency
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("credit_transactions")
+          .select("amount,new_balance,created_at")
+          .eq("target_user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(8);
+        if (!cancelled && data) setRecent(data);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [user.id, myCredits]);
+
+  // Auto-format input as user types: EM-XXXX-XXXX
+  const handleCodeChange = (e) => {
+    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let formatted = raw;
+    if (raw.length > 2 && raw.startsWith("EM")) {
+      const body = raw.slice(2);
+      if (body.length <= 4)      formatted = `EM-${body}`;
+      else                       formatted = `EM-${body.slice(0,4)}-${body.slice(4,8)}`;
+    } else if (raw.length > 0 && !raw.startsWith("EM")) {
+      // Auto-prefix
+      if (raw.length <= 4)       formatted = `EM-${raw}`;
+      else                        formatted = `EM-${raw.slice(0,4)}-${raw.slice(4,8)}`;
+    }
+    setCode(formatted);
+  };
+
+  const handleRedeem = async () => {
+    if (redeeming) return;
+    const clean = code.trim();
+    if (!/^EM-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(clean)) {
+      onToast?.("Code must be in format EM-XXXX-XXXX", false);
+      return;
+    }
+    setRedeeming(true);
+    try {
+      const { data, error } = await supabase.rpc("redeem_gift_card", { p_code: clean });
+      if (error) throw error;
+      if (!data?.ok) {
+        const msg = ({
+          invalid_code:     "This code is not valid",
+          already_redeemed: "This code has already been redeemed",
+          voided:           "This code has been voided",
+          not_signed_in:    "Please sign in again",
+        })[data?.error] || "Could not redeem this code";
+        onToast?.(msg, false);
+        try { navigator.vibrate?.([80, 60, 80]); } catch {}
+        return;
+      }
+      onToast?.(`+$${(+data.amount).toFixed(2)} added to your wallet!`);
+      try { navigator.vibrate?.([40, 30, 80, 30, 120]); } catch {}
+      setCode("");
+      // Realtime channel on user_credits will refresh myCredits automatically
+    } catch (e) {
+      onToast?.("Network error — please try again", false);
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
+  const isValidShape = /^EM-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code.trim());
+
+  return (
+    <div className="wallet-tab-wrap">
+      {/* Premium balance hero */}
+      <div className="wallet-hero">
+        <div className="wallet-hero-shine" />
+        <div className="wallet-hero-bg-grid" />
+        <div className="wallet-hero-content">
+          <div className="wallet-hero-label">
+            <span className="wallet-hero-dot" />
+            AVAILABLE BALANCE
+          </div>
+          <div className="wallet-hero-amount">
+            <span className="wallet-hero-currency">$</span>
+            {(+myCredits).toFixed(2)}
+          </div>
+          <div className="wallet-hero-name">
+            {user.name}
+            {user.player_number ? (
+              <span className="wallet-hero-num"> · #{user.player_number}</span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Gift card redemption */}
+      <div className="wallet-section-hd">
+        <span className="wallet-section-hd-icon">🎟️</span>
+        <span>REDEEM A GIFT CARD</span>
+      </div>
+      <div className="wallet-redeem-card">
+        <div className="wallet-redeem-hint">Enter the code printed on your gift card</div>
+        <div className="wallet-redeem-row">
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            spellCheck={false}
+            className={`wallet-redeem-input ${isValidShape ? "wallet-redeem-input-ok" : ""}`}
+            placeholder="EM-XXXX-XXXX"
+            value={code}
+            onChange={handleCodeChange}
+            onKeyDown={e => { if (e.key === "Enter" && isValidShape) handleRedeem(); }}
+            maxLength={12}
+            disabled={redeeming}
+          />
+          <button
+            className="wallet-redeem-btn"
+            onClick={handleRedeem}
+            disabled={!isValidShape || redeeming}>
+            {redeeming ? "…" : "REDEEM"}
+          </button>
+        </div>
+        <div className="wallet-redeem-foot">
+          Buy a gift card at the bar — staff will hand you a printed code.
+        </div>
+      </div>
+
+      {/* Top-up options */}
+      <div className="wallet-section-hd">
+        <span className="wallet-section-hd-icon">💳</span>
+        <span>OTHER WAYS TO TOP UP</span>
+      </div>
+      <div className="wallet-topup-grid">
+        <div className="wallet-topup-tile">
+          <div className="wallet-topup-tile-icon">🏧</div>
+          <div className="wallet-topup-tile-title">AT THE BAR</div>
+          <div className="wallet-topup-tile-body">Pay cash or card at the bar — credits added to your account instantly.</div>
+        </div>
+        <div className="wallet-topup-tile">
+          <div className="wallet-topup-tile-icon">🎁</div>
+          <div className="wallet-topup-tile-title">GIFT CARD</div>
+          <div className="wallet-topup-tile-body">Pick up a printed gift card at the bar — load it here with the code.</div>
+        </div>
+      </div>
+
+      {/* Recent transactions */}
+      {recent.length > 0 && (
+        <>
+          <div className="wallet-section-hd">
+            <span className="wallet-section-hd-icon">📋</span>
+            <span>RECENT ACTIVITY</span>
+          </div>
+          <div className="wallet-tx-list">
+            {recent.map((tx, i) => (
+              <div key={i} className="wallet-tx-row">
+                <div className="wallet-tx-row-left">
+                  <div className={`wallet-tx-amt ${+tx.amount >= 0 ? "wallet-tx-amt-pos" : "wallet-tx-amt-neg"}`}>
+                    {(+tx.amount >= 0 ? "+" : "") + "$" + Math.abs(+tx.amount).toFixed(2)}
+                  </div>
+                  <div className="wallet-tx-when">
+                    {tx.created_at ? new Date(tx.created_at).toLocaleString("en-US", {
+                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                    }) : ""}
+                  </div>
+                </div>
+                <div className="wallet-tx-bal">${(+tx.new_balance).toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Footer info */}
+      <div className="wallet-info-foot">
+        <div className="wallet-info-foot-title">How credits work</div>
+        <div className="wallet-info-foot-body">
+          Credits are stored in your El Mundo account. Use them to order food & drinks straight from the app — staff brings everything to your table.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ── Admin: Rooms ── */
 
 
@@ -10736,42 +10926,7 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
 
       {/* ── WALLET TAB ── */}
       {tab === "wallet" && (
-        <div style={{padding:"0 16px 32px"}}>
-          {/* Balance card */}
-          <div className="wallet-card">
-            <div className="wallet-card-label">AVAILABLE BALANCE</div>
-            <div className="wallet-card-amount">${(+myCredits).toFixed(2)}</div>
-            <div className="wallet-card-name">{user.name}</div>
-            {user.player_number ? <div style={{fontFamily:"'Anton',sans-serif",fontSize:28,letterSpacing:4,color:"#fff",marginTop:8,opacity:0.9}}>PLAYER <span style={{color:"#facc15"}}>#{user.player_number}</span></div> : null}
-          </div>
-
-          {/* Top up section */}
-          <div className="wallet-section-title">ADD CREDITS TO YOUR BALANCE</div>
-
-          {/* Top-up at bar */}
-          <div className="topup-desk-box">
-            <div className="topup-desk-icon">🏧</div>
-            <div className="topup-desk-title">TOP UP AT THE BAR</div>
-            <div className="topup-desk-body">
-              Visit the bar and pay by cash or card — staff will add credits to your account instantly.
-            </div>
-          </div>
-
-          {/* Gift card */}
-          <div className="topup-desk-box" style={{marginTop:12}}>
-            <div className="topup-desk-icon">🎁</div>
-            <div className="topup-desk-title">BUY A GIFT CARD</div>
-            <div className="topup-desk-body">
-              Gift cards are available at the bar. Load any amount and use them to top up your wallet or give to a friend.
-            </div>
-          </div>
-
-          {/* How credits work */}
-          <div className="wallet-info-box">
-            <div className="wallet-info-title">How credits work</div>
-            <div className="wallet-info-body">Credits are stored in your account. Use them to pay for food and drinks directly from the app. Your waiter will bring your order to your table.</div>
-          </div>
-        </div>
+        <WalletTab user={user} myCredits={myCredits} onToast={onToast} />
       )}
 
     </div>
