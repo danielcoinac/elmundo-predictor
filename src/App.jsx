@@ -3048,107 +3048,289 @@ function PathwaysView({ matches }) {
   );
 }
 
-// ── Bracket Map Modal — fullscreen premium visual ─────────────────────────────
+// ── Bracket Map Modal — premium SVG-based tournament tree ────────────────────
 
 function BracketMapModal({ byRound, activeRounds, onClose }) {
-  // Lock body scroll while open
+  const [hoveredId, setHoveredId] = useState(null);
+  const [mounted,   setMounted]   = useState(false);
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
-  // Esc to close
-  useEffect(() => {
+    requestAnimationFrame(() => setMounted(true));
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
   }, [onClose]);
 
-  // Final + 3rd place are grouped into a "Final stage" column
-  // Render columns: R32, R16, QF, SF, Final (with 3rd as side card)
-  const mainColumns = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','Final']
-    .filter(r => activeRounds.includes(r));
+  // Build the rounds we render in order
+  const ROUNDS = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','Final'];
+  const rounds = ROUNDS.filter(r => (byRound[r]?.length || 0) > 0);
   const thirdPlace = byRound['3rd Place'] && byRound['3rd Place'][0];
 
-  // Totals for the header chip
-  const totalMatches  = activeRounds.reduce((sum, r) => sum + (byRound[r]?.length || 0), 0);
-  const playedMatches = activeRounds.reduce(
-    (sum, r) => sum + (byRound[r]?.filter(m => m.status === 'finished').length || 0), 0
-  );
+  // Header stats
+  const totalMatches  = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','3rd Place','Final']
+    .reduce((s,r) => s + (byRound[r]?.length || 0), 0);
+  const playedMatches = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','3rd Place','Final']
+    .reduce((s,r) => s + (byRound[r]?.filter(m => m.status === 'finished').length || 0), 0);
+
+  // ── Geometry ──────────────────────────────────────────────────────────────
+  // Card dims
+  const CARD_W = 174, CARD_H = 68, COL_GAP = 56;
+  // Vertical "unit" = how much space one R32 match occupies (incl. gap)
+  // R16 cards span 2 units, QF 4, SF 8, Final 16. Final's center is at row 7.5
+  // R32 count drives total height
+  const r32Count = byRound['Round of 32']?.length || 16;
+  const UNIT_H   = CARD_H + 22;            // vertical spacing per R32 match
+  const TOTAL_H  = r32Count * UNIT_H + 80; // a little top/bottom padding
+
+  // Column positions (left edges)
+  const colX = i => i * (CARD_W + COL_GAP);
+  const TOTAL_W  = rounds.length * CARD_W + (rounds.length - 1) * COL_GAP + 80;
+
+  // Returns center Y for the n-th card in `round` index
+  const centerY = (roundIdx, i) => {
+    const span  = Math.pow(2, roundIdx);    // 1, 2, 4, 8, 16
+    return 40 + (i * span + span / 2 - 0.5) * UNIT_H;
+  };
+
+  // Build absolute position for each match: x (left), y (top)
+  const cards = []; // { round, i, m, x, y, parentIdx, parentRoundIdx }
+  rounds.forEach((round, roundIdx) => {
+    const sorted = sortMatches(byRound[round] || []);
+    sorted.forEach((m, i) => {
+      const cx = colX(roundIdx);
+      const cy = centerY(roundIdx, i) - CARD_H / 2;
+      cards.push({
+        round, roundIdx, i, m,
+        x: cx, y: cy,
+        cx, cyCenter: centerY(roundIdx, i),
+      });
+    });
+  });
+
+  // Build connectors: each card (except round 0) connects to two parent cards in previous round
+  // Each card in round R index i connects FROM round R-1 indices 2i and 2i+1
+  const connectors = []; // { id, fromX, fromY, toX, toY, finished, highlighted }
+  for (let roundIdx = 1; roundIdx < rounds.length; roundIdx++) {
+    const childRound  = rounds[roundIdx];
+    const parentRound = rounds[roundIdx - 1];
+    const childCards  = sortMatches(byRound[childRound]  || []);
+    const parentCards = sortMatches(byRound[parentRound] || []);
+
+    childCards.forEach((child, i) => {
+      const childX = colX(roundIdx);
+      const childY = centerY(roundIdx, i);
+
+      [2*i, 2*i+1].forEach(parentIdx => {
+        if (parentIdx >= parentCards.length) return;
+        const parent = parentCards[parentIdx];
+        const parentX = colX(roundIdx - 1) + CARD_W;
+        const parentY = centerY(roundIdx - 1, parentIdx);
+        connectors.push({
+          id: `${child.id}->${parent.id}`,
+          parentId: parent.id,
+          childId:  child.id,
+          fromX: parentX, fromY: parentY,
+          toX:   childX,  toY:   childY,
+          parentFinished: parent.status === 'finished',
+          isWinnerPath: parent.status === 'finished' && (() => {
+            // path only highlights if parent finished AND we know who won — for now just dim/bright
+            return true;
+          })(),
+        });
+      });
+    });
+  }
+
+  // For hover-to-final: compute path from hovered card up to Final
+  const pathToFinal = (matchId) => {
+    if (!matchId) return new Set();
+    const result = new Set([matchId]);
+    let currentId = matchId;
+    // Walk down through connectors that have currentId as parentId
+    for (let i = 0; i < rounds.length; i++) {
+      const next = connectors.find(c => c.parentId === currentId);
+      if (!next) break;
+      result.add(next.childId);
+      result.add(next.id);
+      currentId = next.childId;
+    }
+    // Also include the connector going INTO the original hovered card
+    const incoming = connectors.find(c => c.childId === matchId);
+    if (incoming) result.add(incoming.id);
+    return result;
+  };
+  const highlightIds = pathToFinal(hoveredId);
 
   return (
-    <div className="bracket-modal-root" role="dialog" aria-modal="true" aria-label="Tournament bracket">
-      <div className="bracket-modal-bg" />
-      <div className="bracket-modal-frame">
+    <div className="bm2-root" role="dialog" aria-modal="true" aria-label="Tournament bracket">
+      {/* Background layers */}
+      <div className="bm2-bg" />
+      <div className="bm2-bg-glow" />
+      <div className="bm2-bg-particles" />
+
+      <div className="bm2-frame">
         {/* Top bar */}
-        <div className="bracket-modal-topbar">
-          <div className="bracket-modal-title">
-            <span className="bracket-modal-cup">🏆</span>
+        <div className="bm2-topbar">
+          <div className="bm2-title">
+            <span className="bm2-cup">🏆</span>
             <div>
-              <div className="bracket-modal-title-main">ROAD TO THE CUP</div>
-              <div className="bracket-modal-title-sub">{playedMatches}/{totalMatches} matches played · World Cup 2026</div>
+              <div className="bm2-title-main">ROAD TO THE CUP</div>
+              <div className="bm2-title-sub">{playedMatches}/{totalMatches} matches played · World Cup 2026</div>
             </div>
           </div>
-          <button className="bracket-modal-close" onClick={onClose} aria-label="Close bracket">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <button className="bm2-close" onClick={onClose} aria-label="Close bracket">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </button>
         </div>
 
-        {/* Horizontal scrollable bracket canvas */}
-        <div className="bracket-canvas">
-          <div className="bracket-stage-grid">
-            {mainColumns.map((round, colIdx) => {
-              const matches = sortMatches(byRound[round] || []);
-              return (
-                <div key={round} className={`bracket-col bracket-col-${ROUND_SHORT[round].toLowerCase()}`}>
-                  <div className="bracket-col-hd">
-                    <span className="bracket-col-hd-icon">{ROUND_ICON[round]}</span>
-                    <span className="bracket-col-hd-name">{round}</span>
-                    <span className="bracket-col-hd-count">{matches.length}</span>
-                  </div>
-                  <div className="bracket-col-body">
-                    {matches.map((m, i) => (
-                      <BracketMatch
-                        key={m.id}
-                        m={m}
-                        connectorLeft={colIdx > 0}
-                        connectorRight={colIdx < mainColumns.length - 1}
-                        isFinal={round === 'Final'}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 3rd place play-off card pinned below the Final column */}
-          {thirdPlace && (
-            <div className="bracket-third-wrap">
-              <div className="bracket-third-divider"><span>3RD PLACE PLAY-OFF</span></div>
-              <div className="bracket-third-card">
-                <BracketMatch m={thirdPlace} connectorLeft={false} connectorRight={false} isThird />
-              </div>
+        {/* Round header strip — sticky */}
+        <div className="bm2-round-strip" style={{ minWidth: TOTAL_W }}>
+          {rounds.map((r, idx) => (
+            <div key={r} className="bm2-round-hd" style={{ left: colX(idx) + 40, width: CARD_W }}>
+              <span className="bm2-round-icon">{ROUND_ICON[r]}</span>
+              <span className="bm2-round-name">{r}</span>
             </div>
-          )}
+          ))}
         </div>
 
-        {/* Footer hint */}
-        <div className="bracket-modal-foot">
-          <span className="bracket-foot-dot bracket-foot-dot-tbd" /> TBD
-          <span className="bracket-foot-dot bracket-foot-dot-live" /> Live
-          <span className="bracket-foot-dot bracket-foot-dot-done" /> Played
-          <span className="bracket-foot-tip">← swipe to see all rounds →</span>
+        {/* Canvas: SVG connectors + card layer */}
+        <div className="bm2-canvas">
+          <div className="bm2-canvas-inner" style={{ width: TOTAL_W, height: TOTAL_H, paddingLeft: 40, paddingRight: 40 }}>
+
+            {/* SVG connectors */}
+            <svg
+              className="bm2-svg"
+              width={TOTAL_W - 80}
+              height={TOTAL_H}
+              viewBox={`0 0 ${TOTAL_W - 80} ${TOTAL_H}`}
+              style={{ position: 'absolute', top: 0, left: 40, pointerEvents: 'none' }}
+            >
+              <defs>
+                <linearGradient id="bm2-line-dim" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"  stopColor="rgba(255,255,255,0.08)"/>
+                  <stop offset="100%" stopColor="rgba(255,255,255,0.18)"/>
+                </linearGradient>
+                <linearGradient id="bm2-line-done" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"  stopColor="#4ade80"/>
+                  <stop offset="100%" stopColor="#22c55e"/>
+                </linearGradient>
+                <linearGradient id="bm2-line-hot" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"  stopColor="#facc15"/>
+                  <stop offset="100%" stopColor="#fbbf24"/>
+                </linearGradient>
+                <filter id="bm2-glow">
+                  <feGaussianBlur stdDeviation="2.5" result="g"/>
+                  <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+
+              {connectors.map((c, idx) => {
+                const dx = (c.toX - c.fromX) * 0.55;
+                const path = `M ${c.fromX} ${c.fromY} C ${c.fromX + dx} ${c.fromY}, ${c.toX - dx} ${c.toY}, ${c.toX} ${c.toY}`;
+                const isHot = highlightIds.has(c.id);
+                const done  = c.parentFinished;
+                return (
+                  <g key={c.id} className={`bm2-conn ${isHot ? 'bm2-conn-hot' : done ? 'bm2-conn-done' : 'bm2-conn-dim'}`}
+                     style={{ animationDelay: `${0.25 + idx * 0.02}s` }}>
+                    <path
+                      d={path}
+                      fill="none"
+                      strokeWidth={isHot ? 2.5 : 1.6}
+                      stroke={isHot ? 'url(#bm2-line-hot)' : done ? 'url(#bm2-line-done)' : 'url(#bm2-line-dim)'}
+                      filter={isHot ? 'url(#bm2-glow)' : undefined}
+                      className="bm2-path"
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Cards layer */}
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              {cards.map((c, idx) => {
+                const isFinal = c.round === 'Final';
+                const inHotPath = highlightIds.has(c.m.id);
+                return (
+                  <BracketMatch2
+                    key={c.m.id}
+                    m={c.m}
+                    isFinal={isFinal}
+                    inHotPath={inHotPath}
+                    onMouseEnter={() => setHoveredId(c.m.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    onClick={() => setHoveredId(h => h === c.m.id ? null : c.m.id)}
+                    style={{
+                      position: 'absolute',
+                      left:  c.x,
+                      top:   c.y,
+                      width: CARD_W,
+                      height: CARD_H,
+                      animationDelay: mounted ? `${c.roundIdx * 0.1 + c.i * 0.02}s` : '0s',
+                    }}
+                  />
+                );
+              })}
+
+              {/* Trophy emblem behind the Final card */}
+              {rounds.includes('Final') && (() => {
+                const finalIdx = rounds.indexOf('Final');
+                const fy = centerY(finalIdx, 0);
+                const fx = colX(finalIdx) + CARD_W / 2;
+                return (
+                  <div className="bm2-trophy" style={{ left: fx - 80, top: fy - 130 }}>
+                    <div className="bm2-trophy-ring" />
+                    <div className="bm2-trophy-ring bm2-trophy-ring-2" />
+                    <div className="bm2-trophy-emoji">🏆</div>
+                    <div className="bm2-trophy-rays" />
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* 3rd place — rendered separately at the bottom */}
+        {thirdPlace && (
+          <div className="bm2-third-strip">
+            <div className="bm2-third-line" />
+            <div className="bm2-third-label">3RD PLACE PLAY-OFF · BRONZE FINAL</div>
+            <div className="bm2-third-card-wrap">
+              <BracketMatch2
+                m={thirdPlace}
+                isThird
+                inHotPath={false}
+                onMouseEnter={() => {}}
+                onMouseLeave={() => {}}
+                onClick={() => {}}
+                style={{ width: CARD_W + 30 }}
+              />
+            </div>
+            <div className="bm2-third-line" />
+          </div>
+        )}
+
+        {/* Footer legend */}
+        <div className="bm2-foot">
+          <div className="bm2-foot-legend">
+            <span className="bm2-foot-pill bm2-foot-pill-tbd">○ TBD</span>
+            <span className="bm2-foot-pill bm2-foot-pill-live">● LIVE</span>
+            <span className="bm2-foot-pill bm2-foot-pill-done">✓ PLAYED</span>
+          </div>
+          <span className="bm2-foot-tip">{hoveredId ? "Path to the cup highlighted" : "Tap a match to highlight its road"}</span>
         </div>
       </div>
     </div>
   );
 }
 
-function BracketMatch({ m, connectorLeft, connectorRight, isFinal, isThird }) {
+function BracketMatch2({ m, isFinal, isThird, inHotPath, style, onMouseEnter, onMouseLeave, onClick }) {
   const isFinished = m.status === 'finished' && m.hs != null && m.as != null;
   const homeWon = isFinished && m.hs > m.as;
   const awayWon = isFinished && m.as > m.hs;
@@ -3162,23 +3344,25 @@ function BracketMatch({ m, connectorLeft, connectorRight, isFinal, isThird }) {
   })();
 
   return (
-    <div className={`bm-wrap ${isFinal ? 'bm-wrap-final' : ''} ${isThird ? 'bm-wrap-third' : ''}`}>
-      {connectorLeft  && <div className="bm-connector bm-connector-left"  />}
-      {connectorRight && <div className="bm-connector bm-connector-right" />}
-      <div className={`bm-card ${isFinished ? 'bm-card-done' : ''} ${isLive ? 'bm-card-live' : ''} ${isFinal ? 'bm-card-final' : ''}`}>
-        {isFinal && <div className="bm-card-crown">★ FINAL ★</div>}
-        {isLive  && <div className="bm-card-live-pill">LIVE</div>}
-        <div className="bm-card-meta">{m.date}{m.time ? ` · ${m.time}` : ''}</div>
-        <div className={`bm-team ${homeWon ? 'bm-team-win' : awayWon ? 'bm-team-lose' : ''}`}>
-          <span className="bm-team-flag">{flag(m.home)}</span>
-          <span className="bm-team-name">{m.home}</span>
-          <span className="bm-team-score">{isFinished ? m.hs : '–'}</span>
-        </div>
-        <div className={`bm-team ${awayWon ? 'bm-team-win' : homeWon ? 'bm-team-lose' : ''}`}>
-          <span className="bm-team-flag">{flag(m.away)}</span>
-          <span className="bm-team-name">{m.away}</span>
-          <span className="bm-team-score">{isFinished ? m.as : '–'}</span>
-        </div>
+    <div
+      className={`bm2-card ${isFinished ? 'bm2-card-done' : ''} ${isLive ? 'bm2-card-live' : ''} ${isFinal ? 'bm2-card-final' : ''} ${isThird ? 'bm2-card-third' : ''} ${inHotPath ? 'bm2-card-hot' : ''}`}
+      style={style}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onClick={onClick}
+    >
+      {isFinal && <div className="bm2-card-crown">★ FINAL ★</div>}
+      {isLive  && <div className="bm2-card-live-pill"><span className="bm2-live-dot"/>LIVE</div>}
+      <div className="bm2-card-meta">{m.date}{m.time ? ` · ${m.time}` : ''}</div>
+      <div className={`bm2-team ${homeWon ? 'bm2-team-win' : awayWon ? 'bm2-team-lose' : ''}`}>
+        <span className="bm2-flag">{flag(m.home)}</span>
+        <span className="bm2-name">{m.home}</span>
+        <span className="bm2-score">{isFinished ? m.hs : '–'}</span>
+      </div>
+      <div className={`bm2-team ${awayWon ? 'bm2-team-win' : homeWon ? 'bm2-team-lose' : ''}`}>
+        <span className="bm2-flag">{flag(m.away)}</span>
+        <span className="bm2-name">{m.away}</span>
+        <span className="bm2-score">{isFinished ? m.as : '–'}</span>
       </div>
     </div>
   );
