@@ -4488,13 +4488,13 @@
   .round-banner-done::before{background:linear-gradient(180deg,#facc15,#eab308)}
   .round-banner-done .round-banner-lbl{color:#facc15}
 
-  /* ── Zeli Sponsor Banner v3 — taller, cleaner zoning, mobile-safe ─────── */
+  /* ── Zeli Sponsor Banner v3 — fixed heights for predictable layout ────── */
   .zeli-banner{
     display:block;width:calc(100% - 32px);max-width:1200px;
     margin:14px 16px;
-    aspect-ratio:1200 / 320;
-    /* never collapse on phone — always tall enough for text + animation */
-    min-height:200px;
+    /* Fixed heights — no aspect-ratio so the banner never grows beyond
+       what the content needs and never creates a gap below. */
+    height:170px;
     text-decoration:none;color:inherit;cursor:pointer;
     container-type:inline-size;
   }
@@ -4755,7 +4755,7 @@
     transform:translateY(-1px);transition:box-shadow .25s,transform .25s;
   }
 
-  /* Mobile sizing — taller aspect ratios so all content fits comfortably */
+  /* Mobile sizing — keep banner short, scale text down so nothing wraps */
   @container (max-width:780px){
     .zb-head{font-size:24px}
     .zb-thin{font-size:12px}
@@ -4767,25 +4767,26 @@
     .zb-brand-mark span{font-size:8px;letter-spacing:3px}
   }
   @container (max-width:520px){
-    .zeli-banner{aspect-ratio:5 / 3;min-height:200px}
+    .zeli-banner{height:160px}
     .zb-head{font-size:22px;line-height:1.05}
-    .zb-thin{font-size:11px}
-    .zb-scene{max-width:65%;left:18px;top:16px}
-    .zb-eyebrow{font-size:8.5px;letter-spacing:1.8px;margin-bottom:6px}
-    .zb-lockup-z{font-size:38px;letter-spacing:4px}
+    .zb-thin{font-size:11px;margin-top:2px}
+    .zb-scene{max-width:65%;left:18px;top:14px}
+    .zb-eyebrow{font-size:8.5px;letter-spacing:1.8px;margin-bottom:5px}
+    .zb-lockup-z{font-size:36px;letter-spacing:4px}
     .zb-lockup-services{font-size:11px;gap:11px;letter-spacing:3.5px}
-    .zb-cta{padding:9px 18px;font-size:10px;letter-spacing:2px}
-    .zb-brand-mark{font-size:12px;letter-spacing:2px;bottom:12px;left:18px}
+    .zb-cta{padding:8px 16px;font-size:10px;letter-spacing:2px}
+    .zb-brand-mark{font-size:12px;letter-spacing:2px;bottom:10px;left:18px}
     .zb-brand-mark span{font-size:7px;letter-spacing:2.5px}
-    .zb-status{font-size:8.5px;letter-spacing:1.5px;top:12px;right:14px}
+    .zb-status{font-size:8.5px;letter-spacing:1.5px;top:10px;right:14px}
   }
   @container (max-width:380px){
-    .zeli-banner{aspect-ratio:auto;height:200px}
-    .zb-head{font-size:20px}
+    .zeli-banner{height:150px}
+    .zb-head{font-size:19px}
     .zb-thin{font-size:10.5px}
     .zb-scene{max-width:70%}
-    .zb-eyebrow{font-size:8px;letter-spacing:1.5px}
-    .zb-lockup-z{font-size:32px;letter-spacing:3.5px}
+    .zb-eyebrow{font-size:8px;letter-spacing:1.5px;margin-bottom:4px}
+    .zb-lockup-z{font-size:30px;letter-spacing:3px}
+    .zb-lockup-services{font-size:10px;gap:10px;letter-spacing:3px}
     .zb-brand-mark{font-size:11px}
     .zb-brand-mark span{display:none}
   }
@@ -4799,10 +4800,9 @@
     .zb-scene,.zb-car-grp,.zb-courier-grp,.zb-loop-fade{display:none!important}
   }
 
-  /* ── Mini variants (rides-only / food-only) — mobile-safe ─────────────── */
+  /* ── Mini variants — fixed heights, no aspect-ratio so no orphan gap ──── */
   .zeli-banner-mini{
-    /* Desktop wide aspect; mobile uses fixed height so CTA never clips */
-    aspect-ratio:600 / 170;min-height:150px;
+    height:140px;
     margin:14px 16px;
   }
   .zb-mini{
@@ -4869,13 +4869,13 @@
   .zeli-banner-mini-food:hover .zb-mini{box-shadow:0 10px 28px rgba(244,114,182,.18),0 0 0 1px rgba(255,255,255,.12)}
 
   @container (max-width:560px){
-    .zeli-banner-mini{aspect-ratio:auto;height:160px}
+    .zeli-banner-mini{height:140px}
     .zb-mini-head{font-size:19px}
     .zb-mini-sub{font-size:10.5px}
     .zb-mini-text{padding:14px 16px;width:62%}
   }
   @container (max-width:380px){
-    .zeli-banner-mini{height:150px}
+    .zeli-banner-mini{height:130px}
     .zb-mini-head{font-size:17px}
     .zb-mini-brand{font-size:12px}
     .zb-mini-brand span{display:none}
