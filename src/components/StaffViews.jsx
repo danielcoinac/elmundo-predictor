@@ -1603,8 +1603,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
 
           {/* ── RIGHT: always-visible pickup orders panel ── */}
           {(() => {
+            // Sponsor orders are brought to the table — exclude from the pickup queue
             const pickupOrders = allOrders
-              .filter(o => o.status === "pending" && o.order_number && +o.order_number < 8000)
+              .filter(o => o.status === "pending"
+                        && o.order_number
+                        && +o.order_number < 8000
+                        && o.payment_method !== "sponsor_gift")
               .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
             const searchQ = pickupSearch.trim();
             const filtered = searchQ
@@ -1636,7 +1640,7 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
                       )}
                     </div>
                     <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2,letterSpacing:1}}>
-                      Search by number or name to call them
+                      Customer says the number — search and hand it over
                     </div>
                   </div>
                 </div>

@@ -1006,7 +1006,7 @@ export default function App() {
       }).select().single();
       if (error) { toast$("Error placing order", false); return false; }
     }
-    toast$(`🔔 Order placed! Pick up at the bar — number ${pickupNum}`);
+    toast$(`🔔 Order placed! Go to the bar, wait in line, then say number ${pickupNum}`);
     try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
     return pickupNum;
   };
@@ -10026,17 +10026,18 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
     <div style={{padding:40,textAlign:"center"}}>
       <div style={{fontSize:64,marginBottom:16}}>🎉</div>
       <div style={{fontFamily:"'Anton',sans-serif",fontSize:22,letterSpacing:2,color:"#fff",marginBottom:8}}>ORDER SENT!</div>
-      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",marginBottom:20}}>
-        We'll bring your order to you — no need to pick up!
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.55)",marginBottom:24,lineHeight:1.55}}>
+        Sit back and relax — a member of staff will <strong style={{color:"#FFD700"}}>bring your order to you</strong>.
+        <br/><span style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>No pickup needed — VIP service.</span>
       </div>
-      {pickupNum && (
-        <div style={{margin:"0 auto 28px",padding:"24px 20px",background:"rgba(255,255,255,.04)",
-          border:"2px solid rgba(255,255,255,.2)",borderRadius:16,maxWidth:200}}>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:4,color:"rgba(255,255,255,.4)",marginBottom:8}}>YOUR NUMBER</div>
-          <div style={{fontFamily:"'Anton',sans-serif",fontSize:80,lineHeight:1,color:"#fff",letterSpacing:4,
-            textShadow:"0 0 40px rgba(255,255,255,.35)"}}>{String(pickupNum).padStart(2,"0")}</div>
+      <div style={{margin:"0 auto 28px",padding:"16px 20px",background:"rgba(255,215,0,.06)",
+        border:"1px solid rgba(255,215,0,.25)",borderRadius:14,maxWidth:280,
+        display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
+        <span style={{fontSize:24,flexShrink:0}}>⭐</span>
+        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.55)",lineHeight:1.45}}>
+          The bar already knows it's a sponsor order. They'll find you.
         </div>
-      )}
+      </div>
       <button onClick={() => { setDone(false); setCart({}); setPickupNum(null); }}
         style={{width:"100%",padding:"14px 0",background:"#fff",color:"#000",border:"none",
           fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,cursor:"pointer",marginBottom:10}}>
@@ -10921,7 +10922,12 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                   )}
                   {cartPayMethod === "pay_bar" && (
                     <div style={{marginTop:10,padding:"10px 12px",background:"rgba(251,191,36,.07)",border:"1px solid rgba(251,191,36,.25)",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.6)",lineHeight:1.5}}>
-                      📋 You'll get a pickup number. When staff calls your number, go to the bar to pay and collect your order.
+                      🍺 You'll get an order number. Walk to the bar, <strong>wait your turn in line</strong>, then tell staff your number — they'll pay you out and hand over your order.
+                    </div>
+                  )}
+                  {cartPayMethod === "credits" && (
+                    <div style={{marginTop:10,padding:"10px 12px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.55)",lineHeight:1.5}}>
+                      📋 You'll get an order number. Walk to the bar, <strong>wait your turn in line</strong>, then tell staff your number — they'll hand over your order.
                     </div>
                   )}
                 </div>
@@ -10980,12 +10986,18 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
         <div>
           {/* ── PICKUP NUMBER — stays on screen until staff clears the order ── */}
           {(() => {
-            const pendingOrds = myOrders.filter(o => o.status === "pending" && o.order_number && +o.order_number < 100);
+            // Sponsor orders are brought to the table — no pickup number shown
+            const pendingOrds = myOrders.filter(o =>
+              o.status === "pending"
+              && o.order_number
+              && +o.order_number < 100
+              && o.payment_method !== "sponsor_gift"
+            );
             if (pendingOrds.length === 0) return null;
             const ord = pendingOrds[0];
             return (
               <div style={{
-                margin:"16px 16px 0",padding:"28px 20px",
+                margin:"16px 16px 0",padding:"24px 20px 20px",
                 background:"rgba(255,255,255,.04)",
                 border:"2px solid rgba(255,255,255,.25)",
                 borderRadius:16,textAlign:"center",
@@ -11003,9 +11015,35 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
                 <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.3)",marginTop:12}}>
                   YOUR ORDER NUMBER
                 </div>
-                <div style={{marginTop:16,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+
+                {/* 3-step instructions */}
+                <div style={{marginTop:18,display:"flex",flexDirection:"column",gap:6,textAlign:"left",
+                  padding:"12px 14px",background:"rgba(0,0,0,.35)",borderRadius:10,
+                  border:"1px solid rgba(255,255,255,.08)"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>1.</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
+                      Walk to the bar
+                    </span>
+                  </div>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>2.</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
+                      <strong>Wait your turn in line</strong> — staff don't call you
+                    </span>
+                  </div>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>3.</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
+                      Say your number — staff will hand over your order
+                      {ord.payment_method === "cash" && <span style={{color:"#fbbf24"}}> (and pay with cash or card)</span>}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{marginTop:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                   <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 6px #4ade80",display:"inline-block",animation:"of-pulse 1.6s ease-in-out infinite"}}/>
-                  <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)"}}>Waiting for bar to confirm pickup</span>
+                  <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)"}}>Order is ready when staff clears it</span>
                 </div>
               </div>
             );
