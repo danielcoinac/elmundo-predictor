@@ -2773,6 +2773,217 @@ function BroadcastCard({ m, now, pulseData, user, myPred }) {
   );
 }
 
+/* ── Zeli sponsor banner — premium animated ad, 10s loop ── */
+function ZeliBanner() {
+  return (
+    <a className="zeli-banner" href="https://zeli-bonaire.com" target="_blank" rel="noopener noreferrer"
+       aria-label="Zeli — Rides and Delivery in Bonaire. Book now.">
+      <div className="zb-banner">
+        {/* Background map */}
+        <div className="zb-layer zb-bg-map">
+          <svg viewBox="0 0 1200 260" preserveAspectRatio="xMidYMid slice">
+            <path d="M -50 220 C 120 200, 250 220, 400 200 S 700 180, 900 210 S 1150 220, 1280 200" />
+            <path d="M -50 240 C 120 220, 250 240, 400 220 S 700 200, 900 230 S 1150 240, 1280 220" />
+            <path d="M 980 70 C 1010 60, 1050 60, 1080 70 C 1085 85, 1060 90, 1030 90 C 1000 90, 985 85, 980 70 Z" />
+            <path className="zb-grid" d="M 0 60 L 1200 60"  strokeDasharray="2 18" />
+            <path className="zb-grid" d="M 0 130 L 1200 130" strokeDasharray="2 18" />
+            <path className="zb-grid" d="M 0 200 L 1200 200" strokeDasharray="2 18" />
+          </svg>
+        </div>
+
+        <div className="zb-layer zb-bg-vignette"></div>
+
+        {/* Routes + pins */}
+        <div className="zb-layer zb-routes">
+          <svg viewBox="0 0 1200 260" preserveAspectRatio="xMidYMid meet">
+            <path className="zb-route-base" d="M 220 138 C 350 100, 470 180, 600 130 S 800 90, 920 138" />
+            <path className="zb-route-base" d="M 220 168 C 380 200, 500 130, 620 175 S 820 210, 960 170" />
+            <path className="zb-route-teal" d="M 220 138 C 350 100, 470 180, 600 130 S 800 90, 920 138" />
+            <path className="zb-route-pink" d="M 220 168 C 380 200, 500 130, 620 175 S 820 210, 960 170" />
+
+            <g className="zb-pin zb-pin-teal-start">
+              <circle cx="220" cy="138" r="9" fill="rgba(45,212,191,0.18)" />
+              <circle cx="220" cy="138" r="5" fill="#2DD4BF" />
+              <circle cx="220" cy="138" r="2.2" fill="#fff" />
+              <text className="zb-pin-label" x="220" y="120" textAnchor="middle">PICK-UP</text>
+            </g>
+            <g className="zb-pin zb-pin-teal-end">
+              <path d="M 920 138 C 920 130, 932 130, 932 138 C 932 146, 920 156, 920 156 C 920 156, 908 146, 908 138 C 908 130, 920 130, 920 138 Z"
+                    fill="#BFFCF4" stroke="#2DD4BF" strokeWidth="1.5"/>
+              <circle cx="920" cy="138" r="2.5" fill="#060A1C" />
+              <text className="zb-pin-label" x="920" y="120" textAnchor="middle">DROP-OFF</text>
+            </g>
+
+            <g className="zb-pin zb-pin-pink-start">
+              <rect x="212" y="160" width="16" height="14" rx="2" fill="rgba(244,114,182,0.18)" />
+              <rect x="214" y="162" width="12" height="3" fill="#F472B6" />
+              <rect x="214" y="168" width="12" height="2" fill="rgba(244,114,182,0.55)" />
+              <text className="zb-pin-label" x="220" y="190" textAnchor="middle">RESTAURANT</text>
+            </g>
+            <g className="zb-pin zb-pin-pink-end">
+              <path d="M 960 170 C 960 162, 972 162, 972 170 C 972 178, 960 188, 960 188 C 960 188, 948 178, 948 170 C 948 162, 960 162, 960 170 Z"
+                    fill="#FFE3F0" stroke="#F472B6" strokeWidth="1.5"/>
+              <circle cx="960" cy="170" r="2.5" fill="#060A1C" />
+              <text className="zb-pin-label" x="960" y="200" textAnchor="middle">CUSTOMER</text>
+            </g>
+          </svg>
+        </div>
+
+        {/* Sedan */}
+        <div className="zb-layer">
+          <div className="zb-car">
+            <svg viewBox="0 0 60 30" width="54" height="30">
+              <defs>
+                <linearGradient id="zbCarBody" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"  stopColor="#1a2540"/>
+                  <stop offset="50%" stopColor="#0d1428"/>
+                  <stop offset="100%" stopColor="#06091a"/>
+                </linearGradient>
+                <linearGradient id="zbCarWin" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"  stopColor="#2DD4BF"/>
+                  <stop offset="100%" stopColor="#0a8174"/>
+                </linearGradient>
+              </defs>
+              <ellipse cx="30" cy="27" rx="22" ry="2" fill="rgba(0,0,0,.5)"/>
+              <path d="M5 22 L9 14 Q14 11 19 11 L41 11 Q46 11 51 14 L55 22 L5 22 Z"
+                    fill="url(#zbCarBody)" stroke="rgba(255,255,255,.15)" strokeWidth=".5"/>
+              <path d="M14 14 Q19 12 19 12 L41 12 Q41 12 46 14 L42 17 L18 17 Z"
+                    fill="url(#zbCarWin)" opacity=".9"/>
+              <path d="M9 16 Q20 14 51 16" stroke="rgba(255,255,255,.1)" strokeWidth=".5" fill="none"/>
+              <circle cx="14" cy="22" r="3.5" fill="#0a0c14" stroke="rgba(255,255,255,.18)" strokeWidth=".6"/>
+              <circle cx="46" cy="22" r="3.5" fill="#0a0c14" stroke="rgba(255,255,255,.18)" strokeWidth=".6"/>
+              <circle cx="14" cy="22" r="1.4" fill="#3a4467"/>
+              <circle cx="46" cy="22" r="1.4" fill="#3a4467"/>
+              <circle cx="52" cy="17" r="1.4" fill="#fff8d0" opacity=".9"/>
+              <circle cx="52" cy="17" r="3" fill="#fff8d0" opacity=".25"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Courier */}
+        <div className="zb-layer">
+          <div className="zb-courier"></div>
+        </div>
+
+        {/* RIDE phone */}
+        <div className="zb-phone zb-phone-ride">
+          <div className="zb-phone-hd">
+            <div className="zb-phone-hd-l">
+              <span className="zb-phone-z">ZELI</span>
+              <span className="zb-phone-hd-sub">· RIDE</span>
+            </div>
+            <span className="zb-phone-eta">ETA · 5 MIN</span>
+          </div>
+          <div className="zb-phone-row">
+            <span className="zb-phone-dot zb-start"></span>
+            <div>
+              <div className="zb-phone-text">Kralendijk Plaza</div>
+              <div className="zb-phone-sub">Downtown</div>
+            </div>
+          </div>
+          <div className="zb-phone-line"></div>
+          <div className="zb-phone-row">
+            <span className="zb-phone-dot zb-end"></span>
+            <div>
+              <div className="zb-phone-text">Sunset Beach Resort</div>
+              <div className="zb-phone-sub">North coast</div>
+            </div>
+          </div>
+          <div className="zb-phone-foot">
+            <div className="zb-phone-driver">
+              <div className="zb-driver-av">C</div>
+              <div>
+                <div className="zb-driver-name">Carlos</div>
+                <div className="zb-driver-stars">★ ★ ★ ★ ★ &nbsp; 4.9</div>
+              </div>
+            </div>
+            <div className="zb-phone-price">$8.50</div>
+          </div>
+        </div>
+
+        {/* DELIVERY phone */}
+        <div className="zb-phone zb-phone-deliv">
+          <div className="zb-phone-hd">
+            <div className="zb-phone-hd-l">
+              <span className="zb-phone-z">ZELI</span>
+              <span className="zb-phone-hd-sub">· DELIVERY</span>
+            </div>
+            <span className="zb-phone-eta">ETA · 12 MIN</span>
+          </div>
+          <div className="zb-phone-row">
+            <span className="zb-phone-dot zb-start"></span>
+            <div>
+              <div className="zb-phone-text">Karel's Pizza</div>
+              <div className="zb-phone-sub">Kaya Grandi</div>
+            </div>
+          </div>
+          <div className="zb-phone-line"></div>
+          <div className="zb-phone-row">
+            <span className="zb-phone-dot zb-end"></span>
+            <div>
+              <div className="zb-phone-text">Your address</div>
+              <div className="zb-phone-sub">Hato</div>
+            </div>
+          </div>
+          <div className="zb-phone-foot">
+            <div className="zb-phone-driver">
+              <div className="zb-driver-av">🛵</div>
+              <div>
+                <div className="zb-driver-name">On its way</div>
+                <div className="zb-driver-stars" style={{color:"rgba(255,255,255,.5)"}}>Out for delivery</div>
+              </div>
+            </div>
+            <div className="zb-phone-price">$24.90</div>
+          </div>
+        </div>
+
+        {/* Scene titles */}
+        <div className="zb-scene-title zb-title-1">
+          <div className="zb-eyebrow">PREMIUM RIDES · BONAIRE</div>
+          <div className="zb-head">Get there in <b>style</b>.</div>
+        </div>
+        <div className="zb-scene-title zb-title-2">
+          <div className="zb-eyebrow">SMOOTH PICKUPS</div>
+          <div className="zb-head">Drivers <b>4.9★</b> rated.</div>
+        </div>
+        <div className="zb-scene-title zb-title-3">
+          <div className="zb-eyebrow">TAP &amp; GO</div>
+          <div className="zb-head">Book in <b>seconds</b>.</div>
+        </div>
+        <div className="zb-scene-title zb-title-4">
+          <div className="zb-eyebrow">FOOD &amp; PARCELS</div>
+          <div className="zb-head">Delivered <b>fast</b>.</div>
+        </div>
+
+        {/* Final lockup + CTA */}
+        <div className="zb-lockup">
+          <div className="zb-lockup-z">ZELI</div>
+          <div className="zb-lockup-services">
+            <span className="zb-serv-rides">RIDES</span>
+            <span className="zb-serv-sep"></span>
+            <span className="zb-serv-deliv">DELIVERY</span>
+          </div>
+          <div className="zb-cta">Book your ride now →</div>
+        </div>
+
+        {/* Sparkles */}
+        <div className="zb-layer zb-sparkles">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+
+        {/* Persistent brand + status */}
+        <div className="zb-brand-mark">ZELI</div>
+        <div className="zb-status">
+          <span><span className="zb-pulse"></span>LIVE IN BONAIRE</span>
+        </div>
+
+        {/* Loop fade-to-black seam */}
+        <div className="zb-layer zb-loop-fade"></div>
+      </div>
+    </a>
+  );
+}
+
 function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, user, pulseCounts = {} }) {
   // Active prediction round: only matches in this round are predictable right now.
   const activeRound = getActivePredictionRound(matches);
@@ -2823,6 +3034,9 @@ function MatchesView({ matches, getPred, savePred, loaded, isBanned, allPreds, u
 
       {/* ── Match Pulse — broadcast-style live atmosphere ── */}
       <MatchPulse matches={matches} pulseCounts={pulseCounts} user={user} getPred={getPred} />
+
+      {/* ── Zeli sponsor banner — premium animated ad above match list ── */}
+      <ZeliBanner />
 
       {/* ── Upcoming / Pathways / Results tabs ── */}
       <div className="match-tab-bar">
