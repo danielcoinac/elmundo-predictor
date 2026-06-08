@@ -3047,7 +3047,7 @@ function ZeliFoodCard() {
         <div className="zb-mini-text">
           <div className="zb-mini-brand zb-mini-brand-pink">ZELI <span>· DELIVERY</span></div>
           <div className="zb-mini-head">Cravings, <b>delivered.</b></div>
-          <div className="zb-mini-sub">30+ local kitchens · ~25 min</div>
+          <div className="zb-mini-sub">Local kitchens · ~25 min</div>
           <div className="zb-mini-cta zb-mini-cta-pink">Order now →</div>
         </div>
       </div>
