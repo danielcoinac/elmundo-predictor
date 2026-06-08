@@ -2429,7 +2429,7 @@ function Main({ appTab, setAppTab, user, isAdmin, board, preds, matches, rules, 
             onInitialTabConsumed={() => setMenuInitTab(null)}
           /></ErrorBoundary>}
           {appTab === "rules" && <ErrorBoundary name="rules"><RulesView rules={rules} /></ErrorBoundary>}
-          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} myCredits={myCredits} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} gifts={gifts} onOpenGifts={() => setShowGifts(true)} appSettings={appSettings} board={board} /></ErrorBoundary>}
+          {appTab === "profile" && <ErrorBoundary name="profile"><ProfileView user={user} myPts={myPts} myRank={myRank} myCredits={myCredits} preds={preds} matches={matches} sponsors={sponsors} onAvatarUpdate={(url) => setUser(u => ({...u, avatar_url: url}))} gifts={gifts} onOpenGifts={() => setShowGifts(true)} appSettings={appSettings} board={board} onToast={onToast} /></ErrorBoundary>}
           {appTab === "vip" && user?.sponsor_tier && (
             <ErrorBoundary name="vip"><SponsorView user={user} sponsorGifts={sponsorGifts} placeOrder={placeOrder} onToast={onToast} /></ErrorBoundary>
           )}
@@ -5154,10 +5154,28 @@ function SponsorsSection() {
 
 
 /* ═══ WALLET MODAL ══════════════════════════════════════════════════════════ */
-function WalletModal({ user, myCredits, onClose }) {
+function WalletModal({ user, myCredits, onClose, onToast = () => {} }) {
   const [historyView, setHistoryView] = useState(false);
   const [txHistory,   setTxHistory]   = useState([]);
   const [loadingHist, setLoadingHist] = useState(false);
+  const [redeemOpen,  setRedeemOpen]  = useState(false);
+  const [recent,      setRecent]      = useState([]);
+
+  // Quick activity preview
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("credit_transactions")
+          .select("amount,new_balance,created_at")
+          .eq("target_user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(4);
+        if (!cancelled && data) setRecent(data);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [user.id, myCredits]);
 
   const loadHistory = async () => {
     setLoadingHist(true);
@@ -5177,134 +5195,175 @@ function WalletModal({ user, myCredits, onClose }) {
   useEffect(() => {
     const onKey = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  const playerNum = user.player_number ? String(user.player_number).padStart(4, "0") : "0000";
 
   return (
-    <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}
-      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:0,borderRadius:24,overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.8)"}}>
-
-        {/* ── Close button ── */}
-        <button onClick={onClose} style={{position:"absolute",top:28,right:28,zIndex:10,background:"rgba(0,0,0,.5)",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.7)",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+    <div className="wmodal-root" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="wmodal-frame">
+        <button className="wmodal-close" onClick={onClose} aria-label="Close wallet">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
 
         {!historyView ? (
-          <>
-            {/* ── PREMIUM CREDIT CARD ── */}
-            <div style={{
-              background:"linear-gradient(135deg,#0d4f3c 0%,#16a34a 45%,#064e3b 100%)",
-              padding:"28px 24px 24px",position:"relative",overflow:"hidden",minHeight:196,
-            }}>
-              {/* Shine sweep */}
-              <div style={{position:"absolute",inset:0,background:"linear-gradient(110deg,transparent 35%,rgba(255,255,255,.08) 50%,transparent 65%)",animation:"cardShine 4s ease-in-out infinite",pointerEvents:"none"}} />
-              {/* Dot pattern */}
-              <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle,rgba(255,255,255,.06) 1px,transparent 1px)",backgroundSize:"18px 18px",pointerEvents:"none"}} />
+          <div className="wmodal-body">
+            {/* ── CREDIT CARD ── */}
+            <div className="wallet-cc">
+              <div className="wallet-cc-glow" />
+              <div className="wallet-cc-shine" />
+              <div className="wallet-cc-grid" />
 
-              {/* Top row: brand + chip */}
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,position:"relative"}}>
-                <div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:16,letterSpacing:3,color:"#fff",lineHeight:1}}>EL MUNDO</div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"rgba(255,255,255,.6)",marginTop:2}}>BAR · RESTAURANT</div>
+              <div className="wallet-cc-top">
+                <div className="wallet-cc-brand">EL MUNDO</div>
+                <div className="wallet-cc-brand-sub">WALLET</div>
+              </div>
+
+              <div className="wallet-cc-chip">
+                <div className="wallet-cc-chip-inner">
+                  <div className="wallet-cc-chip-line" />
+                  <div className="wallet-cc-chip-line" />
+                  <div className="wallet-cc-chip-line" />
                 </div>
-                <div style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.25)",borderRadius:6,padding:"3px 10px",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.8)"}}>CREDITS</div>
               </div>
 
-              {/* Gold chip */}
-              <div style={{width:38,height:28,borderRadius:4,background:"linear-gradient(135deg,#fbbf24 0%,#f59e0b 50%,#d97706 100%)",marginBottom:16,position:"relative",boxShadow:"0 2px 6px rgba(0,0,0,.4)"}}>
-                <div style={{position:"absolute",inset:0,borderRadius:4,backgroundImage:"repeating-linear-gradient(90deg,rgba(0,0,0,.08) 0,rgba(0,0,0,.08) 1px,transparent 1px,transparent 5px),repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0,rgba(0,0,0,.08) 1px,transparent 1px,transparent 5px)"}} />
+              <div className="wallet-cc-amount-block">
+                <div className="wallet-cc-amount-lbl">BALANCE</div>
+                <div className="wallet-cc-amount">
+                  <span className="wallet-cc-currency">$</span>{(+myCredits).toFixed(2)}
+                </div>
               </div>
 
-              {/* Balance */}
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:4,color:"rgba(255,255,255,.55)",marginBottom:4}}>AVAILABLE BALANCE</div>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:46,color:"#fff",lineHeight:1,letterSpacing:1,textShadow:"0 0 30px rgba(74,222,128,.5)"}}>${(+myCredits).toFixed(2)}</div>
-
-              {/* Card holder */}
-              <div style={{marginTop:16,display:"flex",justifyContent:"space-between",alignItems:"flex-end",position:"relative"}}>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:"rgba(255,255,255,.7)",letterSpacing:2,textTransform:"uppercase"}}>{user.name}</div>
-                {user.player_number && (
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:14,color:"rgba(255,215,0,.85)",letterSpacing:2}}>#{user.player_number}</div>
-                )}
+              <div className="wallet-cc-bottom">
+                <div className="wallet-cc-bottom-l">
+                  <div className="wallet-cc-mini">CARDHOLDER</div>
+                  <div className="wallet-cc-name">{(user.name || "").toUpperCase()}</div>
+                </div>
+                <div className="wallet-cc-bottom-r">
+                  <div className="wallet-cc-mini">PLAYER</div>
+                  <div className="wallet-cc-num">#{playerNum}</div>
+                </div>
               </div>
-              {/* Mag stripe */}
-              <div style={{position:"absolute",bottom:0,left:0,right:0,height:6,background:"rgba(0,0,0,.3)"}} />
             </div>
 
-            {/* ── ACTIONS ── */}
-            <div style={{background:"#111",padding:"20px 20px 0"}}>
+            {/* ── ADD GIFT CARD ── */}
+            <button className="wallet-add-btn" onClick={() => setRedeemOpen(true)}>
+              <span className="wallet-add-btn-icon">🎁</span>
+              <span className="wallet-add-btn-text">
+                <span className="wallet-add-btn-title">ADD GIFT CARD CODE</span>
+                <span className="wallet-add-btn-sub">Top up your balance instantly</span>
+              </span>
+              <svg className="wallet-add-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
 
-              {/* TOP UP AT THE DESK */}
-              <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",borderRadius:14,padding:"16px 18px",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-                  <span style={{fontSize:22}}>🏧</span>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:2,color:"#fff"}}>TOP UP AT THE DESK</div>
-                </div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.5)",lineHeight:1.6,marginBottom:user.player_number?10:0}}>
-                  Show your player number to bar staff — they'll add credits to your account instantly (cash or card).
-                </div>
-                {user.player_number && (
-                  <div style={{background:"rgba(255,215,0,.08)",border:"1px solid rgba(255,215,0,.25)",borderRadius:8,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.45)",letterSpacing:1}}>YOUR NUMBER</span>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#facc15",letterSpacing:3}}>#{user.player_number}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* ACTIVITY — history */}
-              <div style={{borderTop:"1px solid rgba(255,255,255,.07)",padding:"14px 0 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.35)"}}>ACTIVITY</span>
-                <button onClick={openHistory} style={{background:"none",border:"none",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,color:"#63b3ed",padding:0}}>
-                  VIEW HISTORY →
-                </button>
-              </div>
-
-              {/* Footer */}
-              <div style={{borderTop:"1px solid rgba(255,255,255,.07)",padding:"14px 0 20px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.25)",lineHeight:1.6,textAlign:"center"}}>
-                Credits are used to pay for food &amp; drinks in the app.
-              </div>
+            {/* ── ACTIVITY PREVIEW ── */}
+            <div className="wallet-section-hd">
+              <span>RECENT ACTIVITY</span>
+              {recent.length > 0 && (
+                <button className="wmodal-history-link" onClick={openHistory}>VIEW ALL →</button>
+              )}
             </div>
-          </>
+            {recent.length === 0 ? (
+              <div className="wallet-empty">
+                <div className="wallet-empty-icon">📋</div>
+                <div className="wallet-empty-text">No transactions yet</div>
+              </div>
+            ) : (
+              <div className="wallet-tx-list">
+                {recent.map((tx, i) => {
+                  const isPositive = +tx.amount >= 0;
+                  return (
+                    <div key={i} className="wallet-tx-row">
+                      <div className={`wallet-tx-icon ${isPositive ? "wallet-tx-icon-pos" : "wallet-tx-icon-neg"}`}>
+                        {isPositive ? "↑" : "↓"}
+                      </div>
+                      <div className="wallet-tx-mid">
+                        <div className="wallet-tx-title">{isPositive ? "Top up" : "Order"}</div>
+                        <div className="wallet-tx-when">
+                          {tx.created_at ? new Date(tx.created_at).toLocaleString("en-US", {
+                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                          }) : ""}
+                        </div>
+                      </div>
+                      <div className="wallet-tx-right">
+                        <div className={`wallet-tx-amt ${isPositive ? "wallet-tx-amt-pos" : "wallet-tx-amt-neg"}`}>
+                          {(isPositive ? "+" : "−") + "$" + Math.abs(+tx.amount).toFixed(2)}
+                        </div>
+                        <div className="wallet-tx-bal">${(+tx.new_balance).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : (
           /* ── HISTORY VIEW ── */
-          <div style={{background:"#111",borderRadius:24,overflow:"hidden"}}>
-            <div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,.07)",display:"flex",alignItems:"center",gap:12}}>
-              <button onClick={()=>setHistoryView(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:2,padding:0}}>← BACK</button>
-              <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,color:"#fff"}}>CREDIT HISTORY</div>
+          <div className="wmodal-body">
+            <div className="wmodal-history-hd">
+              <button className="wmodal-history-back" onClick={() => setHistoryView(false)}>← BACK</button>
+              <div className="wmodal-history-title">FULL HISTORY</div>
             </div>
-            <div style={{maxHeight:"65vh",overflowY:"auto"}}>
-              {loadingHist && (
-                <div style={{padding:"32px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>Loading…</div>
-              )}
+            <div className="wmodal-history-list">
+              {loadingHist && <div className="wallet-empty"><div className="wallet-empty-text">Loading…</div></div>}
               {!loadingHist && txHistory.length === 0 && (
-                <div style={{padding:"32px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"rgba(255,255,255,.3)"}}>No transactions yet</div>
-              )}
-              {!loadingHist && txHistory.map((tx, i) => (
-                <div key={i} style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,.05)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#fff",fontWeight:600}}>
-                      {tx.amount > 0 ? "Credits Added" : "Credits Used"}
-                    </div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>
-                      {new Date(tx.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} · {new Date(tx.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-                    </div>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.25)",marginTop:2}}>
-                      Balance after: ${(+tx.new_balance).toFixed(2)}
-                    </div>
-                  </div>
-                  <div style={{fontFamily:"'Anton',sans-serif",fontSize:20,color: tx.amount >= 0 ? "#4ade80" : "#f87171",letterSpacing:1}}>
-                    {tx.amount >= 0 ? "+" : ""}${Math.abs(+tx.amount).toFixed(2)}
-                  </div>
+                <div className="wallet-empty">
+                  <div className="wallet-empty-icon">📋</div>
+                  <div className="wallet-empty-text">No transactions yet</div>
                 </div>
-              ))}
+              )}
+              {!loadingHist && txHistory.length > 0 && (
+                <div className="wallet-tx-list">
+                  {txHistory.map((tx, i) => {
+                    const isPositive = +tx.amount >= 0;
+                    return (
+                      <div key={i} className="wallet-tx-row">
+                        <div className={`wallet-tx-icon ${isPositive ? "wallet-tx-icon-pos" : "wallet-tx-icon-neg"}`}>
+                          {isPositive ? "↑" : "↓"}
+                        </div>
+                        <div className="wallet-tx-mid">
+                          <div className="wallet-tx-title">{isPositive ? "Top up" : "Order"}</div>
+                          <div className="wallet-tx-when">
+                            {tx.created_at ? new Date(tx.created_at).toLocaleString("en-US", {
+                              month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
+                            }) : ""}
+                          </div>
+                        </div>
+                        <div className="wallet-tx-right">
+                          <div className={`wallet-tx-amt ${isPositive ? "wallet-tx-amt-pos" : "wallet-tx-amt-neg"}`}>
+                            {(isPositive ? "+" : "−") + "$" + Math.abs(+tx.amount).toFixed(2)}
+                          </div>
+                          <div className="wallet-tx-bal">${(+tx.new_balance).toFixed(2)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
+
+      {redeemOpen && (
+        <RedeemGiftCardSheet onClose={() => setRedeemOpen(false)} onToast={onToast} />
+      )}
     </div>
   );
 }
 
 /* ═══ PROFILE ═══════════════════════════════════════════════════════════════ */
-function ProfileView({ user, myPts, myRank, myCredits = 0, preds, matches, sponsors, onAvatarUpdate, gifts = [], onOpenGifts = ()=>{}, appSettings = {}, board = [] }) {
+function ProfileView({ user, myPts, myRank, myCredits = 0, preds, matches, sponsors, onAvatarUpdate, gifts = [], onOpenGifts = ()=>{}, appSettings = {}, board = [], onToast = ()=>{} }) {
   const [showRecap, setShowRecap] = useState(false);
   const fin  = matches.filter(m => m.status==="finished");
   const sub  = fin.filter(m => !!preds[`${user.id}__${m.id}`]).length;
@@ -5520,7 +5579,7 @@ function ProfileView({ user, myPts, myRank, myCredits = 0, preds, matches, spons
     <div className="prof-wrap">
 
       {/* ── WALLET MODAL ── */}
-      {showWallet && <WalletModal user={user} myCredits={myCredits} onClose={() => setShowWallet(false)} />}
+      {showWallet && <WalletModal user={user} myCredits={myCredits} onClose={() => setShowWallet(false)} onToast={onToast} />}
 
       {/* ── SHARE CARD MODAL ── */}
       {showShareCard && cardUrl && (
