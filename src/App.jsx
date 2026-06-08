@@ -7714,6 +7714,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
         { id:"tables",        label:"Tables",       ico:"🪑" },
         { id:"tableqr",       label:"Table QR",     ico:"📱" },
         { id:"credits",       label:"Credits",      ico:"💰" },
+        { id:"giftCards",     label:"Gift Cards",   ico:"🎫" },
         { id:"fpAccess",      label:"Floor Plan",   ico:"🗺️" },
         { id:"keepupsAccess", label:"Keep-Ups",     ico:"🔔" },
         { id:"appSettings",   label:"App Settings", ico:"⚙️" },
@@ -7817,6 +7818,7 @@ function AdminView({ matches, rules, sponsors, onUpdate, onAdd, onDelete, onSave
       {section === "sponsors"   && <AdminSponsors sponsors={sponsors} onSave={onSaveSponsors} />}
       {section === "menu"       && <AdminMenu     menuItems={menuItems} onSave={onSaveMenuItem} onDelete={onDeleteMenuItem} onToggleAvail={onToggleAvail} onToggleSoldOut={onToggleSoldOut} />}
       {section === "credits"    && <AdminCredits  users={users} onAddCredits={onAddCredits} />}
+      {section === "giftCards"  && <AdminGiftCards />}
       {section === "tables"     && <AdminTables />}
       {section === "tableqr"    && <AdminTableQR />}
       {section === "vip"        && <AdminSponsorPerks users={users} sponsorGifts={sponsorGifts} onSetTier={onSetSponsorTier} onSaveGifts={onSaveSponsorGifts} />}
@@ -11227,6 +11229,413 @@ async function bioVerify() {
   });
   return true;
 }
+
+/* ── Admin: Gift Cards — bulk generate + print on thermal ── */
+function AdminGiftCards() {
+  const DENOMS = [10, 20, 50, 100];
+  const [denom,     setDenom]     = useState(10);
+  const [quantity,  setQuantity]  = useState(50);
+  const [generating, setGenerating] = useState(false);
+  const [cards,     setCards]     = useState([]);
+  const [filter,    setFilter]    = useState("all"); // all / active / redeemed / voided / not_printed
+  const [loading,   setLoading]   = useState(false);
+  const [selected,  setSelected]  = useState({}); // { id: true }
+  const [batchView, setBatchView] = useState(null); // batch_id when viewing a single batch
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 2400);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const status = (filter === "active" || filter === "redeemed" || filter === "voided") ? filter : null;
+      const { data, error } = await supabase.rpc("admin_list_gift_cards", { p_limit: 500, p_status: status });
+      if (error) throw error;
+      let rows = data || [];
+      if (filter === "not_printed") rows = rows.filter(c => !c.printed);
+      setCards(rows);
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || "Failed to load", false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [filter]);
+
+  const generate = async () => {
+    if (generating) return;
+    const q = +quantity;
+    const a = +denom;
+    if (!a || a <= 0)        return showToast("Pick a denomination", false);
+    if (!q || q < 1 || q > 500) return showToast("Quantity must be 1–500", false);
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_generate_gift_cards", { p_amount: a, p_quantity: q });
+      if (error) throw error;
+      showToast(`✓ Generated ${data.length} × $${a.toFixed(2)} cards`);
+      try { navigator.vibrate?.([40, 30, 80]); } catch {}
+      const newBatchId = data[0]?.batch_id;
+      await load();
+      if (newBatchId) setBatchView(newBatchId);
+    } catch (e) {
+      showToast(e.message || "Generation failed", false);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleSelect = (id) => setSelected(s => ({ ...s, [id]: !s[id] }));
+  const selectAll = (rows) => {
+    const allOn = rows.every(c => selected[c.id]);
+    const next = { ...selected };
+    rows.forEach(c => { if (allOn) delete next[c.id]; else next[c.id] = true; });
+    setSelected(next);
+  };
+  const clearSelection = () => setSelected({});
+
+  const printCards = async (rows) => {
+    if (rows.length === 0) return;
+    const html = buildThermalHTML(rows);
+    const w = window.open("", "_blank", "width=420,height=720");
+    if (!w) { showToast("Allow pop-ups to print", false); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      try { w.print(); } catch {}
+    }, 250);
+    // Mark as printed (best-effort)
+    try {
+      await supabase.rpc("admin_mark_printed", { p_card_ids: rows.map(r => r.id) });
+      load();
+    } catch {}
+  };
+
+  const voidCard = async (id) => {
+    if (!confirm("Void this gift card? It can no longer be redeemed.")) return;
+    try {
+      const { data, error } = await supabase.rpc("admin_void_gift_card", { p_card_id: id });
+      if (error) throw error;
+      if (!data?.ok) {
+        showToast(data?.error === "already_redeemed" ? "Already redeemed" : "Could not void", false);
+        return;
+      }
+      showToast("Card voided");
+      load();
+    } catch (e) {
+      showToast("Could not void", false);
+    }
+  };
+
+  // Group cards by batch when not in batch view
+  const batches = useMemo(() => {
+    const map = new Map();
+    cards.forEach(c => {
+      const key = c.batch_id || c.id;
+      if (!map.has(key)) map.set(key, { batch_id: key, created_at: c.created_at, cards: [] });
+      map.get(key).cards.push(c);
+    });
+    return Array.from(map.values()).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [cards]);
+
+  const currentBatch = batchView ? batches.find(b => b.batch_id === batchView) : null;
+  const visibleCards = currentBatch ? currentBatch.cards : [];
+  const selectedRows = visibleCards.filter(c => selected[c.id]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const total = cards.length;
+    const active = cards.filter(c => c.status === "active").length;
+    const redeemed = cards.filter(c => c.status === "redeemed").length;
+    const voided = cards.filter(c => c.status === "voided").length;
+    const notPrinted = cards.filter(c => !c.printed && c.status === "active").length;
+    const totalValue = cards.reduce((s, c) => s + (+c.amount || 0), 0);
+    return { total, active, redeemed, voided, notPrinted, totalValue };
+  }, [cards]);
+
+  return (
+    <div style={{padding:"14px 14px 80px"}}>
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position:"fixed",top:90,left:"50%",transform:"translateX(-50%)",zIndex:9999,
+          padding:"10px 18px",borderRadius:100,
+          background: toast.ok ? "rgba(34,197,94,.92)" : "rgba(239,68,68,.92)",
+          color:"#fff",fontFamily:"'Anton',sans-serif",fontSize:12,letterSpacing:1.5,
+          boxShadow:"0 8px 24px rgba(0,0,0,.4)",
+        }}>{toast.msg}</div>
+      )}
+
+      {!batchView ? (
+        <>
+          {/* GENERATE NEW BATCH */}
+          <div className="agc-panel">
+            <div className="agc-panel-hd">
+              <span style={{fontSize:18}}>🎫</span>
+              GENERATE NEW BATCH
+            </div>
+            <div className="agc-denoms">
+              {DENOMS.map(d => (
+                <button key={d}
+                  className={`agc-denom ${denom === d ? "agc-denom-on" : ""}`}
+                  onClick={() => setDenom(d)}>
+                  <div className="agc-denom-amt">${d}</div>
+                  <div className="agc-denom-lbl">EACH</div>
+                </button>
+              ))}
+            </div>
+            <div className="agc-qty-row">
+              <label className="agc-qty-label">QUANTITY</label>
+              <div className="agc-qty-controls">
+                <button className="agc-qty-btn" onClick={()=>setQuantity(q => Math.max(1, +q - 10))}>−10</button>
+                <button className="agc-qty-btn" onClick={()=>setQuantity(q => Math.max(1, +q - 1))}>−</button>
+                <input type="number" min="1" max="500" className="agc-qty-input" value={quantity}
+                  onChange={e => setQuantity(+e.target.value || 1)} />
+                <button className="agc-qty-btn" onClick={()=>setQuantity(q => Math.min(500, +q + 1))}>+</button>
+                <button className="agc-qty-btn" onClick={()=>setQuantity(q => Math.min(500, +q + 10))}>+10</button>
+              </div>
+            </div>
+            <div className="agc-totals">
+              <div className="agc-totals-l">
+                <div className="agc-totals-lbl">TOTAL VALUE</div>
+                <div className="agc-totals-amt">${(denom * quantity).toFixed(2)}</div>
+              </div>
+              <button
+                className="agc-generate-btn"
+                onClick={generate}
+                disabled={generating}>
+                {generating ? "GENERATING…" : `+ GENERATE ${quantity} CARDS`}
+              </button>
+            </div>
+          </div>
+
+          {/* STATS */}
+          <div className="agc-stats">
+            <div className="agc-stat"><div className="agc-stat-n">{stats.total}</div><div className="agc-stat-l">TOTAL</div></div>
+            <div className="agc-stat agc-stat-green"><div className="agc-stat-n">{stats.active}</div><div className="agc-stat-l">ACTIVE</div></div>
+            <div className="agc-stat agc-stat-blue"><div className="agc-stat-n">{stats.redeemed}</div><div className="agc-stat-l">REDEEMED</div></div>
+            <div className="agc-stat agc-stat-amber"><div className="agc-stat-n">{stats.notPrinted}</div><div className="agc-stat-l">UNPRINTED</div></div>
+            <div className="agc-stat agc-stat-red"><div className="agc-stat-n">{stats.voided}</div><div className="agc-stat-l">VOIDED</div></div>
+          </div>
+
+          {/* FILTER CHIPS */}
+          <div className="agc-filter-bar">
+            {[
+              { id: "all",         lbl: "ALL" },
+              { id: "active",      lbl: "ACTIVE" },
+              { id: "not_printed", lbl: "NEED PRINT" },
+              { id: "redeemed",    lbl: "REDEEMED" },
+              { id: "voided",      lbl: "VOIDED" },
+            ].map(f => (
+              <button key={f.id}
+                className={`agc-filter-chip ${filter === f.id ? "agc-filter-chip-on" : ""}`}
+                onClick={() => setFilter(f.id)}>{f.lbl}</button>
+            ))}
+          </div>
+
+          {/* BATCHES */}
+          <div className="agc-section-hd">BATCHES</div>
+          {loading ? (
+            <div className="agc-empty">Loading…</div>
+          ) : batches.length === 0 ? (
+            <div className="agc-empty">No batches yet. Generate one above.</div>
+          ) : (
+            <div className="agc-batch-list">
+              {batches.map(b => {
+                const d = new Date(b.created_at);
+                const amount = b.cards[0]?.amount;
+                const redeemed = b.cards.filter(c => c.status === "redeemed").length;
+                const printed  = b.cards.filter(c => c.printed).length;
+                const total    = b.cards.length;
+                return (
+                  <div key={b.batch_id} className="agc-batch-card" onClick={() => { clearSelection(); setBatchView(b.batch_id); }}>
+                    <div className="agc-batch-card-l">
+                      <div className="agc-batch-card-amt">${(+amount).toFixed(0)}</div>
+                      <div className="agc-batch-card-amt-lbl">EACH</div>
+                    </div>
+                    <div className="agc-batch-card-mid">
+                      <div className="agc-batch-card-title">{total} cards · ${(amount * total).toFixed(0)}</div>
+                      <div className="agc-batch-card-sub">
+                        {d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} ·
+                        {" "}{d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}
+                      </div>
+                      <div className="agc-batch-card-progress">
+                        <span className="agc-pill agc-pill-green">{printed}/{total} printed</span>
+                        {redeemed > 0 && <span className="agc-pill agc-pill-blue">{redeemed} redeemed</span>}
+                      </div>
+                    </div>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{color:"rgba(255,255,255,.4)"}}>
+                      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        // BATCH DETAIL VIEW — list every card
+        <>
+          <div className="agc-batch-detail-hd">
+            <button className="agc-back-btn" onClick={() => { setBatchView(null); clearSelection(); }}>← BACK</button>
+            <div className="agc-batch-detail-title">
+              {currentBatch.cards.length} × ${(+currentBatch.cards[0]?.amount).toFixed(0)} batch
+            </div>
+          </div>
+
+          {/* Bulk action bar */}
+          <div className="agc-bulk-bar">
+            <button className="agc-bulk-btn" onClick={() => selectAll(visibleCards)}>
+              {visibleCards.every(c => selected[c.id]) ? "DESELECT ALL" : "SELECT ALL"}
+            </button>
+            <span className="agc-bulk-count">{selectedRows.length} selected</span>
+            <button
+              className="agc-bulk-print"
+              disabled={selectedRows.length === 0}
+              onClick={() => printCards(selectedRows)}>
+              🖨️ PRINT {selectedRows.length > 0 ? `(${selectedRows.length})` : ""}
+            </button>
+          </div>
+
+          {/* Cards list */}
+          <div className="agc-card-list">
+            {visibleCards.map(c => {
+              const isSel = !!selected[c.id];
+              return (
+                <div key={c.id} className={`agc-card-row ${isSel ? "agc-card-row-sel" : ""}`}>
+                  <label className="agc-card-check">
+                    <input type="checkbox" checked={isSel} onChange={() => toggleSelect(c.id)} disabled={c.status !== "active"} />
+                    <span />
+                  </label>
+                  <div className="agc-card-row-mid">
+                    <div className="agc-card-row-code">{c.code}</div>
+                    <div className="agc-card-row-meta">
+                      ${(+c.amount).toFixed(2)} · {
+                        c.status === "active"   ? (c.printed ? "🖨 printed" : "ready") :
+                        c.status === "redeemed" ? "✓ redeemed" :
+                        c.status === "voided"   ? "✕ voided" : c.status
+                      }
+                    </div>
+                  </div>
+                  <div className="agc-card-row-actions">
+                    {c.status === "active" && (
+                      <>
+                        <button className="agc-row-btn" onClick={() => printCards([c])}>🖨️</button>
+                        <button className="agc-row-btn agc-row-btn-void" onClick={() => voidCard(c.id)}>✕</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Build the print-friendly HTML for one-or-more gift cards on thermal paper (80mm wide ≈ 302px @ 96dpi)
+function buildThermalHTML(cards) {
+  const css = `
+    @page { size: 80mm auto; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; font-family: 'Helvetica Neue', Arial, sans-serif; color: #000; }
+    body { width: 80mm; }
+    .card {
+      width: 80mm; padding: 6mm 5mm 7mm; page-break-after: always;
+      border-bottom: 2px dashed #000;
+      text-align: center;
+    }
+    .card:last-child { border-bottom: none; }
+    .brand {
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      font-size: 22pt; letter-spacing: 4px; margin: 0;
+      line-height: 1;
+    }
+    .brand-sub {
+      font-size: 7pt; letter-spacing: 4px; margin-top: 2mm;
+      color: #333;
+    }
+    .divider { border: none; border-top: 1.5px solid #000; margin: 3mm 0; }
+    .gift-title {
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      font-size: 11pt; letter-spacing: 6px; margin: 2mm 0 1mm;
+    }
+    .amount-block {
+      border: 3px solid #000; padding: 3mm 2mm; margin: 3mm 0;
+      display: flex; align-items: baseline; justify-content: center; gap: 2mm;
+    }
+    .amount-currency { font-size: 14pt; font-weight: 900; }
+    .amount-value {
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      font-size: 34pt; line-height: 1; font-weight: 900;
+    }
+    .code-label {
+      font-size: 7pt; letter-spacing: 4px; margin-top: 4mm; color: #333;
+    }
+    .code {
+      font-family: 'Courier New', monospace; font-weight: 900;
+      font-size: 19pt; letter-spacing: 2px; margin: 1mm 0 3mm;
+      padding: 2mm 0;
+      border-top: 1.5px solid #000; border-bottom: 1.5px solid #000;
+    }
+    .howto {
+      font-size: 7.5pt; line-height: 1.4; margin-top: 3mm; text-align: left;
+      padding: 2mm 3mm; background: #f3f3f3;
+    }
+    .howto strong { font-size: 8.5pt; letter-spacing: 2px; }
+    .howto ol { padding-left: 4mm; margin: 1mm 0; }
+    .foot {
+      font-size: 6pt; letter-spacing: 3px; margin-top: 3mm; color: #555;
+    }
+    .barcode {
+      font-family: 'Libre Barcode 128', 'Courier New', monospace;
+      font-size: 28pt; letter-spacing: 0; margin: 2mm 0; line-height: 1;
+    }
+    .id {
+      font-family: 'Courier New', monospace;
+      font-size: 5.5pt; color: #888; letter-spacing: 1px; margin-top: 2mm;
+    }
+  `;
+
+  const cardHtml = cards.map(c => {
+    const amount = (+c.amount).toFixed(2);
+    const amountWhole = String(Math.floor(+c.amount));
+    return `
+      <div class="card">
+        <div class="brand">EL MUNDO</div>
+        <div class="brand-sub">BAR · RESTAURANT</div>
+        <hr class="divider"/>
+        <div class="gift-title">GIFT CARD</div>
+        <div class="amount-block">
+          <span class="amount-currency">$</span>
+          <span class="amount-value">${amountWhole}</span>
+        </div>
+        <div class="code-label">REDEMPTION CODE</div>
+        <div class="code">${c.code}</div>
+        <div class="howto">
+          <strong>HOW TO REDEEM</strong>
+          <ol>
+            <li>Open the El Mundo app</li>
+            <li>Go to your Wallet</li>
+            <li>Tap "Add gift card code"</li>
+            <li>Enter the code above</li>
+          </ol>
+        </div>
+        <div class="foot">elmundobonaire.com · #${c.id.slice(0,8).toUpperCase()}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>El Mundo Gift Cards</title><style>${css}</style></head><body>${cardHtml}</body></html>`;
+}
+
 
 function AdminCredits({ users, onAddCredits }) {
   const [unlocked,  setUnlocked]  = useState(false);
