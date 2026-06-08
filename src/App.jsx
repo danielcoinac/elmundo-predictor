@@ -3317,8 +3317,8 @@ function PathwaysView({ matches }) {
         )}
       </div>
 
-      {/* Match cards */}
-      <div className="pathways-matches">
+      {/* Match cards — grid layout (2 cols on desktop/tablet, 1 col mobile) */}
+      <div className="pathways-matches pathways-grid">
         {visMatches.map(m => <PathwayMatchCard key={m.id} m={m} />)}
         {visMatches.length === 0 && (
           <div className="empty">No matches found for this round</div>
@@ -3661,25 +3661,45 @@ function PathwayMatchCard({ m }) {
   const isFinished = m.status === 'finished' && m.hs != null && m.as != null;
   const homeWon = isFinished && m.hs > m.as;
   const awayWon = isFinished && m.as > m.hs;
+  const isLive  = (() => {
+    if (m.status !== 'upcoming') return false;
+    const ko = matchKickoff(m);
+    if (!ko) return false;
+    const now = Date.now();
+    const koMs = ko.getTime();
+    return now >= koMs && now <= koMs + 120 * 60 * 1000;
+  })();
 
   return (
-    <div className="pw-card">
-      <div className="pw-card-date">{m.date}{m.time ? ` · ${m.time} BON` : ''}</div>
-      <div className="pw-card-body">
-        <div className={`pw-row ${homeWon ? 'pw-row-win' : awayWon ? 'pw-row-lose' : ''}`}>
-          <span className="pw-flag">{flag(m.home)}</span>
-          <span className="pw-team-name">{m.home}</span>
-          <span className={`pw-score ${isFinished ? (homeWon ? 'pw-score-win' : '') : 'pw-score-tbd'}`}>
-            {isFinished ? m.hs : '–'}
-          </span>
+    <div className={`pw-card-v2 ${isFinished ? 'pw-card-done' : ''} ${isLive ? 'pw-card-live' : ''}`}>
+      <div className="pw-card-glow" />
+      <div className="pw-card-meta">
+        <span className="pw-card-date">
+          <span className="pw-card-date-day">{m.date}</span>
+          <span className="pw-card-date-time">{m.time ? `${m.time} BON` : ''}</span>
+        </span>
+        {isLive && <span className="pw-card-status pw-card-status-live"><span className="pw-card-dot"/>LIVE</span>}
+        {isFinished && <span className="pw-card-status pw-card-status-done">✓ FT</span>}
+        {!isLive && !isFinished && <span className="pw-card-status pw-card-status-tbd">UPCOMING</span>}
+      </div>
+
+      <div className="pw-card-match">
+        <div className={`pw-team ${homeWon ? 'pw-team-win' : awayWon ? 'pw-team-lose' : ''}`}>
+          <span className="pw-team-flag">{flag(m.home)}</span>
+          <span className="pw-team-name" title={m.home}>{m.home}</span>
         </div>
-        <div className="pw-sep" />
-        <div className={`pw-row ${awayWon ? 'pw-row-win' : homeWon ? 'pw-row-lose' : ''}`}>
-          <span className="pw-flag">{flag(m.away)}</span>
-          <span className="pw-team-name">{m.away}</span>
-          <span className={`pw-score ${isFinished ? (awayWon ? 'pw-score-win' : '') : 'pw-score-tbd'}`}>
-            {isFinished ? m.as : '–'}
-          </span>
+
+        <div className={`pw-card-mid ${isFinished ? 'pw-card-mid-done' : ''}`}>
+          {isFinished ? (
+            <span className="pw-card-score">{m.hs}<span className="pw-card-score-sep">–</span>{m.as}</span>
+          ) : (
+            <span className="pw-card-vs">vs</span>
+          )}
+        </div>
+
+        <div className={`pw-team pw-team-right ${awayWon ? 'pw-team-win' : homeWon ? 'pw-team-lose' : ''}`}>
+          <span className="pw-team-name" title={m.away}>{m.away}</span>
+          <span className="pw-team-flag">{flag(m.away)}</span>
         </div>
       </div>
     </div>
