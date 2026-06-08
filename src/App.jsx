@@ -10107,14 +10107,11 @@ function SponsorView({ user, sponsorGifts, placeOrder, onToast }) {
   );
 }
 
-/* ── Wallet Tab — premium balance + redemption + top-up info ── */
+/* ── Wallet Tab — credit-card style + redemption sheet ── */
 function WalletTab({ user, myCredits, onToast }) {
-  const [code,     setCode]     = useState("");
-  const [redeeming, setRedeeming] = useState(false);
-  const [recent,   setRecent]   = useState([]);
-  const inputRef = useRef(null);
+  const [redeemOpen, setRedeemOpen] = useState(false);
+  const [recent,     setRecent]     = useState([]);
 
-  // Load last 8 transactions for transparency
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -10124,39 +10121,162 @@ function WalletTab({ user, myCredits, onToast }) {
           .select("amount,new_balance,created_at")
           .eq("target_user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(8);
+          .limit(20);
         if (!cancelled && data) setRecent(data);
       } catch {}
     })();
     return () => { cancelled = true; };
   }, [user.id, myCredits]);
 
-  // Auto-format input as user types: EM-XXXX-XXXX
-  const handleCodeChange = (e) => {
+  const playerNum = user.player_number ? String(user.player_number).padStart(4, "0") : "0000";
+  const memberSince = (() => {
+    try {
+      if (!user.created_at) return "2026";
+      const d = new Date(user.created_at);
+      return `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(-2)}`;
+    } catch { return "01/26"; }
+  })();
+
+  return (
+    <div className="wallet-tab-wrap">
+      {/* Credit-card style balance */}
+      <div className="wallet-cc">
+        <div className="wallet-cc-glow" />
+        <div className="wallet-cc-shine" />
+        <div className="wallet-cc-grid" />
+
+        <div className="wallet-cc-top">
+          <div className="wallet-cc-brand">EL MUNDO</div>
+          <div className="wallet-cc-brand-sub">WALLET</div>
+        </div>
+
+        <div className="wallet-cc-chip">
+          <div className="wallet-cc-chip-inner">
+            <div className="wallet-cc-chip-line" />
+            <div className="wallet-cc-chip-line" />
+            <div className="wallet-cc-chip-line" />
+          </div>
+        </div>
+
+        <div className="wallet-cc-amount-block">
+          <div className="wallet-cc-amount-lbl">BALANCE</div>
+          <div className="wallet-cc-amount">
+            <span className="wallet-cc-currency">$</span>{(+myCredits).toFixed(2)}
+          </div>
+        </div>
+
+        <div className="wallet-cc-bottom">
+          <div className="wallet-cc-bottom-l">
+            <div className="wallet-cc-mini">CARDHOLDER</div>
+            <div className="wallet-cc-name">{(user.name || "").toUpperCase()}</div>
+          </div>
+          <div className="wallet-cc-bottom-r">
+            <div className="wallet-cc-mini">PLAYER</div>
+            <div className="wallet-cc-num">#{playerNum}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add gift card button */}
+      <button className="wallet-add-btn" onClick={() => setRedeemOpen(true)}>
+        <span className="wallet-add-btn-icon">🎁</span>
+        <span className="wallet-add-btn-text">
+          <span className="wallet-add-btn-title">ADD GIFT CARD CODE</span>
+          <span className="wallet-add-btn-sub">Top up your balance instantly</span>
+        </span>
+        <svg className="wallet-add-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {/* Top-up history */}
+      <div className="wallet-section-hd">
+        <span>TOP-UP HISTORY</span>
+        {recent.length > 0 && <span className="wallet-section-hd-count">{recent.length}</span>}
+      </div>
+      {recent.length === 0 ? (
+        <div className="wallet-empty">
+          <div className="wallet-empty-icon">📋</div>
+          <div className="wallet-empty-text">No top-ups yet</div>
+        </div>
+      ) : (
+        <div className="wallet-tx-list">
+          {recent.map((tx, i) => {
+            const isPositive = +tx.amount >= 0;
+            return (
+              <div key={i} className="wallet-tx-row">
+                <div className={`wallet-tx-icon ${isPositive ? "wallet-tx-icon-pos" : "wallet-tx-icon-neg"}`}>
+                  {isPositive ? "↑" : "↓"}
+                </div>
+                <div className="wallet-tx-mid">
+                  <div className="wallet-tx-title">{isPositive ? "Top up" : "Order"}</div>
+                  <div className="wallet-tx-when">
+                    {tx.created_at ? new Date(tx.created_at).toLocaleString("en-US", {
+                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                    }) : ""}
+                  </div>
+                </div>
+                <div className="wallet-tx-right">
+                  <div className={`wallet-tx-amt ${isPositive ? "wallet-tx-amt-pos" : "wallet-tx-amt-neg"}`}>
+                    {(isPositive ? "+" : "−") + "$" + Math.abs(+tx.amount).toFixed(2)}
+                  </div>
+                  <div className="wallet-tx-bal">${(+tx.new_balance).toFixed(2)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {redeemOpen && (
+        <RedeemGiftCardSheet onClose={() => setRedeemOpen(false)} onToast={onToast} />
+      )}
+    </div>
+  );
+}
+
+/* ── Redeem Gift Card bottom sheet ── */
+function RedeemGiftCardSheet({ onClose, onToast }) {
+  const [code,      setCode]      = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+  const [success,   setSuccess]   = useState(null); // { amount, newBalance }
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => inputRef.current?.focus(), 280);
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const handleChange = (e) => {
     const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    let formatted = raw;
-    if (raw.length > 2 && raw.startsWith("EM")) {
+    let f;
+    if (raw.startsWith("EM")) {
       const body = raw.slice(2);
-      if (body.length <= 4)      formatted = `EM-${body}`;
-      else                       formatted = `EM-${body.slice(0,4)}-${body.slice(4,8)}`;
-    } else if (raw.length > 0 && !raw.startsWith("EM")) {
-      // Auto-prefix
-      if (raw.length <= 4)       formatted = `EM-${raw}`;
-      else                        formatted = `EM-${raw.slice(0,4)}-${raw.slice(4,8)}`;
+      f = body.length === 0 ? "EM"
+        : body.length <= 4 ? `EM-${body}`
+        : `EM-${body.slice(0,4)}-${body.slice(4,8)}`;
+    } else if (raw.length === 0) {
+      f = "";
+    } else {
+      f = raw.length <= 4 ? `EM-${raw}` : `EM-${raw.slice(0,4)}-${raw.slice(4,8)}`;
     }
-    setCode(formatted);
+    setCode(f);
   };
 
+  const isValid = /^EM-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code.trim());
+
   const handleRedeem = async () => {
-    if (redeeming) return;
-    const clean = code.trim();
-    if (!/^EM-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(clean)) {
-      onToast?.("Code must be in format EM-XXXX-XXXX", false);
-      return;
-    }
+    if (redeeming || !isValid) return;
     setRedeeming(true);
     try {
-      const { data, error } = await supabase.rpc("redeem_gift_card", { p_code: clean });
+      const { data, error } = await supabase.rpc("redeem_gift_card", { p_code: code.trim() });
       if (error) throw error;
       if (!data?.ok) {
         const msg = ({
@@ -10169,10 +10289,9 @@ function WalletTab({ user, myCredits, onToast }) {
         try { navigator.vibrate?.([80, 60, 80]); } catch {}
         return;
       }
-      onToast?.(`+$${(+data.amount).toFixed(2)} added to your wallet!`);
       try { navigator.vibrate?.([40, 30, 80, 30, 120]); } catch {}
-      setCode("");
-      // Realtime channel on user_credits will refresh myCredits automatically
+      setSuccess({ amount: +data.amount, newBalance: +data.new_balance });
+      setTimeout(() => { onClose(); }, 1900);
     } catch (e) {
       onToast?.("Network error — please try again", false);
     } finally {
@@ -10180,117 +10299,50 @@ function WalletTab({ user, myCredits, onToast }) {
     }
   };
 
-  const isValidShape = /^EM-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code.trim());
-
   return (
-    <div className="wallet-tab-wrap">
-      {/* Premium balance hero */}
-      <div className="wallet-hero">
-        <div className="wallet-hero-shine" />
-        <div className="wallet-hero-bg-grid" />
-        <div className="wallet-hero-content">
-          <div className="wallet-hero-label">
-            <span className="wallet-hero-dot" />
-            AVAILABLE BALANCE
-          </div>
-          <div className="wallet-hero-amount">
-            <span className="wallet-hero-currency">$</span>
-            {(+myCredits).toFixed(2)}
-          </div>
-          <div className="wallet-hero-name">
-            {user.name}
-            {user.player_number ? (
-              <span className="wallet-hero-num"> · #{user.player_number}</span>
-            ) : null}
-          </div>
-        </div>
-      </div>
+    <div className="redeem-sheet-root" onClick={onClose}>
+      <div className="redeem-sheet" onClick={e => e.stopPropagation()}>
+        <div className="redeem-sheet-grab" />
+        {!success ? (
+          <>
+            <div className="redeem-sheet-icon">🎁</div>
+            <div className="redeem-sheet-title">REDEEM GIFT CARD</div>
+            <div className="redeem-sheet-sub">Enter the 10-character code printed on your gift card</div>
 
-      {/* Gift card redemption */}
-      <div className="wallet-section-hd">
-        <span className="wallet-section-hd-icon">🎟️</span>
-        <span>REDEEM A GIFT CARD</span>
-      </div>
-      <div className="wallet-redeem-card">
-        <div className="wallet-redeem-hint">Enter the code printed on your gift card</div>
-        <div className="wallet-redeem-row">
-          <input
-            ref={inputRef}
-            type="text"
-            inputMode="text"
-            autoComplete="off"
-            spellCheck={false}
-            className={`wallet-redeem-input ${isValidShape ? "wallet-redeem-input-ok" : ""}`}
-            placeholder="EM-XXXX-XXXX"
-            value={code}
-            onChange={handleCodeChange}
-            onKeyDown={e => { if (e.key === "Enter" && isValidShape) handleRedeem(); }}
-            maxLength={12}
-            disabled={redeeming}
-          />
-          <button
-            className="wallet-redeem-btn"
-            onClick={handleRedeem}
-            disabled={!isValidShape || redeeming}>
-            {redeeming ? "…" : "REDEEM"}
-          </button>
-        </div>
-        <div className="wallet-redeem-foot">
-          Buy a gift card at the bar — staff will hand you a printed code.
-        </div>
-      </div>
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="text"
+              autoComplete="off"
+              spellCheck={false}
+              className={`redeem-sheet-input ${isValid ? "redeem-sheet-input-ok" : ""}`}
+              placeholder="EM-XXXX-XXXX"
+              value={code}
+              onChange={handleChange}
+              onKeyDown={e => { if (e.key === "Enter" && isValid) handleRedeem(); }}
+              maxLength={12}
+              disabled={redeeming}
+            />
 
-      {/* Top-up options */}
-      <div className="wallet-section-hd">
-        <span className="wallet-section-hd-icon">💳</span>
-        <span>OTHER WAYS TO TOP UP</span>
-      </div>
-      <div className="wallet-topup-grid">
-        <div className="wallet-topup-tile">
-          <div className="wallet-topup-tile-icon">🏧</div>
-          <div className="wallet-topup-tile-title">AT THE BAR</div>
-          <div className="wallet-topup-tile-body">Pay cash or card at the bar — credits added to your account instantly.</div>
-        </div>
-        <div className="wallet-topup-tile">
-          <div className="wallet-topup-tile-icon">🎁</div>
-          <div className="wallet-topup-tile-title">GIFT CARD</div>
-          <div className="wallet-topup-tile-body">Pick up a printed gift card at the bar — load it here with the code.</div>
-        </div>
-      </div>
+            <button
+              className="redeem-sheet-btn"
+              onClick={handleRedeem}
+              disabled={!isValid || redeeming}>
+              {redeeming ? "REDEEMING…" : "ADD TO WALLET"}
+            </button>
 
-      {/* Recent transactions */}
-      {recent.length > 0 && (
-        <>
-          <div className="wallet-section-hd">
-            <span className="wallet-section-hd-icon">📋</span>
-            <span>RECENT ACTIVITY</span>
+            <button className="redeem-sheet-cancel" onClick={onClose}>Cancel</button>
+          </>
+        ) : (
+          <div className="redeem-success">
+            <div className="redeem-success-burst">
+              <div className="redeem-success-check">✓</div>
+            </div>
+            <div className="redeem-success-amount">+${success.amount.toFixed(2)}</div>
+            <div className="redeem-success-title">ADDED TO YOUR WALLET</div>
+            <div className="redeem-success-bal">New balance: <strong>${success.newBalance.toFixed(2)}</strong></div>
           </div>
-          <div className="wallet-tx-list">
-            {recent.map((tx, i) => (
-              <div key={i} className="wallet-tx-row">
-                <div className="wallet-tx-row-left">
-                  <div className={`wallet-tx-amt ${+tx.amount >= 0 ? "wallet-tx-amt-pos" : "wallet-tx-amt-neg"}`}>
-                    {(+tx.amount >= 0 ? "+" : "") + "$" + Math.abs(+tx.amount).toFixed(2)}
-                  </div>
-                  <div className="wallet-tx-when">
-                    {tx.created_at ? new Date(tx.created_at).toLocaleString("en-US", {
-                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-                    }) : ""}
-                  </div>
-                </div>
-                <div className="wallet-tx-bal">${(+tx.new_balance).toFixed(2)}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Footer info */}
-      <div className="wallet-info-foot">
-        <div className="wallet-info-foot-title">How credits work</div>
-        <div className="wallet-info-foot-body">
-          Credits are stored in your El Mundo account. Use them to order food & drinks straight from the app — staff brings everything to your table.
-        </div>
+        )}
       </div>
     </div>
   );
