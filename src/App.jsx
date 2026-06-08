@@ -2911,24 +2911,28 @@ function ZeliBanner() {
 
         </svg>
 
-        {/* Persistent brand + status (HTML, sits over SVG) */}
-        <div className="zb-brand-mark">ZELI<span>BONAIRE</span></div>
+        {/* Top status pill — always visible top-right */}
         <div className="zb-status">
-          <span className="zb-pulse"></span>LIVE · 24/7
+          <span className="zb-pulse"></span>LIVE 24/7
         </div>
+        {/* Brand tag — sits at bottom-left, never collides with scene title */}
+        <div className="zb-brand-mark">ZELI <span>BONAIRE</span></div>
 
-        {/* Scene titles — positioned in LEFT zone (0-320px), never overlap pins */}
+        {/* Scene titles — own the TOP-LEFT, animation lives in the BOTTOM half.
+            Eyebrows kept short so they never wrap. */}
         <div className="zb-scene zb-scene-1">
-          <div className="zb-eyebrow zb-eyebrow-teal">EVERYDAY TRAVEL, BEAUTIFULLY HANDLED</div>
+          <div className="zb-eyebrow zb-eyebrow-teal">BONAIRE RIDESHARE</div>
           <div className="zb-head">Tap. Track. <b>Ride.</b></div>
         </div>
         <div className="zb-scene zb-scene-2">
-          <div className="zb-eyebrow zb-eyebrow-teal">PREMIUM LOCAL DRIVERS</div>
-          <div className="zb-head">From <b>$8.50</b><span className="zb-thin"> · 5 min away</span></div>
+          <div className="zb-eyebrow zb-eyebrow-teal">PREMIUM DRIVERS</div>
+          <div className="zb-head">From <b>$8.50</b></div>
+          <div className="zb-thin">5 min away</div>
         </div>
         <div className="zb-scene zb-scene-3">
-          <div className="zb-eyebrow zb-eyebrow-pink">CRAVINGS, DELIVERED ISLAND-SIDE</div>
-          <div className="zb-head">Food <b>delivery</b><span className="zb-thin"> · ~25 min</span></div>
+          <div className="zb-eyebrow zb-eyebrow-pink">FOOD DELIVERY</div>
+          <div className="zb-head">Cravings, <b>delivered.</b></div>
+          <div className="zb-thin">~25 min</div>
         </div>
 
         {/* Final lockup + CTA */}

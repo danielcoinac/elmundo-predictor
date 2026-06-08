@@ -4488,12 +4488,13 @@
   .round-banner-done::before{background:linear-gradient(180deg,#facc15,#eab308)}
   .round-banner-done .round-banner-lbl{color:#facc15}
 
-  /* ── Zeli Sponsor Banner v2 — 12s perfect loop, SVG-animated ──────────── */
+  /* ── Zeli Sponsor Banner v3 — taller, cleaner zoning, mobile-safe ─────── */
   .zeli-banner{
     display:block;width:calc(100% - 32px);max-width:1200px;
     margin:14px 16px;
-    aspect-ratio:1200 / 280;
-    min-height:150px;
+    aspect-ratio:1200 / 320;
+    /* never collapse on phone — always tall enough for text + animation */
+    min-height:200px;
     text-decoration:none;color:inherit;cursor:pointer;
     container-type:inline-size;
   }
@@ -4509,24 +4510,25 @@
   /* Background gradient is drawn IN the SVG now, so we just need a fallback */
   .zb-banner{background:#02040D}
 
-  /* Brand + status persistent (HTML above SVG) */
+  /* Brand at BOTTOM-LEFT — never collides with scene title text */
   .zb-brand-mark{
-    position:absolute;top:14px;left:20px;z-index:8;
-    font-weight:900;font-style:italic;font-size:17px;letter-spacing:3.5px;
+    position:absolute;bottom:14px;left:20px;z-index:8;
+    display:inline-flex;align-items:baseline;gap:8px;
+    font-weight:900;font-style:italic;font-size:15px;letter-spacing:3px;
     background:linear-gradient(120deg,#2DD4BF,#BFFCF4,#F472B6);
     -webkit-background-clip:text;background-clip:text;color:transparent;
-    text-shadow:0 0 20px rgba(45,212,191,.35);
-    line-height:1;
+    text-shadow:0 0 14px rgba(45,212,191,.3);
+    line-height:1;white-space:nowrap;
   }
   .zb-brand-mark span{
-    display:block;margin-top:3px;font-weight:400;font-style:normal;
-    font-size:8px;letter-spacing:5px;color:rgba(255,255,255,.4);
-    -webkit-text-fill-color:rgba(255,255,255,.4);
+    font-weight:400;font-style:normal;font-size:8px;letter-spacing:4px;
+    color:rgba(255,255,255,.4);-webkit-text-fill-color:rgba(255,255,255,.4);
   }
   .zb-status{
-    position:absolute;top:18px;right:22px;z-index:8;
+    position:absolute;top:14px;right:18px;z-index:8;
     display:flex;align-items:center;
-    font-size:9.5px;letter-spacing:2.5px;color:rgba(255,255,255,.6);font-weight:500;
+    font-size:9.5px;letter-spacing:2px;color:rgba(255,255,255,.55);font-weight:500;
+    white-space:nowrap;
   }
   .zb-pulse{
     display:inline-block;width:6px;height:6px;border-radius:50%;
@@ -4632,46 +4634,52 @@
     100%    {opacity:0}
   }
 
-  /* Scene titles — anchored to LEFT zone (0-320px container space) */
+  /* Scene titles anchored TOP-LEFT (no overlap with route at vertical-mid,
+     no overlap with brand at bottom-left). */
   .zb-scene{
-    position:absolute;left:24px;top:50%;
-    transform:translateY(-50%) translateX(-12px);
-    opacity:0;max-width:42%;z-index:6;pointer-events:none;color:#fff;
+    position:absolute;left:22px;top:18px;
+    transform:translateX(-12px);
+    opacity:0;max-width:55%;z-index:6;pointer-events:none;color:#fff;
   }
   .zb-eyebrow{
-    font-size:10px;letter-spacing:3px;font-weight:700;
-    color:#2DD4BF;text-transform:uppercase;margin-bottom:10px;
+    font-size:9.5px;letter-spacing:2.5px;font-weight:700;
+    color:#2DD4BF;text-transform:uppercase;margin-bottom:8px;
+    white-space:nowrap;
   }
   .zb-eyebrow-pink{color:#F472B6}
   .zb-head{
-    font-size:30px;line-height:1.05;font-weight:300;letter-spacing:.2px;color:#fff;
+    font-size:28px;line-height:1.05;font-weight:300;letter-spacing:.2px;color:#fff;
     text-shadow:0 2px 18px rgba(0,0,0,.7);font-family:inherit;
+    white-space:nowrap;
   }
   .zb-head b{font-weight:800}
-  .zb-thin{font-weight:300;color:rgba(255,255,255,.6);font-size:.7em;display:block;margin-top:6px}
+  .zb-thin{
+    font-weight:300;color:rgba(255,255,255,.55);font-size:13px;
+    display:block;margin-top:4px;letter-spacing:.5px;white-space:nowrap;
+  }
 
   .zb-scene-1{animation:zbS1 12s linear infinite}
   .zb-scene-2{animation:zbS2 12s linear infinite}
   .zb-scene-3{animation:zbS3 12s linear infinite}
   @keyframes zbS1{
-    0%  {opacity:0;transform:translateY(-50%) translateX(-14px)}
-    4%  {opacity:1;transform:translateY(-50%) translateX(0)}
+    0%  {opacity:0;transform:translateX(-14px)}
+    4%  {opacity:1;transform:translateX(0)}
     22% {opacity:1}
-    26% {opacity:0;transform:translateY(-50%) translateX(14px)}
+    26% {opacity:0;transform:translateX(14px)}
     100%{opacity:0}
   }
   @keyframes zbS2{
-    0%,22%{opacity:0;transform:translateY(-50%) translateX(-14px)}
-    26%   {opacity:1;transform:translateY(-50%) translateX(0)}
+    0%,22%{opacity:0;transform:translateX(-14px)}
+    26%   {opacity:1;transform:translateX(0)}
     46%   {opacity:1}
-    50%   {opacity:0;transform:translateY(-50%) translateX(14px)}
+    50%   {opacity:0;transform:translateX(14px)}
     100%  {opacity:0}
   }
   @keyframes zbS3{
-    0%,46%{opacity:0;transform:translateY(-50%) translateX(-14px)}
-    52%   {opacity:1;transform:translateY(-50%) translateX(0)}
+    0%,46%{opacity:0;transform:translateX(-14px)}
+    52%   {opacity:1;transform:translateX(0)}
     72%   {opacity:1}
-    76%   {opacity:0;transform:translateY(-50%) translateX(14px)}
+    76%   {opacity:0;transform:translateX(14px)}
     100%  {opacity:0}
   }
 
@@ -4747,31 +4755,39 @@
     transform:translateY(-1px);transition:box-shadow .25s,transform .25s;
   }
 
-  /* Mobile sizing */
+  /* Mobile sizing — taller aspect ratios so all content fits comfortably */
   @container (max-width:780px){
     .zb-head{font-size:24px}
-    .zb-eyebrow{font-size:9px;letter-spacing:2.5px}
-    .zb-lockup-z{font-size:42px;letter-spacing:5px}
+    .zb-thin{font-size:12px}
+    .zb-eyebrow{font-size:9px;letter-spacing:2px;margin-bottom:6px}
+    .zb-lockup-z{font-size:44px;letter-spacing:5px}
     .zb-lockup-services{font-size:12px;gap:14px;letter-spacing:4.5px}
     .zb-cta{padding:10px 22px;font-size:11px;letter-spacing:2.5px}
-    .zb-brand-mark{font-size:15px}
+    .zb-brand-mark{font-size:14px;letter-spacing:2.5px}
+    .zb-brand-mark span{font-size:8px;letter-spacing:3px}
   }
   @container (max-width:520px){
-    .zeli-banner{aspect-ratio:5/2}
-    .zb-head{font-size:20px;line-height:1.1}
-    .zb-thin{font-size:.65em}
-    .zb-scene{max-width:50%;left:18px}
-    .zb-lockup-z{font-size:34px;letter-spacing:4px}
+    .zeli-banner{aspect-ratio:5 / 3;min-height:200px}
+    .zb-head{font-size:22px;line-height:1.05}
+    .zb-thin{font-size:11px}
+    .zb-scene{max-width:65%;left:18px;top:16px}
+    .zb-eyebrow{font-size:8.5px;letter-spacing:1.8px;margin-bottom:6px}
+    .zb-lockup-z{font-size:38px;letter-spacing:4px}
     .zb-lockup-services{font-size:11px;gap:11px;letter-spacing:3.5px}
     .zb-cta{padding:9px 18px;font-size:10px;letter-spacing:2px}
-    .zb-brand-mark{font-size:13px}
-    .zb-brand-mark span{font-size:7px;letter-spacing:4px}
-    .zb-status{font-size:8.5px;letter-spacing:1.5px;top:14px;right:14px}
+    .zb-brand-mark{font-size:12px;letter-spacing:2px;bottom:12px;left:18px}
+    .zb-brand-mark span{font-size:7px;letter-spacing:2.5px}
+    .zb-status{font-size:8.5px;letter-spacing:1.5px;top:12px;right:14px}
   }
-  @container (max-width:400px){
-    .zeli-banner{aspect-ratio:3/2}
-    .zb-head{font-size:17px}
-    .zb-eyebrow{font-size:8px;letter-spacing:1.8px;margin-bottom:5px}
+  @container (max-width:380px){
+    .zeli-banner{aspect-ratio:auto;height:200px}
+    .zb-head{font-size:20px}
+    .zb-thin{font-size:10.5px}
+    .zb-scene{max-width:70%}
+    .zb-eyebrow{font-size:8px;letter-spacing:1.5px}
+    .zb-lockup-z{font-size:32px;letter-spacing:3.5px}
+    .zb-brand-mark{font-size:11px}
+    .zb-brand-mark span{display:none}
   }
   @media (prefers-reduced-motion:reduce){
     .zb-banner *,.zb-banner *::before,.zb-banner *::after{
@@ -4783,8 +4799,12 @@
     .zb-scene,.zb-car-grp,.zb-courier-grp,.zb-loop-fade{display:none!important}
   }
 
-  /* ── Mini variants (rides-only / food-only) ───────────────────────────── */
-  .zeli-banner-mini{aspect-ratio:600 / 140;min-height:110px;margin:14px 16px}
+  /* ── Mini variants (rides-only / food-only) — mobile-safe ─────────────── */
+  .zeli-banner-mini{
+    /* Desktop wide aspect; mobile uses fixed height so CTA never clips */
+    aspect-ratio:600 / 170;min-height:150px;
+    margin:14px 16px;
+  }
   .zb-mini{
     position:relative;width:100%;height:100%;
     overflow:hidden;border-radius:14px;
@@ -4795,10 +4815,7 @@
   }
   .zb-mini-bg{position:absolute;inset:0;width:100%;height:100%}
   .zb-mini-bg svg{display:block;width:100%;height:100%}
-  .zb-mini-route{
-    stroke-dasharray:320;stroke-dashoffset:320;
-    animation:zbMiniDraw 6s ease-out infinite;
-  }
+  .zb-mini-route,
   .zb-mini-route-pink{
     stroke-dasharray:320;stroke-dashoffset:320;
     animation:zbMiniDraw 6s ease-out infinite;
@@ -4814,8 +4831,8 @@
   .zb-mini-text{
     position:relative;z-index:2;display:flex;flex-direction:column;
     justify-content:center;gap:5px;
-    padding:14px 18px;width:50%;max-width:280px;
-    background:linear-gradient(90deg,rgba(2,4,13,.85) 0%,rgba(2,4,13,.6) 70%,transparent 100%);
+    padding:14px 18px;width:58%;
+    background:linear-gradient(90deg,rgba(2,4,13,.9) 0%,rgba(2,4,13,.7) 70%,transparent 100%);
     color:#fff;
   }
   .zb-mini-brand{
@@ -4838,10 +4855,11 @@
     font-size:11px;color:rgba(255,255,255,.55);letter-spacing:.4px;line-height:1.3;
   }
   .zb-mini-cta{
-    margin-top:6px;display:inline-block;align-self:flex-start;
-    padding:7px 16px;background:#fff;color:#000;border-radius:100px;
+    margin-top:8px;display:inline-block;align-self:flex-start;
+    padding:8px 18px;background:#fff;color:#000;border-radius:100px;
     font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
     box-shadow:0 4px 14px rgba(255,255,255,.18);
+    white-space:nowrap;
   }
   .zb-mini-cta-pink{background:linear-gradient(135deg,#F472B6,#fff);box-shadow:0 4px 14px rgba(244,114,182,.3)}
   .zeli-banner-mini:hover .zb-mini{
@@ -4850,8 +4868,17 @@
   }
   .zeli-banner-mini-food:hover .zb-mini{box-shadow:0 10px 28px rgba(244,114,182,.18),0 0 0 1px rgba(255,255,255,.12)}
 
-  @container (max-width:480px){
-    .zb-mini-head{font-size:18px}
-    .zb-mini-sub{font-size:10px}
-    .zb-mini-text{padding:12px 14px;width:55%}
+  @container (max-width:560px){
+    .zeli-banner-mini{aspect-ratio:auto;height:160px}
+    .zb-mini-head{font-size:19px}
+    .zb-mini-sub{font-size:10.5px}
+    .zb-mini-text{padding:14px 16px;width:62%}
+  }
+  @container (max-width:380px){
+    .zeli-banner-mini{height:150px}
+    .zb-mini-head{font-size:17px}
+    .zb-mini-brand{font-size:12px}
+    .zb-mini-brand span{display:none}
+    .zb-mini-text{width:65%;padding:12px 14px}
+    .zb-mini-cta{padding:7px 14px;font-size:9.5px;letter-spacing:1.6px}
   }
