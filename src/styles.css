@@ -1325,8 +1325,7 @@
   .mo-backdrop{position:fixed;inset:0;background:transparent;z-index:9499}
   .mo-panel{
     position:fixed;top:0;right:0;
-    /* Leave room for the bottom nav so the PLACE ORDER button stays reachable */
-    bottom:calc(60px + env(safe-area-inset-bottom, 0px));
+    bottom:75px;
     width:min(430px,94vw);background:#0d0d0d;
     border-left:1px solid rgba(255,255,255,.1);
     display:flex;flex-direction:column;
