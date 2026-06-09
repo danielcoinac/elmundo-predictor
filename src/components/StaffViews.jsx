@@ -294,125 +294,130 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
           <button className="mo-close" onClick={requestClose} aria-label="Close manual order panel">✕</button>
         </div>
 
-        {/* Confirm-discard banner when cart has items */}
-        {confirmClose && (
-          <div style={{padding:"10px 16px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.3)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
-              Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
-            </div>
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
-                style={{padding:"6px 12px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
-                DISCARD
-              </button>
-              <button onClick={() => setConfirmClose(false)}
-                style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
-                Keep
-              </button>
-            </div>
-          </div>
-        )}
+        {/* ── Scrollable body: everything between header and footer ── */}
+        <div className="mo-body">
 
-        {/* ── Player picker (REQUIRED — manual orders deduct credits) ── */}
-        <div className="mo-section mo-player-section">
-          <div className="mo-label" style={{display:"flex",alignItems:"center",gap:6}}>
-            <span>PLAYER</span>
-            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:1,color:"rgba(240,192,64,.6)",textTransform:"none"}}>
-              · pay with credits
-            </span>
-          </div>
-          {!creditsUser && (
-            <>
-              <input className="mo-credits-search" value={creditsSearch}
-                onChange={e => setCreditsSearch(e.target.value)}
-                placeholder="🔍  Search by name, phone, or player #…"
-                aria-label="Search players"
-                style={{marginBottom:0}}/>
-              {filteredUsers.length > 0 && (
-                <div className="mo-credits-list" style={{marginTop:6}}>
-                  {filteredUsers.slice(0, 6).map(u => (
-                    <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row">
-                      <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
-                        <span className="mo-credits-name">
-                          {u.name}
-                          {u.player_number ? <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,color:"rgba(255,255,255,.35)",marginLeft:6}}>#{u.player_number}</span> : null}
+          {/* Confirm-discard banner when cart has items */}
+          {confirmClose && (
+            <div style={{padding:"10px 16px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.3)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
+                Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
+                  style={{padding:"6px 12px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
+                  DISCARD
+                </button>
+                <button onClick={() => setConfirmClose(false)}
+                  style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
+                  Keep
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Player picker ── */}
+          <div className="mo-section mo-player-section">
+            <div className="mo-label" style={{display:"flex",alignItems:"center",gap:6}}>
+              <span>PLAYER</span>
+              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:1,color:"rgba(240,192,64,.6)",textTransform:"none"}}>
+                · pay with credits
+              </span>
+            </div>
+            {!creditsUser && (
+              <>
+                <input className="mo-credits-search" value={creditsSearch}
+                  onChange={e => setCreditsSearch(e.target.value)}
+                  placeholder="🔍  Search by name, phone, or player #…"
+                  aria-label="Search players"
+                  style={{marginBottom:0}}/>
+                {filteredUsers.length > 0 && (
+                  <div className="mo-credits-list" style={{marginTop:6}}>
+                    {filteredUsers.slice(0, 6).map(u => (
+                      <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row">
+                        <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
+                          <span className="mo-credits-name">
+                            {u.name}
+                            {u.player_number ? <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,color:"rgba(255,255,255,.35)",marginLeft:6}}>#{u.player_number}</span> : null}
+                          </span>
+                          {u.phone && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)"}}>{u.phone}</span>}
+                        </div>
+                        <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`}>
+                          ${(u.credits || 0).toFixed(2)}
                         </span>
-                        {u.phone && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)"}}>{u.phone}</span>}
                       </div>
-                      <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`}>
-                        ${(u.credits || 0).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+                {creditsSearch.trim().length >= 2 && filteredUsers.length === 0 && (
+                  <div style={{ fontFamily:"'Outfit',sans-serif", fontSize:11, color:"rgba(255,255,255,.3)", padding:"6px 2px" }}>
+                    No players found
+                  </div>
+                )}
+              </>
+            )}
+            {creditsUser && (
+              <div className={`mo-credits-confirm ${insufficientCredits ? "mo-confirm-low" : "mo-confirm-ok"}`}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div className="mo-confirm-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    ✓ {creditsUser.name}
+                    {creditsUser.player_number ? <span style={{marginLeft:6,opacity:.65}}>#{creditsUser.player_number}</span> : null}
+                  </div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.45)",marginTop:1}}>
+                    Balance: <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
+                  </div>
                 </div>
-              )}
-              {creditsSearch.trim().length >= 2 && filteredUsers.length === 0 && (
-                <div style={{ fontFamily:"'Outfit',sans-serif", fontSize:11, color:"rgba(255,255,255,.3)", padding:"6px 2px" }}>
-                  No players found
-                </div>
-              )}
-            </>
-          )}
-          {creditsUser && (
-            <div className={`mo-credits-confirm ${insufficientCredits ? "mo-confirm-low" : "mo-confirm-ok"}`}>
-              <div style={{flex:1,minWidth:0}}>
-                <div className="mo-confirm-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                  ✓ {creditsUser.name}
-                  {creditsUser.player_number ? <span style={{marginLeft:6,opacity:.65}}>#{creditsUser.player_number}</span> : null}
-                </div>
-                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.45)",marginTop:1}}>
-                  Balance: <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
-                </div>
+                <button className="mo-confirm-clear" onClick={() => { setCreditsUser(null); setCreditsSearch(""); }} aria-label="Change player">✕</button>
               </div>
-              <button className="mo-confirm-clear" onClick={() => { setCreditsUser(null); setCreditsSearch(""); }} aria-label="Change player">✕</button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Table picker ── */}
-        <div className="mo-section" style={{paddingTop:8}}>
-          <div className="mo-label">TABLE / LOCATION</div>
-          <div className="mo-table-pills">
-            {tablePresets.map(({ v, l }) => (
-              <button key={v} onClick={() => setTableNum(v)}
-                className={`mo-table-pill ${tableNum === v ? "mo-table-pill-on" : ""}`}>{l}</button>
-            ))}
-            <input
-              className="mo-table-other"
-              placeholder="Other…"
-              value={isCustomTable ? tableNum : ""}
-              onChange={e => setTableNum(e.target.value || "BAR")}
-            />
+            )}
           </div>
-        </div>
 
-        {/* ── Search ── */}
-        <div className="mo-section" style={{ paddingBottom: 6, paddingTop:8 }}>
-          <input className="mo-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search menu items…" />
-        </div>
+          {/* ── Table picker ── */}
+          <div className="mo-section" style={{paddingTop:8}}>
+            <div className="mo-label">TABLE / LOCATION</div>
+            <div className="mo-table-pills">
+              {tablePresets.map(({ v, l }) => (
+                <button key={v} onClick={() => setTableNum(v)}
+                  className={`mo-table-pill ${tableNum === v ? "mo-table-pill-on" : ""}`}>{l}</button>
+              ))}
+              <input
+                className="mo-table-other"
+                placeholder="Other…"
+                value={isCustomTable ? tableNum : ""}
+                onChange={e => setTableNum(e.target.value || "BAR")}
+              />
+            </div>
+          </div>
 
-        {/* ── Menu items list ── */}
-        <div className="mo-items">
-          {filtered.length === 0 && <div className="mo-empty">No items found</div>}
-          {filtered.map(item => {
-            const qty = cartQty(item.id);
-            return (
-              <div key={item.id} className="mo-item-row">
-                <div className="mo-item-info">
-                  <div className="mo-item-name">{item.name}</div>
-                  <div className="mo-item-price">${(+item.price).toFixed(2)}</div>
+          {/* ── Search ── */}
+          <div className="mo-section" style={{ paddingBottom: 6, paddingTop:8 }}>
+            <input className="mo-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search menu items…" />
+          </div>
+
+          {/* ── Menu items list ── */}
+          <div className="mo-items">
+            {filtered.length === 0 && <div className="mo-empty">No items found</div>}
+            {filtered.map(item => {
+              const qty = cartQty(item.id);
+              return (
+                <div key={item.id} className="mo-item-row">
+                  <div className="mo-item-info">
+                    <div className="mo-item-name">{item.name}</div>
+                    <div className="mo-item-price">${(+item.price).toFixed(2)}</div>
+                  </div>
+                  <div className="mo-item-ctrl">
+                    {qty > 0 && <>
+                      <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
+                      <span className="mo-qty-val">{qty}</span>
+                    </>}
+                    <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
+                  </div>
                 </div>
-                <div className="mo-item-ctrl">
-                  {qty > 0 && <>
-                    <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
-                    <span className="mo-qty-val">{qty}</span>
-                  </>}
-                  <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+        </div>{/* end mo-body */}
 
         {/* ── Cart + payment footer (only when cart has items) ── */}
         {cart.length > 0 && (
