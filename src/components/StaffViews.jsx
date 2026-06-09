@@ -1032,8 +1032,8 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
         const label = isOut
           ? `🌴 Zone ${key.replace("OUT-","")} ordered!`
           : `🍺 Table ${o.table_number} ordered!`;
-        // Find table position for toast placement
-        const tbl = (isOut ? tablesP2 : tables).find(t =>
+        // Find table position for toast placement (P2-only — single tile set)
+        const tbl = tablesP2.find(t =>
           isOut ? `OUT-${t.id}` === key : String(t.id) === key
         );
         newEntries.push({ key, label, tbl, ord: o });

@@ -12078,7 +12078,7 @@ function AdminGiftCards() {
       if (error) throw error;
       showToast(`✓ Generated ${data.length} × $${a.toFixed(2)} cards`);
       try { navigator.vibrate?.([40, 30, 80]); } catch {}
-      const newBatchId = data[0]?.batch_id;
+      const newBatchId = data[0]?.out_batch_id;
       await load();
       if (newBatchId) setBatchView(newBatchId);
     } catch (e) {
