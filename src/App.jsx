@@ -12076,10 +12076,18 @@ function AdminGiftCards() {
     try {
       const { data, error } = await supabase.rpc("admin_generate_gift_cards", { p_amount: a, p_quantity: q });
       if (error) throw error;
-      showToast(`✓ Generated ${data.length} × $${a.toFixed(2)} cards`);
+      showToast(`✓ Generated ${data.length} × $${a.toFixed(2)} cards — opening print…`);
       try { navigator.vibrate?.([40, 30, 80]); } catch {}
-      const newBatchId = data[0]?.out_batch_id;
-      await load();
+      // Map out_ prefixed columns to plain field names for printCards
+      const cards = data.map(d => ({
+        id: d.out_id,
+        code: d.out_code,
+        amount: d.out_amount,
+        batch_id: d.out_batch_id,
+        created_at: d.out_created_at,
+      }));
+      await printCards(cards);
+      const newBatchId = cards[0]?.batch_id;
       if (newBatchId) setBatchView(newBatchId);
     } catch (e) {
       showToast(e.message || "Generation failed", false);
