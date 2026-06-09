@@ -418,50 +418,56 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
         {cart.length > 0 && (
           <div className="mo-footer">
 
-            {/* Cart summary */}
-            <div className="mo-cart">
-              {cart.map(c => (
-                <div key={c.id} className="mo-cart-row">
-                  <span className="mo-cart-item">{c.qty}× {c.name}</span>
-                  <span className="mo-cart-price">${(c.price * c.qty).toFixed(2)}</span>
+            {/* Scrollable cart details */}
+            <div className="mo-footer-scroll">
+              {/* Cart summary */}
+              <div className="mo-cart">
+                {cart.map(c => (
+                  <div key={c.id} className="mo-cart-row">
+                    <span className="mo-cart-item">{c.qty}× {c.name}</span>
+                    <span className="mo-cart-price">${(c.price * c.qty).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="mo-cart-total">
+                  <span>TOTAL</span>
+                  <span className="mo-total-val">${total.toFixed(2)}</span>
                 </div>
-              ))}
-              <div className="mo-cart-total">
-                <span>TOTAL</span>
-                <span className="mo-total-val">${total.toFixed(2)}</span>
               </div>
+
+              {/* Balance preview when a player is selected */}
+              {creditsUser && (
+                <div className={`mo-balance-preview ${insufficientCredits ? "mo-balance-low" : "mo-balance-ok"}`}>
+                  <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.55)"}}>After this order:</span>
+                  <div className="mo-confirm-flow" style={{gap:6}}>
+                    <span style={{ color:"rgba(255,255,255,.45)" }}>${(creditsUser.credits||0).toFixed(2)}</span>
+                    <span className="mo-confirm-arrow">→</span>
+                    <span className={insufficientCredits ? "mo-bal-low" : "mo-bal-ok"}>
+                      ${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {creditsUser && insufficientCredits && (
+                <div className="mo-warning">⚠ Insufficient credits — ${(total-(creditsUser.credits||0)).toFixed(2)} short. Top up first.</div>
+              )}
+              {!creditsUser && (
+                <div className="mo-warning" style={{background:"rgba(99,179,237,.07)",border:"1px solid rgba(99,179,237,.2)",color:"#63b3ed"}}>
+                  ↑ Select a player above to charge their credits.
+                </div>
+              )}
+
+              {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
             </div>
 
-            {/* Balance preview when a player is selected */}
-            {creditsUser && (
-              <div className={`mo-balance-preview ${insufficientCredits ? "mo-balance-low" : "mo-balance-ok"}`}>
-                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.55)"}}>After this order:</span>
-                <div className="mo-confirm-flow" style={{gap:6}}>
-                  <span style={{ color:"rgba(255,255,255,.45)" }}>${(creditsUser.credits||0).toFixed(2)}</span>
-                  <span className="mo-confirm-arrow">→</span>
-                  <span className={insufficientCredits ? "mo-bal-low" : "mo-bal-ok"}>
-                    ${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            )}
-            {creditsUser && insufficientCredits && (
-              <div className="mo-warning">⚠ Insufficient credits — ${(total-(creditsUser.credits||0)).toFixed(2)} short. Top up first.</div>
-            )}
-            {!creditsUser && (
-              <div className="mo-warning" style={{background:"rgba(99,179,237,.07)",border:"1px solid rgba(99,179,237,.2)",color:"#63b3ed"}}>
-                ↑ Select a player above to charge their credits.
-              </div>
-            )}
-
-            {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
-
-            <button onClick={placeOrder} disabled={!canPlace || placing}
-              aria-disabled={!canPlace || placing}
-              aria-busy={placing ? "true" : "false"}
-              className={`mo-place-btn ${canPlace && !placing ? "mo-place-btn-active" : ""}`}>
-              {placing ? "PLACING…" : `PAY WITH CREDITS · $${total.toFixed(2)}`}
-            </button>
+            {/* Place order button — always pinned at bottom */}
+            <div className="mo-footer-action">
+              <button onClick={placeOrder} disabled={!canPlace || placing}
+                aria-disabled={!canPlace || placing}
+                aria-busy={placing ? "true" : "false"}
+                className={`mo-place-btn ${canPlace && !placing ? "mo-place-btn-active" : ""}`}>
+                {placing ? "PLACING…" : `PAY WITH CREDITS · $${total.toFixed(2)}`}
+              </button>
+            </div>
           </div>
         )}
       </div>
