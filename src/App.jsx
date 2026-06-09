@@ -1005,9 +1005,11 @@ export default function App() {
         toast$("Error placing order — credits refunded", false); return false;
       }
     } else {
+      // Sponsor gift orders skip the queue — auto-confirm immediately
+      const autoStatus = paymentMethod === "sponsor_gift" ? "confirmed" : "pending";
       const { error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
-        items, total, payment_method: paymentMethod, status: "pending",
+        items, total, payment_method: paymentMethod, status: autoStatus,
         order_number: pickupNum,
       }).select().single();
       if (error) { toast$("Error placing order", false); return false; }
