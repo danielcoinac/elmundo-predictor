@@ -3366,24 +3366,49 @@ function BracketMapModal({ byRound, activeRounds, onClose }) {
   const playedMatches = ['Round of 32','Round of 16','Quarter-Finals','Semi-Finals','3rd Place','Final']
     .reduce((s,r) => s + (byRound[r]?.filter(m => m.status === 'finished').length || 0), 0);
 
+  // ── Zoom / pan ──────────────────────────────────────────────────────────
+  const canvasRef = useRef(null);
+  const headerRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const HEADER_H = 52;
+
   // ── Geometry ──────────────────────────────────────────────────────────────
-  // Card dims
-  const CARD_W = 174, CARD_H = 68, COL_GAP = 56;
-  // Vertical "unit" = how much space one R32 match occupies (incl. gap)
-  // R16 cards span 2 units, QF 4, SF 8, Final 16. Final's center is at row 7.5
-  // R32 count drives total height
+  const PAD = 30;
+  const CARD_W = 200, CARD_H = 98, COL_GAP = 66;
   const r32Count = byRound['Round of 32']?.length || 16;
-  const UNIT_H   = CARD_H + 22;            // vertical spacing per R32 match
-  const TOTAL_H  = r32Count * UNIT_H + 80; // a little top/bottom padding
+  const UNIT_H   = CARD_H + 34;                       // vertical spacing per R32 slot
+  const TOTAL_H  = r32Count * UNIT_H + PAD * 2;
+  const colX = i => PAD + i * (CARD_W + COL_GAP);     // left edge of column i
+  const TOTAL_W  = PAD * 2 + rounds.length * CARD_W + (rounds.length - 1) * COL_GAP;
 
-  // Column positions (left edges)
-  const colX = i => i * (CARD_W + COL_GAP);
-  const TOTAL_W  = rounds.length * CARD_W + (rounds.length - 1) * COL_GAP + 80;
-
-  // Returns center Y for the n-th card in `round` index
+  // Card center Y (round labels live in their own sticky strip above the canvas).
   const centerY = (roundIdx, i) => {
-    const span  = Math.pow(2, roundIdx);    // 1, 2, 4, 8, 16
-    return 40 + (i * span + span / 2 - 0.5) * UNIT_H;
+    const span = Math.pow(2, roundIdx);               // 1,2,4,8,16
+    return PAD + (i * span + span / 2 - 0.5) * UNIT_H;
+  };
+
+  // Fit-to-width on mount (clamped so cards never get microscopic)
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const avail = el.clientWidth - 24;
+    const fit = avail / TOTAL_W;
+    setZoom(Math.min(1, Math.max(0.62, fit)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [TOTAL_W, mounted]);
+
+  const fitToWidth = () => {
+    const el = canvasRef.current;
+    if (!el) return;
+    setZoom(Math.max(0.35, (el.clientWidth - 24) / TOTAL_W));
+  };
+  const zoomBy = (d) => setZoom(z => Math.min(1.5, Math.max(0.35, +(z + d).toFixed(2))));
+
+  // Keep the round-header row aligned with horizontal scroll
+  const onCanvasScroll = (e) => {
+    if (headerRef.current) {
+      headerRef.current.style.transform = `translateX(${-e.target.scrollLeft}px)`;
+    }
   };
 
   // Build absolute position for each match: x (left), y (top)
@@ -3469,8 +3494,13 @@ function BracketMapModal({ byRound, activeRounds, onClose }) {
             <span className="bm2-cup">🏆</span>
             <div>
               <div className="bm2-title-main">ROAD TO THE CUP</div>
-              <div className="bm2-title-sub">{playedMatches}/{totalMatches} matches played · World Cup 2026</div>
+              <div className="bm2-title-sub">{playedMatches}/{totalMatches} played · WC 2026</div>
             </div>
+          </div>
+          <div className="bm2-zoom-ctrl">
+            <button onClick={() => zoomBy(-0.15)} aria-label="Zoom out">−</button>
+            <button className="bm2-zoom-fit" onClick={fitToWidth}>FIT</button>
+            <button onClick={() => zoomBy(0.15)} aria-label="Zoom in">+</button>
           </div>
           <button className="bm2-close" onClick={onClose} aria-label="Close bracket">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -3479,71 +3509,84 @@ function BracketMapModal({ byRound, activeRounds, onClose }) {
           </button>
         </div>
 
-        {/* Round header strip — sticky */}
-        <div className="bm2-round-strip" style={{ minWidth: TOTAL_W }}>
-          {rounds.map((r, idx) => (
-            <div key={r} className="bm2-round-hd" style={{ left: colX(idx) + 40, width: CARD_W }}>
-              <span className="bm2-round-icon">{ROUND_ICON[r]}</span>
-              <span className="bm2-round-name">{r}</span>
-            </div>
-          ))}
+        {/* Round header strip — scrolls horizontally in sync with the canvas */}
+        <div className="bm2-round-strip" style={{ height: HEADER_H }}>
+          <div className="bm2-round-strip-inner" ref={headerRef} style={{ width: TOTAL_W * zoom }}>
+            {rounds.map((r, idx) => (
+              <div key={r} className="bm2-round-hd"
+                   style={{ left: colX(idx) * zoom, width: CARD_W * zoom }}>
+                <span className="bm2-round-icon">{ROUND_ICON[r]}</span>
+                <span className="bm2-round-name">{r}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Canvas: SVG connectors + card layer */}
-        <div className="bm2-canvas">
-          <div className="bm2-canvas-inner" style={{ width: TOTAL_W, height: TOTAL_H, paddingLeft: 40, paddingRight: 40 }}>
+        {/* Canvas: zoomable, scrollable */}
+        <div className="bm2-canvas" ref={canvasRef} onScroll={onCanvasScroll}>
+          {/* Sizer reserves the scaled footprint so scrollbars are correct */}
+          <div className="bm2-zoom-sizer" style={{ width: TOTAL_W * zoom, height: TOTAL_H * zoom }}>
+            <div className="bm2-zoom-scale"
+                 style={{ width: TOTAL_W, height: TOTAL_H, transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
 
-            {/* SVG connectors */}
-            <svg
-              className="bm2-svg"
-              width={TOTAL_W - 80}
-              height={TOTAL_H}
-              viewBox={`0 0 ${TOTAL_W - 80} ${TOTAL_H}`}
-              style={{ position: 'absolute', top: 0, left: 40, pointerEvents: 'none' }}
-            >
-              <defs>
-                <linearGradient id="bm2-line-dim" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%"  stopColor="rgba(255,255,255,0.08)"/>
-                  <stop offset="100%" stopColor="rgba(255,255,255,0.18)"/>
-                </linearGradient>
-                <linearGradient id="bm2-line-done" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%"  stopColor="#4ade80"/>
-                  <stop offset="100%" stopColor="#22c55e"/>
-                </linearGradient>
-                <linearGradient id="bm2-line-hot" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%"  stopColor="#facc15"/>
-                  <stop offset="100%" stopColor="#fbbf24"/>
-                </linearGradient>
-                <filter id="bm2-glow">
-                  <feGaussianBlur stdDeviation="2.5" result="g"/>
-                  <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-              </defs>
+              {/* SVG connectors (full coordinate space) */}
+              <svg className="bm2-svg" width={TOTAL_W} height={TOTAL_H}
+                   viewBox={`0 0 ${TOTAL_W} ${TOTAL_H}`}
+                   style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+                <defs>
+                  <linearGradient id="bm2-line-dim" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%"  stopColor="rgba(255,255,255,0.10)"/>
+                    <stop offset="100%" stopColor="rgba(255,255,255,0.22)"/>
+                  </linearGradient>
+                  <linearGradient id="bm2-line-done" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%"  stopColor="#4ade80"/>
+                    <stop offset="100%" stopColor="#22c55e"/>
+                  </linearGradient>
+                  <linearGradient id="bm2-line-hot" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%"  stopColor="#facc15"/>
+                    <stop offset="100%" stopColor="#fbbf24"/>
+                  </linearGradient>
+                  <filter id="bm2-glow">
+                    <feGaussianBlur stdDeviation="2.5" result="g"/>
+                    <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
 
-              {connectors.map((c, idx) => {
-                const dx = (c.toX - c.fromX) * 0.55;
-                const path = `M ${c.fromX} ${c.fromY} C ${c.fromX + dx} ${c.fromY}, ${c.toX - dx} ${c.toY}, ${c.toX} ${c.toY}`;
-                const isHot = highlightIds.has(c.id);
-                const done  = c.parentFinished;
+                {connectors.map((c, idx) => {
+                  const dx = (c.toX - c.fromX) * 0.5;
+                  const path = `M ${c.fromX} ${c.fromY} C ${c.fromX + dx} ${c.fromY}, ${c.toX - dx} ${c.toY}, ${c.toX} ${c.toY}`;
+                  const isHot = highlightIds.has(c.id);
+                  const done  = c.parentFinished;
+                  return (
+                    <g key={c.id} className={`bm2-conn ${isHot ? 'bm2-conn-hot' : done ? 'bm2-conn-done' : 'bm2-conn-dim'}`}
+                       style={{ animationDelay: `${0.2 + idx * 0.015}s` }}>
+                      <path d={path} fill="none"
+                            strokeWidth={isHot ? 3 : 2}
+                            stroke={isHot ? 'url(#bm2-line-hot)' : done ? 'url(#bm2-line-done)' : 'url(#bm2-line-dim)'}
+                            filter={isHot ? 'url(#bm2-glow)' : undefined}
+                            className="bm2-path"/>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* Trophy emblem behind the Final card */}
+              {rounds.includes('Final') && (() => {
+                const finalIdx = rounds.indexOf('Final');
+                const fy = centerY(finalIdx, 0);
+                const fx = colX(finalIdx) + CARD_W / 2;
                 return (
-                  <g key={c.id} className={`bm2-conn ${isHot ? 'bm2-conn-hot' : done ? 'bm2-conn-done' : 'bm2-conn-dim'}`}
-                     style={{ animationDelay: `${0.25 + idx * 0.02}s` }}>
-                    <path
-                      d={path}
-                      fill="none"
-                      strokeWidth={isHot ? 2.5 : 1.6}
-                      stroke={isHot ? 'url(#bm2-line-hot)' : done ? 'url(#bm2-line-done)' : 'url(#bm2-line-dim)'}
-                      filter={isHot ? 'url(#bm2-glow)' : undefined}
-                      className="bm2-path"
-                    />
-                  </g>
+                  <div className="bm2-trophy" style={{ left: fx - 90, top: fy - 150 }}>
+                    <div className="bm2-trophy-ring" />
+                    <div className="bm2-trophy-ring bm2-trophy-ring-2" />
+                    <div className="bm2-trophy-emoji">🏆</div>
+                    <div className="bm2-trophy-rays" />
+                  </div>
                 );
-              })}
-            </svg>
+              })()}
 
-            {/* Cards layer */}
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              {cards.map((c, idx) => {
+              {/* Cards */}
+              {cards.map((c) => {
                 const isFinal = c.round === 'Final';
                 const inHotPath = highlightIds.has(c.m.id);
                 return (
@@ -3561,26 +3604,11 @@ function BracketMapModal({ byRound, activeRounds, onClose }) {
                       top:   c.y,
                       width: CARD_W,
                       height: CARD_H,
-                      animationDelay: mounted ? `${c.roundIdx * 0.1 + c.i * 0.02}s` : '0s',
+                      animationDelay: mounted ? `${c.roundIdx * 0.08 + c.i * 0.015}s` : '0s',
                     }}
                   />
                 );
               })}
-
-              {/* Trophy emblem behind the Final card */}
-              {rounds.includes('Final') && (() => {
-                const finalIdx = rounds.indexOf('Final');
-                const fy = centerY(finalIdx, 0);
-                const fx = colX(finalIdx) + CARD_W / 2;
-                return (
-                  <div className="bm2-trophy" style={{ left: fx - 80, top: fy - 130 }}>
-                    <div className="bm2-trophy-ring" />
-                    <div className="bm2-trophy-ring bm2-trophy-ring-2" />
-                    <div className="bm2-trophy-emoji">🏆</div>
-                    <div className="bm2-trophy-rays" />
-                  </div>
-                );
-              })()}
             </div>
           </div>
         </div>
@@ -3612,7 +3640,7 @@ function BracketMapModal({ byRound, activeRounds, onClose }) {
             <span className="bm2-foot-pill bm2-foot-pill-live">● LIVE</span>
             <span className="bm2-foot-pill bm2-foot-pill-done">✓ PLAYED</span>
           </div>
-          <span className="bm2-foot-tip">{hoveredId ? "Path to the cup highlighted" : "Tap a match to highlight its road"}</span>
+          <span className="bm2-foot-tip">{hoveredId ? "Path to the cup highlighted" : "Tap a match · pinch or use +/− to zoom"}</span>
         </div>
       </div>
     </div>
