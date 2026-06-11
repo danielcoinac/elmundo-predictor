@@ -7,7 +7,7 @@ import { TRANSLATIONS, LangContext, useLang } from "./lib/i18n";
 import { sget, sset, DEFAULT_MATCHES, DEFAULT_RULES, DEFAULT_SPONSORS, MONTHS, matchDate, sortMatches, calcPts, FLAGS, flag, MENU_SECTIONS, ALL_MENU_CATS, FOOD_CATS, catMeta } from "./lib/utils";
 import { Logo, HeaderLogo } from "./components/Logo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { FloorPlan, OrderFeed } from "./components/StaffViews";
+import { FloorPlan, OrderFeed, printReceipt } from "./components/StaffViews";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import "./styles.css";
@@ -960,18 +960,20 @@ export default function App() {
   };
 
   // ── PICKUP NUMBER GENERATION ──────────────────────────────────────────────
-  // Returns the lowest available number 1-99 not currently used by a pending order.
+  // Returns a random 2-digit number (10-99) not used by any active order.
   const getPickupNumber = async () => {
     try {
       const { data } = await supabase.from("orders")
         .select("order_number")
-        .eq("status", "pending")
+        .in("status", ["confirmed", "pending"])
         .not("order_number", "is", null);
-      const used = new Set((data || []).map(o => +o.order_number).filter(n => n >= 1 && n <= 99));
-      for (let n = 1; n <= 99; n++) { if (!used.has(n)) return n; }
-      return Math.floor(Math.random() * 900) + 100; // fallback if all 99 taken
+      const used = new Set((data || []).map(o => +o.order_number).filter(n => n >= 10 && n <= 99));
+      const available = [];
+      for (let n = 10; n <= 99; n++) { if (!used.has(n)) available.push(n); }
+      if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
+      return Math.floor(Math.random() * 90) + 10; // fallback if all 90 taken
     } catch {
-      return Math.floor(Math.random() * 89) + 1;
+      return Math.floor(Math.random() * 90) + 10;
     }
   };
 
@@ -995,7 +997,7 @@ export default function App() {
       // Insert order after successful deduction
       const { error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
-        items, total, payment_method: paymentMethod, status: "pending",
+        items, total, payment_method: paymentMethod, status: "confirmed",
         order_number: pickupNum,
       }).select().single();
       if (error) {
@@ -1005,14 +1007,16 @@ export default function App() {
         toast$("Error placing order — credits refunded", false); return false;
       }
     } else {
-      // Sponsor gift orders skip the queue — auto-confirm immediately
-      const autoStatus = paymentMethod === "sponsor_gift" ? "confirmed" : "pending";
-      const { error } = await supabase.from("orders").insert({
+      // All orders go in as confirmed; sponsors also auto-print receipt on placement
+      const { data: newOrd, error } = await supabase.from("orders").insert({
         user_id: user.id, user_name: user.name, table_number: tableNumber,
-        items, total, payment_method: paymentMethod, status: autoStatus,
+        items, total, payment_method: paymentMethod, status: "confirmed",
         order_number: pickupNum,
       }).select().single();
       if (error) { toast$("Error placing order", false); return false; }
+      if (paymentMethod === "sponsor_gift" && newOrd) {
+        try { printReceipt(newOrd); } catch(e) {}
+      }
     }
     toast$(`🔔 Order placed! Go to the bar, wait in line, then say number ${pickupNum}`);
     try { navigator.vibrate?.([80, 40, 80, 40, 120]); } catch {}
@@ -11747,67 +11751,64 @@ function MenuView({ user, menuItems, myCredits, myOrders, onPlaceOrder, onCancel
       {/* ── ORDERS TAB ── */}
       {tab === "orders" && (
         <div>
-          {/* ── PICKUP NUMBER — stays on screen until staff clears the order ── */}
+          {/* ── ACTIVE PICKUP ORDERS — all confirmed orders with numbers ── */}
           {(() => {
-            // Sponsor orders are brought to the table — no pickup number shown
-            const pendingOrds = myOrders.filter(o =>
-              o.status === "pending"
+            // Sponsor orders are delivered to table — no pickup shown
+            const activeOrds = myOrders.filter(o =>
+              (o.status === "confirmed" || o.status === "pending")
               && o.order_number
-              && +o.order_number < 100
               && o.payment_method !== "sponsor_gift"
-            );
-            if (pendingOrds.length === 0) return null;
-            const ord = pendingOrds[0];
+            ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            if (activeOrds.length === 0) return null;
             return (
-              <div style={{
-                margin:"16px 16px 0",padding:"24px 20px 20px",
-                background:"rgba(255,255,255,.04)",
-                border:"2px solid rgba(255,255,255,.25)",
-                borderRadius:16,textAlign:"center",
-              }}>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:4,color:"rgba(255,255,255,.5)",marginBottom:8}}>
-                  PICK UP AT THE BAR
+              <div style={{margin:"16px 16px 0"}}>
+                <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:4,color:"rgba(255,255,255,.35)",marginBottom:10}}>
+                  YOUR ACTIVE ORDERS
                 </div>
-                <div style={{
-                  fontFamily:"'Anton',sans-serif",fontSize:96,lineHeight:1,color:"#fff",
-                  letterSpacing:4,
-                  textShadow:"0 0 40px rgba(255,255,255,.35)",
-                }}>
-                  {String(ord.order_number).padStart(2,"0")}
-                </div>
-                <div style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:3,color:"rgba(255,255,255,.3)",marginTop:12}}>
-                  YOUR ORDER NUMBER
-                </div>
-
-                {/* 3-step instructions */}
-                <div style={{marginTop:18,display:"flex",flexDirection:"column",gap:6,textAlign:"left",
-                  padding:"12px 14px",background:"rgba(0,0,0,.35)",borderRadius:10,
-                  border:"1px solid rgba(255,255,255,.08)"}}>
-                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>1.</span>
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
-                      Walk to the bar
-                    </span>
+                {activeOrds.map(ord => (
+                  <div key={ord.id} style={{
+                    marginBottom:10,padding:"16px 18px",
+                    background:"rgba(255,255,255,.04)",
+                    border:"2px solid rgba(255,255,255,.2)",
+                    borderRadius:14,display:"flex",alignItems:"center",gap:16,
+                  }}>
+                    {/* Big pickup number */}
+                    <div style={{
+                      flexShrink:0,width:72,height:72,borderRadius:12,
+                      background: ord.payment_method === "cash" ? "rgba(251,191,36,.12)" : "rgba(255,255,255,.06)",
+                      border: ord.payment_method === "cash" ? "2px solid rgba(251,191,36,.5)" : "2px solid rgba(255,255,255,.2)",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontFamily:"'Anton',sans-serif",fontSize:38,lineHeight:1,
+                      color: ord.payment_method === "cash" ? "#fbbf24" : "#fff",
+                      letterSpacing:2,textShadow:"0 0 20px rgba(255,255,255,.2)",
+                    }}>
+                      {String(ord.order_number).padStart(2,"0")}
+                    </div>
+                    {/* Details */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,letterSpacing:3,color:"rgba(255,255,255,.4)",marginBottom:4}}>
+                        PICK UP AT THE BAR
+                      </div>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.6)",marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {(ord.items||[]).map(i=>`${i.qty}× ${i.name}`).join(" · ")}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"#fff"}}>${(+ord.total).toFixed(2)}</span>
+                        {ord.payment_method === "cash" && (
+                          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:"#fbbf24",background:"rgba(251,191,36,.12)",border:"1px solid rgba(251,191,36,.3)",borderRadius:4,padding:"2px 7px"}}>
+                            PAY AT BAR
+                          </span>
+                        )}
+                      </div>
+                      <div style={{marginTop:8,display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{width:5,height:5,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 5px #4ade80",display:"inline-block",animation:"of-pulse 1.6s ease-in-out infinite",flexShrink:0}}/>
+                        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>
+                          {ord.payment_method === "cash" ? "Walk to bar · wait in line · say number & pay" : "Walk to bar · wait in line · say number"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>2.</span>
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
-                      <strong>Wait your turn in line</strong> — staff don't call you
-                    </span>
-                  </div>
-                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                    <span style={{fontFamily:"'Anton',sans-serif",fontSize:12,color:"#facc15",letterSpacing:1,width:14,flexShrink:0}}>3.</span>
-                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.45}}>
-                      Say your number — staff will hand over your order
-                      {ord.payment_method === "cash" && <span style={{color:"#fbbf24"}}> (and pay with cash or card)</span>}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{marginTop:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                  <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",boxShadow:"0 0 6px #4ade80",display:"inline-block",animation:"of-pulse 1.6s ease-in-out infinite"}}/>
-                  <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.4)"}}>Order is ready when staff clears it</span>
-                </div>
+                ))}
               </div>
             );
           })()}

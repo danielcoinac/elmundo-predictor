@@ -888,119 +888,22 @@ function AdminReport({ allOrders }) {
 }
 
 /* ═══ FLOOR PLAN ════════════════════════════════════════════════════════════ */
-const FP_KEY_P2     = 'fp-layout-v3-p2';
-const FP_BAR_KEY_P2 = 'fp-bar-v3-p2';
-const FP_BAR_DEF_P2 = { x:660, y:12, w:180, h:56 };
-
-// Preset color swatches for zone color picker
-const ZONE_PALETTE = [
-  "#ef4444","#f97316","#eab308","#22c55e","#14b8a6",
-  "#3b82f6","#a855f7","#ec4899","#f1f5f9","#f59e0b",
-  "#84cc16","#06b6d4","#8b5cf6","#f43f5e","#ffffff",
-];
-
-// Plan #2 — Outdoor zones with canvas layout (id = zone number)
-const FP_DEFAULT_P2 = [
-  { id:1, color:"#ef4444", x:60,  y:60,  w:120, h:90,  shape:"rect" },
-  { id:2, color:"#f97316", x:210, y:60,  w:120, h:90,  shape:"rect" },
-  { id:3, color:"#eab308", x:360, y:60,  w:120, h:90,  shape:"rect" },
-  { id:4, color:"#22c55e", x:60,  y:180, w:120, h:90,  shape:"rect" },
-  { id:5, color:"#14b8a6", x:210, y:180, w:120, h:90,  shape:"rect" },
-  { id:6, color:"#3b82f6", x:360, y:180, w:120, h:90,  shape:"rect" },
-  { id:7, color:"#a855f7", x:60,  y:300, w:120, h:90,  shape:"rect" },
-  { id:8, color:"#ec4899", x:210, y:300, w:120, h:90,  shape:"rect" },
-  { id:9, color:"#f1f5f9", x:360, y:300, w:120, h:90,  shape:"rect" },
-];
-
-// Module-level set — survives FloorPlan remounts (tab switches).
-// Cleared when the signed-in user changes (see useEffect below).
-const _seenOrderIds = new Set();
-let _seenOrderIdsOwner = null; // user id that owns the current set
-
 function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast = ()=>{}, userId = null, menuItems = [] }) {
-  // Clear the seen-orders set when a different user signs in on this device.
-  useEffect(() => {
-    if (_seenOrderIdsOwner !== userId) {
-      _seenOrderIds.clear();
-      _seenOrderIdsOwner = userId;
-    }
-  }, [userId]);
-
-  // Always outdoor (Plan 2 only — indoor floor plan removed)
-  const isP2 = true;
-  const fpKey    = FP_KEY_P2;
-  const fpBarKey = FP_BAR_KEY_P2;
-  const fpDef    = FP_DEFAULT_P2;
-  const fpBarDef = FP_BAR_DEF_P2;
-  const loadSaved = (key, def) => { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } };
-
-  const [selectedTable, setSelectedTable] = useState(null);
-  const [colorPickerZone, setColorPickerZone] = useState(null);
-  const [now,       setNow      ] = useState(Date.now());
-  const [editMode,  setEditMode ] = useState(false);
-  const [fpView,  setFpView ] = useState("live");
-  const [showFin, setShowFin] = useState(false);
-  const [tablesP2,    setTablesP2   ] = useState(() => loadSaved(FP_KEY_P2, FP_DEFAULT_P2));
-  const [savedTblsP2, setSavedTblsP2] = useState(() => loadSaved(FP_KEY_P2, FP_DEFAULT_P2));
-  const [dragging,  setDragging ] = useState(null);
-  const [resizing,  setResizing ] = useState(null);
-  const [editSel,   setEditSel  ] = useState(null);
-  const [flashTables, setFlashTables] = useState({});
-  const [fpToasts,    setFpToasts]    = useState([]);
-  const seenOrderIds   = { current: _seenOrderIds };
-  const flashTimersRef = useRef({});
-  const [barPosP2,  setBarPosP2 ] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
-  const [savedBarP2,setSavedBarP2] = useState(() => loadSaved(FP_BAR_KEY_P2, FP_BAR_DEF_P2));
-  const [barDrag,   setBarDrag  ] = useState(null);
-  const [activeGroupSessions, setActiveGroupSessions] = useState([]);
-  const [showMO, setShowMO] = useState(false);
+  const [showMO,       setShowMO      ] = useState(false);
   const [pickupSearch, setPickupSearch] = useState("");
-  const [clearingId, setClearingId] = useState(null);
-  const canvasRef = useRef(null);
+  const [clearingId,   setClearingId  ] = useState(null);
+  const [fpView,       setFpView      ] = useState("live");
+  const [showFin,      setShowFin     ] = useState(false);
 
-  // ── Printer zone — always outdoor ──────────────────────────────────────
-  const PZ_KEY = "em-printer-zone";
-  const [printerZone, setPrinterZone] = useState(() => {
-    const z = localStorage.getItem(PZ_KEY);
-    if (!z) { localStorage.setItem(PZ_KEY, "outside"); return "outside"; }
-    return z;
-  });
-
-  // Plan-aware aliases (always P2)
-  const curTables    = tablesP2;
-  const setCurTables = setTablesP2;
-  const curBar       = barPosP2;
-  const setCurBar    = setBarPosP2;
-
-  // Auto-refresh orders + clock every 10s + auto-cancel stale orders
+  // Auto-refresh every 10 s + cancel abandoned card_pending orders
   useEffect(() => {
     const refresh = async () => {
       await onLoad();
-      setNow(Date.now());
-      // Fetch active group sessions for table color + countdown
-      const { data: gs } = await supabase.from("group_orders")
-        .select("id,table_number,status,created_at")
-        .in("status", ["open", "ordering", "awaiting_payment"]);
-      const loadedSessions = gs || [];
-      setActiveGroupSessions(loadedSessions);
-      // Auto-expire group orders open > 30 min
-      const staleThreshold = Date.now() - 30 * 60 * 1000;
-      const staleSessions = loadedSessions.filter(s =>
-        s.status === "open" && new Date(s.created_at).getTime() < staleThreshold
-      );
-      for (const s of staleSessions) {
-        await supabase.from("group_orders").update({ status: "cancelled" }).eq("id", s.id);
-      }
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      // Cancel card_pending orders unpaid for 10+ min
       await supabase.from("orders")
         .update({ status: "cancelled" })
-        .eq("status", "pending").eq("payment_method", "card_pending")
-        .lt("created_at", cutoff);
-      // Cancel group orders stuck in awaiting_payment for 10+ min
-      await supabase.from("group_orders")
-        .update({ status: "cancelled" })
-        .eq("status", "awaiting_payment")
+        .in("status", ["pending", "confirmed"])
+        .eq("payment_method", "card_pending")
         .lt("created_at", cutoff);
     };
     refresh();
@@ -1008,474 +911,58 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
     return () => clearInterval(iv);
   }, []);
 
-  // Cancel all flash timers on unmount to avoid setState on unmounted component
-  useEffect(() => {
-    return () => { Object.values(flashTimersRef.current).forEach(clearTimeout); };
-  }, []);
-
-  // Detect new orders → flash table green + spawn floating toast.
-  //
-  // We track a "last-seen order timestamp" in localStorage so that orders that
-  // arrive while the floor plan tab isn't mounted (e.g. staff was on another
-  // tab, or just signed in) still flash and print when the staffer returns.
-  // The 20s wall-clock fallback remains for the very first install on a device
-  // that has no last-seen timestamp.
-  const LAST_SEEN_KEY = "em-fp-last-seen-order-ts";
-  useEffect(() => {
-    if (!allOrders.length) return;
-    const FLASH_WINDOW_MS = 20000;
-    const now = Date.now();
-    const lastSeenTs = parseInt(localStorage.getItem(LAST_SEEN_KEY) || "0", 10) || 0;
-    let maxTs = lastSeenTs;
-    const newEntries = []; // { key, label, tbl }
-    allOrders.forEach(o => {
-      const orderTs = new Date(o.created_at).getTime();
-      if (orderTs > maxTs) maxTs = orderTs;
-      if (!seenOrderIds.current.has(o.id)) {
-        seenOrderIds.current.add(o.id);
-        const age = now - orderTs;
-        // Treat as "new" if this order is newer than the last one we processed
-        // on this device, OR (first run with no marker) within the 20s window.
-        const isNew = lastSeenTs > 0 ? orderTs > lastSeenTs : age <= FLASH_WINDOW_MS;
-        if (!isNew) return; // historical — seed silently
-        const isOut = String(o.table_number).startsWith("OUT-");
-        const key   = String(o.table_number);
-        const label = isOut
-          ? `🌴 Zone ${key.replace("OUT-","")} ordered!`
-          : `🍺 Table ${o.table_number} ordered!`;
-        // Find table position for toast placement (P2-only — single tile set)
-        const tbl = tablesP2.find(t =>
-          isOut ? `OUT-${t.id}` === key : String(t.id) === key
-        );
-        newEntries.push({ key, label, tbl, ord: o });
-      }
-    });
-    // Persist the high-water mark so the next mount/remount knows what's been processed
-    if (maxTs > lastSeenTs) {
-      try { localStorage.setItem(LAST_SEEN_KEY, String(maxTs)); } catch {}
-    }
-    if (newEntries.length === 0) return;
-    // Print all new orders on the single connected printer
-    newEntries.forEach(({ ord }) => {
-      if (!ord) return;
-      if (!localStorage.getItem("em-printer-zone")) return; // printer not configured
-      try { printReceipt(ord); } catch(e) {}
-    });
-    const ts = Date.now();
-    // Flash + toasts — timers stored in ref so effect cleanup never cancels them
-    setFlashTables(prev => {
-      const next = { ...prev };
-      newEntries.forEach(({ key }) => { next[key] = ts; });
-      return next;
-    });
-    const toastItems = newEntries.map(({ key, label, tbl }) => ({
-      id: `${key}-${ts}`,
-      label,
-      x: tbl ? tbl.x + tbl.w / 2 : 80,
-      y: tbl ? tbl.y - 10 : 80,
-    }));
-    setFpToasts(prev => [...prev, ...toastItems]);
-    newEntries.forEach(({ key }) => {
-      if (flashTimersRef.current[key]) clearTimeout(flashTimersRef.current[key]);
-      flashTimersRef.current[key] = setTimeout(() => {
-        setFlashTables(prev => { const n = { ...prev }; if (n[key] === ts) delete n[key]; return n; });
-        setFpToasts(prev => prev.filter(t => t.id !== `${key}-${ts}`));
-        delete flashTimersRef.current[key];
-      }, 3000);
-    });
-  }, [allOrders]);
-
-  // Financial summary — today only
-  const todayStr = new Date().toDateString();
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const todayStr     = new Date().toDateString();
   const todayOrders  = allOrders.filter(o => new Date(o.created_at).toDateString() === todayStr);
   const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
   const todayCount   = todayOrders.length;
 
-  // Today's orders per table
-  const todayByTable = todayOrders.reduce((acc, o) => {
-    const t = String(o.table_number);
-    if (!acc[t]) acc[t] = [];
-    acc[t].push(o);
-    return acc;
-  }, {});
+  // Active = confirmed (and legacy pending non-card_pending for backward compat)
+  const activeOrders = allOrders
+    .filter(o =>
+      (o.status === "confirmed" || (o.status === "pending" && o.payment_method !== "card_pending"))
+      && o.order_number
+    )
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-  // Active = card_pending Stripe orders (kept for auto-cancel logic only, no color)
-  const allActiveOrders = allOrders.filter(o => o.status === "pending" && o.payment_method === "card_pending");
-  const activeOrders = allActiveOrders.filter(o => isP2 ? String(o.table_number).startsWith("OUT-") : !String(o.table_number).startsWith("OUT-"));
-  const byTable = {}; // not used for display anymore
+  // Search filter
+  const searchQ = pickupSearch.trim().toLowerCase();
+  const filteredOrders = searchQ
+    ? activeOrders.filter(o =>
+        String(o.order_number).includes(searchQ) ||
+        (o.user_name || "").toLowerCase().includes(searchQ)
+      )
+    : activeOrders;
 
-  // Table status — only group (light blue) or empty/active_today
-  const tableStatus = (num) => {
-    const key = isP2 ? `OUT-${num}` : String(num);
-    const today = todayByTable[key] || [];
-    if (activeGroupSessions.some(g => String(g.table_number) === key)) return "group";
-    if (today.length > 0) return "active_today";
-    return "empty";
-  };
+  // Payment label
+  const payLabel = m =>
+    m === "credits"      ? "CREDITS" :
+    m === "card"         ? "CARD" :
+    m === "cash"         ? "CASH" :
+    m === "sponsor_gift" ? "VIP GIFT" :
+    m?.startsWith("group") ? "GROUP" :
+    (m || "CASH").toUpperCase();
 
-  const statusStyle = (s) => ({
-    empty:        { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",  color:"rgba(255,255,255,.25)", blink:false },
-    active_today: { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)",  color:"rgba(255,255,255,.25)", blink:false },
-    group:        { bg:"rgba(96,165,250,.15)",  border:"rgba(96,165,250,.8)",   color:"#93c5fd",               blink:false },
-  }[s] || { bg:"rgba(255,255,255,.04)", border:"rgba(255,255,255,.1)", color:"rgba(255,255,255,.25)", blink:false });
-
-  const statusColor = s => s==="pending"?"#f59e0b":s==="ready"?"#fff":"rgba(255,255,255,.3)";
-  const statusLabel = s => s==="pending"?"NEW ORDER":s==="ready"?"READY":"";
-
-  const pendingCount = activeOrders.filter(o=>o.status==="pending").length;
-  const urgentTables = curTables.filter(t => tableStatus(t.id)==="urgent");
-
-  // ── Drag / Resize ──────────────────────────────────────────────────────────
-  const getPos = e => e.touches ? { x:e.touches[0].clientX, y:e.touches[0].clientY } : { x:e.clientX, y:e.clientY };
-
-  const startDrag = (e, id) => {
-    if (!editMode) return;
-    e.stopPropagation(); e.preventDefault();
-    const pos = getPos(e);
-    const rect = canvasRef.current.getBoundingClientRect();
-    const t = curTables.find(t => t.id === id);
-    if (!t) return; // table may have been deleted concurrently
-    setDragging({ id, ox: pos.x - rect.left - t.x, oy: pos.y - rect.top - t.y });
-    setEditSel(id);
-  };
-
-  const startResize = (e, id) => {
-    e.stopPropagation(); e.preventDefault();
-    const pos = getPos(e);
-    const t = curTables.find(t => t.id === id);
-    if (!t) return; // table may have been deleted concurrently
-    setResizing({ id, sx: pos.x, sy: pos.y, sw: t.w, sh: t.h });
-  };
-
-  const onMove = (e) => {
-    if (!dragging && !resizing && !barDrag) return;
-    const pos = getPos(e);
-    if (dragging) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = Math.max(0, Math.min(rect.width - 30, pos.x - rect.left - dragging.ox));
-      const y = Math.max(0, pos.y - rect.top - dragging.oy);
-      setCurTables(ts => ts.map(t => t.id === dragging.id ? { ...t, x, y } : t));
-    }
-    if (resizing) {
-      const dx = pos.x - resizing.sx;
-      const dy = pos.y - resizing.sy;
-      setCurTables(ts => ts.map(t => t.id === resizing.id ? {
-        ...t,
-        w: Math.max(50, resizing.sw + dx),
-        h: t.shape === "round" ? Math.max(50, resizing.sw + dx) : Math.max(40, resizing.sh + dy),
-      } : t));
-    }
-    if (barDrag) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      setCurBar(b => ({
-        ...b,
-        x: Math.max(0, Math.min(rect.width - b.w, pos.x - rect.left - barDrag.ox)),
-        y: Math.max(0, pos.y - rect.top - barDrag.oy),
-      }));
-    }
-  };
-
-  const onEnd = () => { setDragging(null); setResizing(null); setBarDrag(null); };
-
-  // ── Edit actions ───────────────────────────────────────────────────────────
-  const changeZoneColor = (id, color) => {
-    setCurTables(ts => ts.map(t => t.id === id ? { ...t, color } : t));
-  };
-
-  const addTable = () => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    const cx = rect ? Math.max(10, (rect.width / 2) - 60) : 200;
-    if (isP2) {
-      // Generate a unique zone name
-      const used = new Set(curTables.map(t => t.id));
-      let newId = 1;
-      while (used.has(newId)) newId++;
-      if (newId > 99) return;
-      const usedColors = new Set(curTables.map(t => t.color));
-      const defaultColor = ZONE_PALETTE.find(c => !usedColors.has(c)) || ZONE_PALETTE[0];
-      const newT = { id: newId, color: defaultColor, x: cx, y: 80, w: 120, h: 90, shape: "rect" };
-      setCurTables(ts => [...ts, newT]);
-      setEditSel(newId);
-      return;
-    }
-    const maxId = curTables.length > 0 ? Math.max(...curTables.map(t => +t.id || 0)) : 0;
-    const newT = { id: maxId + 1, x: cx, y: 80, w: 72, h: 56, shape: "rect" };
-    setCurTables(ts => [...ts, newT]);
-    setEditSel(maxId + 1);
-  };
-
-  const deleteTable = (id) => {
-    setCurTables(ts => ts.filter(t => t.id !== id));
-    if (editSel === id) setEditSel(null);
-  };
-
-  const toggleShape = (id) => {
-    setCurTables(ts => ts.map(t => t.id === id
-      ? { ...t, shape: t.shape === "rect" ? "round" : "rect" }
-      : t
-    ));
-  };
-
-  const saveLayout = () => {
-    localStorage.setItem(fpKey, JSON.stringify(curTables));
-    localStorage.setItem(fpBarKey, JSON.stringify(curBar));
-    setSavedTblsP2(tablesP2); setSavedBarP2(barPosP2);
-    setEditMode(false); setEditSel(null);
-  };
-
-  const cancelEdit = () => {
-    setTablesP2(savedTblsP2); setBarPosP2(savedBarP2);
-    setEditMode(false); setEditSel(null);
-  };
-
-  const resetLayout = () => { setCurTables(fpDef); setCurBar(fpBarDef); setEditSel(null); };
-
-  // ── Canvas dimensions ───────────────────────────────────────────────────────
-  const canvasH = Math.max(700, ...curTables.map(t => t.y + t.h + 80));
-  const CANVAS_MIN_W = 920;
-
-  // ── Table / Zone element ───────────────────────────────────────────────────
-  const TableEl = ({ tbl }) => {
-    const isZone = isP2;
-    const zoneColor = tbl.color || "#ffffff";
-    const s  = editMode ? "empty" : tableStatus(tbl.id);
-    const st = statusStyle(s);
-    const tableKey = isZone ? `OUT-${tbl.id}` : String(tbl.id);
-    const todayTblOrd = editMode ? [] : (todayByTable[tableKey] || []);
-    const pCount = 0; // card pending no longer tracked visually
-    const todayRev = todayTblOrd.reduce((s, o) => s + (+o.total || 0), 0);
-    const hasNote = todayTblOrd.some(o => (o.items || []).some(i => i.note));
-    const isGroup = todayTblOrd.some(o => o.payment_method?.startsWith("group"));
-    const lastInitial = todayTblOrd.length > 0
-      ? (todayTblOrd[todayTblOrd.length - 1].user_name || "?")[0].toUpperCase()
-      : null;
-    const isSel = editSel === tbl.id;
-    const isDraggingThis = dragging?.id === tbl.id;
-    const isFlashing = !editMode && !!flashTables[tableKey];
-
-    // Zone (P2) style
-    const zoneBg   = editMode ? (isSel ? `${zoneColor}30` : `${zoneColor}18`) : `${zoneColor}22`;
-    const zoneBord = editMode ? (isSel ? zoneColor : `${zoneColor}88`) : `${zoneColor}99`;
-
-    return (
-      <div
-        className={isFlashing ? "fp-flash-green" : (!isZone && !editMode && st.blink ? "fp-blink" : "")}
-        style={{
-          position:"absolute", left:tbl.x, top:tbl.y, width:tbl.w, height:tbl.h,
-          background: isFlashing ? "rgba(74,222,128,.18)" : isZone ? zoneBg : (editMode ? (isSel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.04)") : st.bg),
-          border: isZone
-            ? `2px ${editMode && isSel ? "solid" : "solid"} ${zoneBord}`
-            : (editMode ? `2px ${isSel?"solid":"dashed"} rgba(255,255,255,${isSel?".65":".2"})` : `2px solid ${st.border}`),
-          borderRadius: tbl.shape === "round" ? "50%" : 10,
-          cursor: editMode ? (isDraggingThis ? "grabbing" : "grab") : "default",
-          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-          transition: isDraggingThis ? "none" : "background .2s, border .2s, box-shadow .2s",
-          boxShadow: isZone
-            ? (editMode && isSel ? `0 0 0 3px ${zoneColor}44, 0 8px 24px rgba(0,0,0,.5)` : `0 0 14px ${zoneColor}22`)
-            : (editMode ? (isSel ? "0 0 0 3px rgba(255,255,255,.2), 0 8px 24px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.4)")
-              : (st.blink ? `0 0 20px rgba(239,68,68,.5), 0 0 40px rgba(239,68,68,.2), inset 0 0 15px rgba(239,68,68,.1)`
-                : s==="group" ? `0 0 14px rgba(96,165,250,.4), 0 0 28px rgba(96,165,250,.15)`
-                : s==="card_pending" ? `0 0 12px rgba(251,191,36,.35)`
-                : "0 1px 4px rgba(0,0,0,.3)")),
-          userSelect:"none", touchAction:"none",
-          zIndex: isSel ? 20 : isDraggingThis ? 15 : 1,
-        }}
-        onMouseDown={e => editMode && startDrag(e, tbl.id)}
-        onTouchStart={e => editMode && startDrag(e, tbl.id)}
-        onClick={e => editMode && (e.stopPropagation(), setEditSel(tbl.id))}
-      >
-        {/* Zone color circle + name (P2) */}
-        {isZone && (
-          <>
-            <div style={{width:Math.min(tbl.w*.28, 28),height:Math.min(tbl.w*.28, 28),borderRadius:"50%",background:zoneColor,marginBottom:6,boxShadow:`0 0 10px ${zoneColor}88`,opacity:editMode?0.9:0.85}}/>
-            <span style={{fontFamily:"'Anton',sans-serif",fontSize:Math.min(tbl.w*.13, 14),color:zoneColor,letterSpacing:2,lineHeight:1,textAlign:"center"}}>ZONE {tbl.id}</span>
-          </>
-        )}
-
-        {/* Table number (P1) */}
-        {!isZone && (
-          <span style={{fontFamily:"'Anton',sans-serif",fontSize:tbl.w>65?20:15,color:editMode?"rgba(255,255,255,.7)":st.color,letterSpacing:.5,lineHeight:1}}>{tbl.id}</span>
-        )}
-
-        {/* Group order badge — only when active group session */}
-        {!isZone && !editMode && s === "group" && (() => {
-          const session = activeGroupSessions.find(g => String(g.table_number) === tableKey);
-          const expiresIn = session?.created_at
-            ? Math.max(0, 30*60 - Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000))
-            : null;
-          const isExpiring = expiresIn !== null && expiresIn < 5 * 60;
-          return (
-            <div style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",background:"rgba(96,165,250,.2)",border:`1px solid ${isExpiring?"rgba(239,68,68,.7)":"rgba(96,165,250,.6)"}`,borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>
-              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,letterSpacing:1,color:isExpiring?"#f87171":"#93c5fd",textTransform:"uppercase"}}>
-                Group{expiresIn !== null ? ` ${Math.floor(expiresIn/60)}:${String(expiresIn%60).padStart(2,"0")}` : ""}
-              </span>
-            </div>
-          );
-        })()}
-
-
-        {/* EDIT: shape toggle (top-left) */}
-        {editMode && (
-          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleShape(tbl.id);}}
-            style={{position:"absolute",top:-9,left:-9,width:18,height:18,borderRadius:"50%",background:"rgba(96,165,250,.25)",border:"1px solid rgba(96,165,250,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:9,color:"#93c5fd",fontFamily:"'Anton',sans-serif",zIndex:30}}
-            title="Toggle shape">
-            {tbl.shape==="round"?"□":"○"}
-          </div>
-        )}
-
-        {/* EDIT: color swatch trigger (P2 zones — top-right) */}
-        {isZone && editMode && (
-          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setColorPickerZone(v=>v===tbl.id?null:tbl.id);}}
-            style={{position:"absolute",top:-9,right:-9,width:18,height:18,borderRadius:"50%",cursor:"pointer",border:`2px solid rgba(255,255,255,.6)`,background:zoneColor,zIndex:30}}
-            title="Change color"/>
-        )}
-
-        {/* EDIT: delete — bottom-left for zones (top-right taken by color), top-right for tables */}
-        {editMode && (
-          <div onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();deleteTable(tbl.id);setColorPickerZone(null);}}
-            style={{position:"absolute",...(isZone?{bottom:-9,left:-9}:{top:-9,right:-9}),width:18,height:18,borderRadius:"50%",background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.7)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:13,color:"#f87171",lineHeight:1,zIndex:30}}>
-            ×
-          </div>
-        )}
-
-        {/* EDIT: resize handle (bottom-right) */}
-        {editMode && (
-          <div onMouseDown={e=>startResize(e,tbl.id)} onTouchStart={e=>startResize(e,tbl.id)}
-            style={{position:"absolute",bottom:-1,right:-1,width:13,height:13,background:isZone?zoneColor:"rgba(255,255,255,.55)",cursor:"se-resize",borderRadius:tbl.shape==="round"?"50%":"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
-          />
-        )}
-      </div>
-    );
-  };
-
-  // ── TABLE DETAIL PANEL ────────────────────────────────────────────────────
-  const TableDetail = () => {
-    const cardPending = (byTable[selectedTable] || []);
-    const todayTbl    = (todayByTable[selectedTable] || []);
-    const todayRev    = todayTbl.reduce((s, o) => s + (+o.total || 0), 0);
-    const [clearing, setClearing] = useState(false);
-
-    const clearPending = async () => {
-      setClearing(true);
-      await Promise.all(cardPending.map(o =>
-        supabase.from("orders").update({ status: "completed" }).eq("id", o.id)
-      ));
-      await onLoad();
-      setClearing(false);
-      setSelectedTable(null);
-      onToast("Table cleared ✓");
-    };
-
-    return (
-      <div className="modal-overlay" onClick={()=>setSelectedTable(null)}>
-        <div className="fp-detail-panel" onClick={e=>e.stopPropagation()}>
-
-          {/* Header */}
-          <div className="fp-detail-header">
-            <div>
-              <div className="fp-detail-title">{String(selectedTable).startsWith("OUT-") ? `🌴 ${String(selectedTable).replace("OUT-","")}` : `TABLE ${selectedTable}`}</div>
-              <div className="fp-detail-sub">{todayTbl.length} order{todayTbl.length!==1?"s":""} today · ${todayRev.toFixed(2)}</div>
-            </div>
-            <button onClick={e=>{e.stopPropagation();setSelectedTable(null);}} className="fp-detail-close">✕</button>
-          </div>
-
-          {/* Clear pending card payments */}
-          {cardPending.length > 0 && (
-            <div style={{padding:"10px 16px",background:"rgba(251,191,36,.08)",borderBottom:"1px solid rgba(251,191,36,.2)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fbbf24"}}>{cardPending.length} card payment{cardPending.length>1?"s":""} pending</span>
-              <button onClick={clearPending} disabled={clearing} style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,padding:"6px 14px",border:"1px solid rgba(251,191,36,.5)",background:"rgba(251,191,36,.15)",color:"#fbbf24",cursor:"pointer",borderRadius:6}}>
-                {clearing ? "…" : "CLEAR TABLE"}
-              </button>
-            </div>
-          )}
-
-          {/* Orders */}
-          <div style={{overflowY:"auto",flex:1,padding:"12px 16px",display:"flex",flexDirection:"column",gap:16}}>
-            {todayTbl.length === 0 && (
-              <div style={{textAlign:"center",padding:"40px 0",fontFamily:"'Outfit',sans-serif",fontSize:14,color:"rgba(255,255,255,.3)"}}>No orders today</div>
-            )}
-
-            {[...todayTbl].reverse().map(ord => {
-              const items = ord.items || [];
-
-              return (
-                <div key={ord.id} style={{border:"1px solid rgba(255,255,255,.1)"}}>
-                  {/* Order meta bar */}
-                  <div style={{padding:"9px 14px",background:"rgba(255,255,255,.03)",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:7,height:7,borderRadius:"50%",background:statusColor(ord.status),boxShadow:`0 0 5px ${statusColor(ord.status)}`}}/>
-                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:"rgba(255,255,255,.55)"}}>{ord.user_name}</span>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {ord.order_number && <span className="order-id-chip">#{ord.order_number}</span>}
-                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",fontWeight:600}}>{new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
-                    </div>
-                  </div>
-
-                  <div style={{padding:"0 14px"}}>
-                    {/* All items */}
-                    <div style={{padding:"10px 0"}}>
-                      {items.map((it,i) => (
-                        <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{fontFamily:"'Anton',sans-serif",fontSize:17,color:"rgba(255,255,255,.45)",minWidth:28}}>{it.qty}×</span>
-                            <div>
-                              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#fff",fontWeight:700}}>{it.name}</div>
-                              {it.note && <div style={{fontSize:11,color:"rgba(255,255,255,.35)",fontStyle:"italic",marginTop:2}}>📝 {it.note}</div>}
-                            </div>
-                          </div>
-                          <span style={{fontFamily:"'Anton',sans-serif",fontSize:13,color:"rgba(255,255,255,.4)",flexShrink:0}}>${(it.price*it.qty).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Total */}
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0 6px",borderTop:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:22,color:"#fff"}}>${(+ord.total).toFixed(2)}</span>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1.5,color:"rgba(255,255,255,.35)"}}>{ord.payment_method === "credits" ? "CREDITS" : ord.payment_method === "card" ? "CARD" : ord.payment_method === "sponsor_gift" ? "GIFT" : ord.payment_method?.startsWith("group") ? "GROUP" : ord.payment_method?.toUpperCase() || "—"}</span>
-                    </div>
-
-
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+  // Clear order: mark completed + auto-print receipt
+  const clearOrder = async (ord) => {
+    setClearingId(ord.id);
+    await supabase.from("orders").update({ status: "completed" }).eq("id", ord.id);
+    try { printReceipt(ord); } catch(e) {}
+    await onLoad();
+    setClearingId(null);
+    onToast(`Order #${String(ord.order_number).padStart(2,"0")} cleared ✓`);
   };
 
   return (
     <div className="fp-root">
 
-      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      {/* ── HEADER ────────────────────────────────────────────────────────────────── */}
       <div className="fp-header">
-
-        {/* Action buttons row */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-          <button className="fp-manual-order-btn" onClick={()=>setShowMO(true)}>
-            ➕ MANUAL ORDER
-          </button>
-          <div style={{marginLeft:"auto",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(104,211,145,.7)"}}>
-            🌴 OUTDOOR BAR
-          </div>
-        </div>
-
-        {/* Row 1: title + view toggle */}
         <div className="fp-header-row1">
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <span className="fp-title">OUTDOOR BAR</span>
-            {fpView === "live" && (editMode ? (
-              <span className="fp-edit-badge">EDIT MODE</span>
-            ) : (
-              <button onClick={()=>{setEditMode(true);setSelectedTable(null);setFpView("live");}} className="fp-edit-btn">✏ EDIT</button>
-            ))}
-          </div>
-          {/* View toggle pill */}
+          <span className="fp-title">OUTDOOR BAR</span>
           <div className="fp-view-toggle">
             {[{id:"live",label:"LIVE"},{id:"history",label:"HISTORY"},{id:"report",label:"REPORT"}].map(v=>(
-              <button key={v.id} onClick={()=>{setFpView(v.id);if(v.id!=="live"){setEditMode(false);}}}
+              <button key={v.id} onClick={()=>setFpView(v.id)}
                 className={`fp-view-btn ${fpView===v.id?"fp-view-btn-on":""}`}>
                 {v.label}
               </button>
@@ -1483,271 +970,100 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
           </div>
         </div>
 
-        {/* Row 2: Stats cards — only in LIVE mode */}
-        {fpView === "live" && (<>
-          <div className="fp-stats-grid">
-            {/* Urgent */}
-            <div className="fp-stat-card" style={{background:urgentTables.length>0?"rgba(248,113,113,.08)":"rgba(255,255,255,.02)",borderColor:urgentTables.length>0?"rgba(248,113,113,.3)":"rgba(255,255,255,.06)"}}>
-              <div className="fp-stat-num" style={{color:urgentTables.length>0?"#f87171":"rgba(255,255,255,.15)",textShadow:urgentTables.length>0?"0 0 20px rgba(248,113,113,.4)":"none"}}>{urgentTables.length}</div>
-              <div className="fp-stat-label">URGENT</div>
-            </div>
-            {/* Pending */}
-            <div className="fp-stat-card" style={{background:pendingCount>0?"rgba(251,191,36,.06)":"rgba(255,255,255,.02)",borderColor:pendingCount>0?"rgba(251,191,36,.25)":"rgba(255,255,255,.06)"}}>
-              <div className="fp-stat-num" style={{color:pendingCount>0?"#fbbf24":"rgba(255,255,255,.15)",textShadow:pendingCount>0?"0 0 20px rgba(251,191,36,.3)":"none"}}>{pendingCount}</div>
-              <div className="fp-stat-label">PENDING</div>
-            </div>
-            {/* Active */}
+        {fpView === "live" && (
+          <div className="fp-stats-grid fp-stats-3">
             <div className="fp-stat-card" style={{background:activeOrders.length>0?"rgba(74,222,128,.06)":"rgba(255,255,255,.02)",borderColor:activeOrders.length>0?"rgba(74,222,128,.25)":"rgba(255,255,255,.06)"}}>
               <div className="fp-stat-num" style={{color:activeOrders.length>0?"#4ade80":"rgba(255,255,255,.15)",textShadow:activeOrders.length>0?"0 0 20px rgba(74,222,128,.3)":"none"}}>{activeOrders.length}</div>
               <div className="fp-stat-label">ACTIVE</div>
             </div>
-            {/* Revenue */}
-            <div className="fp-stat-card" style={{background:"rgba(255,255,255,.03)",borderColor:"rgba(255,255,255,.12)",boxShadow:"0 0 20px rgba(255,255,255,.02)"}}>
+            <div className="fp-stat-card" style={{background:"rgba(255,255,255,.03)",borderColor:"rgba(255,255,255,.12)"}}>
               <div className="fp-stat-num" style={{color:"#fff",filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none",textShadow:showFin?"0 0 16px rgba(255,255,255,.2)":"none"}}>${todayRevenue.toFixed(0)}</div>
               <div className="fp-stat-label" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                 <span>TODAY REV</span>
                 <button onClick={()=>setShowFin(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:1,opacity:.5,fontSize:11}}>{showFin?"👁":"🙈"}</button>
               </div>
             </div>
-            {/* Orders */}
             <div className="fp-stat-card" style={{background:"rgba(255,255,255,.02)",borderColor:"rgba(255,255,255,.1)"}}>
               <div className="fp-stat-num" style={{color:"#fff",filter:showFin?"none":"blur(10px)",userSelect:showFin?"auto":"none"}}>{todayCount}</div>
-              <div className="fp-stat-label">ORDERS</div>
+              <div className="fp-stat-label">ORDERS TODAY</div>
             </div>
           </div>
-
-        </>)}
+        )}
       </div>
 
-      {/* ── LIVE VIEW ───────────────────────────────────────────────────────── */}
+      {/* ── LIVE VIEW ─────────────────────────────────────────────────────────────── */}
       {fpView === "live" && (
-        <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}}>
+        <div className="fp-live-wrap">
 
-          {/* ── LEFT: floor plan canvas ── */}
-          <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden"}}>
-            {/* Edit toolbar */}
-            {editMode && (
-              <>
-              <div className="fp-edit-toolbar">
-                <button onClick={addTable} className="fp-toolbar-btn fp-toolbar-btn-add">{isP2 ? "+ ADD ZONE" : "+ ADD TABLE"}</button>
-                <button onClick={resetLayout} className="fp-toolbar-btn fp-toolbar-btn-reset">↺ RESET</button>
-                <div className="fp-toolbar-hint">{isP2 ? "Drag · □/○ · 🎨 color · ⊿ resize · × delete" : "Drag · □/○ · × delete · ⊿ resize"}</div>
-                <button onClick={saveLayout} className="fp-toolbar-btn fp-toolbar-btn-save">✓ SAVE</button>
-              </div>
-              {isP2 && colorPickerZone !== null && (
-                <div style={{padding:"10px 12px",background:"#1a1a1a",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:2,color:"rgba(255,255,255,.4)",flexShrink:0}}>COLOR ›</span>
-                  {ZONE_PALETTE.map(c => (
-                    <div key={c} onClick={()=>{ changeZoneColor(colorPickerZone, c); setColorPickerZone(null); }}
-                      style={{width:24,height:24,borderRadius:"50%",background:c,cursor:"pointer",flexShrink:0,
-                        border: (curTables.find(t=>t.id===colorPickerZone)?.color===c) ? "2px solid #fff" : "2px solid transparent",
-                        boxShadow:`0 0 8px ${c}88`}}/>
-                  ))}
-                  <button onClick={()=>setColorPickerZone(null)}
-                    style={{marginLeft:"auto",background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:16,padding:"0 4px"}}>✕</button>
-                </div>
-              )}
-              </>
-            )}
-            {/* Canvas */}
-            <div className="fp-canvas-scroll">
-              <div
-                ref={canvasRef}
-                className="fp-canvas"
-                style={{
-                  minWidth:CANVAS_MIN_W, height:canvasH,
-                  background: editMode
-                    ? "radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px) 0 0 / 40px 40px, linear-gradient(180deg, #0e0e0e 0%, #0a0a0a 100%)"
-                    : "radial-gradient(circle, rgba(255,255,255,.025) 0.8px, transparent 0.8px) 0 0 / 40px 40px, linear-gradient(180deg, rgba(255,255,255,.015) 0%, transparent 50%), #080808",
-                }}
-                onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
-                onTouchMove={onMove} onTouchEnd={onEnd}
-                onClick={()=>{ if(editMode) setEditSel(null); }}
-              >
-                <div
-                  className="fp-bar"
-                  style={{
-                    left:curBar.x, top:curBar.y, width:curBar.w, height:curBar.h,
-                    border: editMode ? `2px dashed rgba(255,255,255,.5)` : "1.5px solid rgba(107,58,31,.7)",
-                    cursor: editMode ? (barDrag ? "grabbing" : "grab") : "default",
-                    boxShadow: editMode ? "0 2px 12px rgba(0,0,0,.6)" : "inset 0 1px 0 rgba(255,255,255,.06), 0 4px 16px rgba(0,0,0,.5), 0 0 0 1px rgba(107,58,31,.3)",
-                    transition: barDrag ? "none" : "border .2s",
-                    zIndex: barDrag ? 20 : 2,
-                  }}
-                  onMouseDown={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
-                  onTouchStart={e => { if (!editMode) return; e.stopPropagation(); const pos = getPos(e); const rect = canvasRef.current.getBoundingClientRect(); setBarDrag({ ox: pos.x - rect.left - curBar.x, oy: pos.y - rect.top - curBar.y }); }}
-                >
-                  <span className="fp-bar-label">OUTDOOR BAR</span>
-                  {editMode && (
-                    <div
-                      onMouseDown={e => { e.stopPropagation(); const startX = e.clientX; const startY = e.clientY; const startW = curBar.w; const startH = curBar.h;
-                        const onMove = e => setCurBar(b => ({ ...b, w: Math.max(40, startW + e.clientX - startX), h: Math.max(30, startH + e.clientY - startY) }));
-                        const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-                        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp); }}
-                      style={{position:"absolute",bottom:-1,right:-1,width:14,height:14,background:"rgba(255,255,255,.6)",cursor:"se-resize",borderRadius:"0 0 4px 0",zIndex:30,border:"1px solid rgba(255,255,255,.9)"}}
-                    />
-                  )}
-                </div>
-                {curTables.map(t => <TableEl key={t.id} tbl={t} />)}
-                {fpToasts.map(t => (
-                  <div key={t.id} className="fp-toast" style={{left: t.x, top: t.y}}>{t.label}</div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pending items summary */}
-            {!editMode && (() => {
-              const pendingItems = {};
-              activeOrders.filter(o => o.status === "pending").forEach(o => {
-                (o.items || []).forEach(it => {
-                  const key = it.name;
-                  if (!pendingItems[key]) pendingItems[key] = { name: it.name, qty: 0 };
-                  pendingItems[key].qty += it.qty;
-                });
-              });
-              const sorted = Object.values(pendingItems).sort((a, b) => b.qty - a.qty);
-              if (sorted.length === 0) return null;
-              return (
-                <div className="fp-pending-wrap">
-                  <div className="fp-pending-header">
-                    <span>PENDING ITEMS</span>
-                    <span className="fp-pending-total">{sorted.reduce((s,i)=>s+i.qty,0)} total</span>
-                  </div>
-                  <div className="fp-pending-items">
-                    {sorted.map(it => (
-                      <div key={it.name} className="fp-pending-item">
-                        <span className="fp-pending-qty">{it.qty}</span>
-                        <span className="fp-pending-name">{it.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+          {/* Toolbar: new order toggle + search */}
+          <div className="fp-toolbar">
+            <button className={`fp-new-order-btn${showMO?" fp-new-order-btn-close":""}`} onClick={()=>setShowMO(v=>!v)}>
+              {showMO ? "✕ CLOSE ORDER" : "➕ NEW ORDER"}
+            </button>
+            <input
+              className="fp-search-input"
+              value={pickupSearch}
+              onChange={e=>setPickupSearch(e.target.value)}
+              placeholder="Search # or name…"
+            />
           </div>
 
-          {/* ── RIGHT: always-visible pickup orders panel ── */}
-          {(() => {
-            // Sponsor orders are brought to the table — exclude from the pickup queue
-            const pickupOrders = allOrders
-              .filter(o => o.status === "pending"
-                        && o.order_number
-                        && +o.order_number < 8000
-                        && o.payment_method !== "sponsor_gift")
-              .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
-            const searchQ = pickupSearch.trim();
-            const filtered = searchQ
-              ? pickupOrders.filter(o => String(o.order_number).includes(searchQ) || (o.user_name||"").toLowerCase().includes(searchQ.toLowerCase()))
-              : pickupOrders;
-            const clearOrder = async (ord) => {
-              setClearingId(ord.id);
-              await supabase.from("orders").update({ status: "completed" }).eq("id", ord.id);
-              await onLoad();
-              setClearingId(null);
-              onToast(`Order #${ord.order_number} cleared ✓`);
-            };
-            return (
-              <div style={{
-                width:340,flexShrink:0,
-                borderLeft:"1px solid rgba(255,255,255,.1)",
-                display:"flex",flexDirection:"column",
-                background:"#090909",overflow:"hidden",
-              }}>
-                {/* Panel header */}
-                <div style={{padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-                  <div>
-                    <div style={{fontFamily:"'Anton',sans-serif",fontSize:13,letterSpacing:3,color:"#fff"}}>
-                      PICKUP ORDERS
-                      {pickupOrders.length > 0 && (
-                        <span style={{marginLeft:8,background:"#4ade80",color:"#000",fontFamily:"'Anton',sans-serif",fontSize:10,padding:"2px 8px",borderRadius:10,letterSpacing:0}}>
-                          {pickupOrders.length}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2,letterSpacing:1}}>
-                      Customer says the number — search and hand it over
-                    </div>
-                  </div>
-                </div>
-                {/* Search */}
-                <div style={{padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,.06)",flexShrink:0}}>
-                  <input
-                    value={pickupSearch}
-                    onChange={e=>setPickupSearch(e.target.value)}
-                    placeholder="# or name…"
-                    style={{width:"100%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#fff",padding:"8px 12px",fontFamily:"'Outfit',sans-serif",fontSize:13,borderRadius:7,outline:"none",boxSizing:"border-box"}}
-                  />
-                </div>
-                {/* Order list */}
-                <div style={{flex:1,overflowY:"auto"}}>
-                  {filtered.length === 0 && (
-                    <div style={{padding:"36px 16px",textAlign:"center",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.22)"}}>
-                      {pickupOrders.length === 0 ? "No orders waiting" : "No match"}
-                    </div>
-                  )}
-                  {filtered.map(ord => (
-                    <div key={ord.id} style={{padding:"12px 14px",borderBottom:"1px solid rgba(255,255,255,.05)",display:"flex",alignItems:"center",gap:12}}>
-                      {/* Big pickup number */}
-                      <div style={{
-                        width:58,height:58,flexShrink:0,
-                        background: ord.payment_method === "cash" ? "rgba(251,191,36,.12)" : "rgba(255,255,255,.06)",
-                        border: ord.payment_method === "cash" ? "2px solid rgba(251,191,36,.5)" : "2px solid rgba(255,255,255,.18)",
-                        borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",
-                        fontFamily:"'Anton',sans-serif",fontSize:28,color: ord.payment_method === "cash" ? "#fbbf24" : "#fff",letterSpacing:1,
-                      }}>
-                        {String(ord.order_number).padStart(2,"0")}
-                      </div>
-                      {/* Details */}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:700,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                          {ord.user_name || "—"}
-                        </div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.35)",margin:"2px 0"}}>
-                          {new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-                          {ord.payment_method === "cash" && <span style={{marginLeft:6,color:"#fbbf24",fontWeight:700}}>💰 PAY AT BAR</span>}
-                        </div>
-                        <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.5)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                          {(ord.items||[]).map(i=>`${i.qty}× ${i.name}`).join(" · ")}
-                        </div>
-                        <div style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>
-                          ${(+ord.total).toFixed(2)}
-                        </div>
-                      </div>
-                      {/* Clear button */}
-                      <button
-                        onClick={()=>clearOrder(ord)}
-                        disabled={clearingId === ord.id}
-                        style={{
-                          flexShrink:0,padding:"8px 12px",
-                          background: clearingId===ord.id ? "rgba(74,222,128,.1)" : "rgba(74,222,128,.15)",
-                          border:"1.5px solid rgba(74,222,128,.5)",
-                          color:"#4ade80",fontFamily:"'Anton',sans-serif",fontSize:9,letterSpacing:2,
-                          cursor: clearingId===ord.id ? "wait" : "pointer",borderRadius:7,
-                        }}
-                      >
-                        {clearingId === ord.id ? "…" : "✓"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
+          {/* Order list */}
+          <div className="fp-orders-list">
+            {filteredOrders.length === 0 && (
+              <div className="fp-orders-empty">
+                {activeOrders.length === 0
+                  ? <><span className="fp-empty-icon">✓</span><span>No active orders</span></>
+                  : "No match"}
               </div>
-            );
-          })()}
+            )}
+            {filteredOrders.map(ord => {
+              const isSponsor  = ord.payment_method === "sponsor_gift";
+              const isCash     = ord.payment_method === "cash";
+              const isClearing = clearingId === ord.id;
+              const numStr     = String(ord.order_number).padStart(2,"0");
+              const itemsStr   = (ord.items||[]).map(i=>`${i.qty}× ${i.name}`).join(" · ");
+              return (
+                <div key={ord.id} className={`fp-order-row${isSponsor?" fp-order-row-vip":""}`}>
+                  {/* Pickup number badge */}
+                  <div className={`fp-order-num${isCash?" fp-order-num-cash":isSponsor?" fp-order-num-vip":""}`}>
+                    {numStr}
+                  </div>
+                  {/* Details */}
+                  <div className="fp-order-details">
+                    <div className="fp-order-name">{ord.user_name || "—"}</div>
+                    <div className="fp-order-items">{itemsStr}</div>
+                    <div className="fp-order-meta">
+                      <span className="fp-order-total">${(+ord.total).toFixed(2)}</span>
+                      <span className="fp-order-pay">{payLabel(ord.payment_method)}</span>
+                      {isCash    && <span className="fp-badge fp-badge-cash">PAY AT BAR</span>}
+                      {isSponsor && <span className="fp-badge fp-badge-vip">VIP</span>}
+                    </div>
+                    <div className="fp-order-time">{new Date(ord.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                  {/* Clear button */}
+                  <button className="fp-clear-btn" onClick={()=>clearOrder(ord)} disabled={isClearing}>
+                    {isClearing ? "…" : "✓ DONE"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* ── HISTORY VIEW ────────────────────────────────────────────────────── */}
+      {/* ── HISTORY VIEW ───────────────────────────────────────────────────────────── */}
       {fpView === "history" && <AdminHistory allOrders={allOrders} />}
 
-      {/* ── REPORT VIEW ─────────────────────────────────────────────────────── */}
+      {/* ── REPORT VIEW ─────────────────────────────────────────────────────────────── */}
       {fpView === "report" && <AdminReport allOrders={allOrders} />}
 
-      {/* ── MANUAL ORDER PANEL ──────────────────────────────────────────────── */}
+      {/* ── MANUAL ORDER PANEL ────────────────────────────────────────────────────────── */}
       {showMO && (
         <ManualOrderPanel
           menuItems={menuItems}
-          isP2={isP2}
-          onClose={() => setShowMO(false)}
+          isP2={true}
+          onClose={()=>setShowMO(false)}
           onOrderPlaced={onLoad}
         />
       )}
