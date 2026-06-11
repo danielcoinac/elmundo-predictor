@@ -917,11 +917,12 @@ function FloorPlan({ allOrders, onLoad, onUpdateStatus, onDeleteOrder, onToast =
   const todayRevenue = todayOrders.reduce((s, o) => s + (+o.total || 0), 0);
   const todayCount   = todayOrders.length;
 
-  // Active = confirmed (and legacy pending non-card_pending for backward compat)
+  // Active = confirmed normal orders (sponsors are auto-handled, not queued here)
   const activeOrders = allOrders
     .filter(o =>
       (o.status === "confirmed" || (o.status === "pending" && o.payment_method !== "card_pending"))
       && o.order_number
+      && o.payment_method !== "sponsor_gift"
     )
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
