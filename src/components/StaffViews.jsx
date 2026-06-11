@@ -307,29 +307,46 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                 <input className="mo-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search items…" autoComplete="off" />
               </div>
 
-              {/* Menu items — bigger rows */}
+              {/* Menu items — bigger rows with serve type badges */}
               <div className="mo-items">
                 {filtered.length === 0 && <div className="mo-empty">No items found</div>}
                 {filtered.map(item => {
                   const qty = cartQty(item.id);
-                  const cat = (item.category || "").toUpperCase();
+                  const st  = (item.serving_type || "").toLowerCase();
+                  const nm  = (item.name || "").toLowerCase();
+                  const isBucket = st === "bucket" || (!st && /bucket/i.test(nm));
+                  const isGlass  = st === "glass"  || (!st && /glass/i.test(nm));
+                  const isBottle = st === "bottle" || (!st && /bottle/i.test(nm));
+                  const isDraft  = st === "draft"  || (!st && /draft/i.test(nm));
+                  const serveAccent = isBucket ? "#f59e0b" : isGlass ? "#60a5fa" : isBottle ? "#60a5fa" : isDraft ? "#fbbf24" : null;
                   return (
-                    <div key={item.id} className={`mo-item-row${qty > 0 ? " mo-item-row-active" : ""}`}>
+                    <div key={item.id} className={`mo-item-row${qty > 0 ? " mo-item-row-active" : ""}`}
+                      style={serveAccent ? {borderLeftColor:`${serveAccent}55`} : {}}>
                       <div className="mo-item-info">
-                        <div className="mo-item-name">{item.name}</div>
+                        <div className="mo-item-name">
+                          {(item.name||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}
+                        </div>
                         <div className="mo-item-meta">
-                          {cat && <span className="mo-item-cat">{cat}</span>}
-                          <span className="mo-item-price">${(+item.price).toFixed(2)}</span>
+                          {isBucket && <span className="mo-serve-badge mo-serve-bucket">🪣 BUCKET</span>}
+                          {isGlass  && <span className="mo-serve-badge mo-serve-glass">🍷 GLASS</span>}
+                          {isBottle && <span className="mo-serve-badge mo-serve-bottle">🍾 BOTTLE</span>}
+                          {isDraft  && <span className="mo-serve-badge mo-serve-draft">🍺 DRAFT</span>}
+                          {!isBucket && !isGlass && !isBottle && !isDraft && item.category && (
+                            <span className="mo-item-cat">{(item.category||"").toUpperCase()}</span>
+                          )}
                         </div>
                       </div>
-                      <div className="mo-item-ctrl">
-                        {qty > 0 && (
-                          <>
-                            <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
-                            <span className="mo-qty-val">{qty}</span>
-                          </>
-                        )}
-                        <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
+                      <div className="mo-item-right">
+                        <span className="mo-item-price">${(+item.price).toFixed(2)}</span>
+                        <div className="mo-item-ctrl">
+                          {qty > 0 && (
+                            <>
+                              <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
+                              <span className="mo-qty-val">{qty}</span>
+                            </>
+                          )}
+                          <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
+                        </div>
                       </div>
                     </div>
                   );
