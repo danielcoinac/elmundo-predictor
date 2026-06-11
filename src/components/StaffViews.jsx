@@ -102,51 +102,43 @@ function printReceipt(ord) {
 }
 
 /* ═══ MANUAL ORDER PANEL ════════════════════════════════════════════════════ */
-/* Credits-only manual ordering for staff: search a player, add items, deduct
- * from their wallet. Cash / card transactions don't run through the app —
- * staff handles those at the bar. */
 function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
-  const [cart,          setCart         ] = useState([]);
-  const [search,        setSearch       ] = useState("");
-  const [tableNum,      setTableNum     ] = useState("BAR");
+  const [cart,          setCart        ] = useState([]);
+  const [search,        setSearch      ] = useState("");
+  const [allUsers,      setAllUsers    ] = useState([]);
+  const [placing,       setPlacing     ] = useState(false);
+  const [msg,           setMsg         ] = useState(null);
+  const [confirmClose,  setConfirmClose] = useState(false);
+  // Checkout overlay state: null | "pay-method" | "credits-player"
+  const [checkoutStep,  setCheckoutStep] = useState(null);
   const [creditsSearch, setCreditsSearch] = useState("");
-  const [creditsUser,   setCreditsUser  ] = useState(null);
-  const [allUsers,      setAllUsers     ] = useState([]);
-  const [placing,       setPlacing      ] = useState(false);
-  const [msg,           setMsg          ] = useState(null);
-  const [confirmClose,  setConfirmClose ] = useState(false);
-  const payment = "credits";
+  const [creditsUser,   setCreditsUser ] = useState(null);
+  const creditsSearchRef = useRef(null);
 
-  // Fetch profiles + their balances from user_credits, then merge.
-  // (Credits are stored in user_credits.balance, not on the profiles row.)
+  // Fetch all users + credit balances once
   useEffect(() => {
     let alive = true;
     (async () => {
       const [{ data: profs }, { data: bals }] = await Promise.all([
-        supabase.from("profiles")
-          .select("id,name,phone,player_number,is_admin")
-          .order("name")
-          .limit(2000),
+        supabase.from("profiles").select("id,name,phone,player_number,is_admin").order("name").limit(2000),
         supabase.from("user_credits").select("user_id,balance"),
       ]);
       if (!alive) return;
       const balMap = new Map((bals || []).map(b => [b.user_id, +b.balance || 0]));
-      // Hide admins / staff badges (won't pay with credits)
-      const list = (profs || [])
-        .filter(p => p.is_admin !== true)
-        .map(p => ({ ...p, credits: balMap.get(p.id) || 0 }));
-      setAllUsers(list);
+      setAllUsers((profs || []).filter(p => p.is_admin !== true).map(p => ({ ...p, credits: balMap.get(p.id) || 0 })));
     })();
     return () => { alive = false; };
   }, []);
 
-  // Auto-dismiss success messages after 3s; keep error messages until cart changes
+  // Auto-dismiss success toast
   useEffect(() => {
     if (msg?.ok) { const t = setTimeout(() => setMsg(null), 3000); return () => clearTimeout(t); }
   }, [msg]);
 
-  // Clear lingering message when the cart, payment method or credits-user changes
-  useEffect(() => { setMsg(null); }, [creditsUser?.id]);
+  // Focus credits search when step 2 opens
+  useEffect(() => {
+    if (checkoutStep === "credits-player") setTimeout(() => creditsSearchRef.current?.focus(), 80);
+  }, [checkoutStep]);
 
   const filtered = menuItems
     .filter(i => i.available && !i.sold_out)
@@ -168,7 +160,6 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
 
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
 
-  // Multi-field search: name, phone digits, or player_number
   const filteredUsers = (() => {
     const q = creditsSearch.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -182,167 +173,256 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
   })();
 
   const insufficientCredits = !!creditsUser && (creditsUser.credits || 0) < total;
-  // Credits-only mode: must have items, must pick a player, must cover the total
-  const canPlace = cart.length > 0 && !!creditsUser && !insufficientCredits;
 
-  // Determine if this manual order should auto-print on the single connected printer.
-  const shouldAutoPrint = () => {
-    return !!(typeof localStorage !== "undefined" && localStorage.getItem("em-printer-zone"));
-  };
-
-  // Generate next safe order number — reads max from DB and adds 1 (bar orders use 8000+).
-  // Falls back to a timestamp-based number if the read fails.
   const nextOrderNumber = async () => {
     try {
-      const { data } = await supabase
-        .from("orders")
-        .select("order_number")
-        .gte("order_number", 8000)
-        .order("order_number", { ascending: false })
-        .limit(1);
-      const max = data?.[0]?.order_number || 7999;
-      return Math.max(8000, max + 1);
-    } catch {
-      // Fallback: high-resolution number unlikely to collide
-      return 9000000 + (Date.now() % 1000000);
-    }
+      const { data } = await supabase.from("orders").select("order_number").gte("order_number", 8000).order("order_number", { ascending: false }).limit(1);
+      return Math.max(8000, (data?.[0]?.order_number || 7999) + 1);
+    } catch { return 9000000 + (Date.now() % 1000000); }
   };
 
-  const placeOrder = async () => {
-    if (!canPlace || placing) return;
+  const placeOrder = async (paymentMethod, player = null) => {
+    if (placing) return;
     setPlacing(true); setMsg(null);
     try {
       const orderNum = await nextOrderNumber();
-      const tableKey = tableNum === "BAR" ? "BAR" : (isP2 ? `OUT-${tableNum}` : tableNum);
-
-      // For credits payment: refetch the LATEST balance right now to avoid lost-write
-      // race conditions if the player just topped up. Then deduct atomically using
-      // the just-read value. (No RPC available, so we use optimistic concurrency.)
-      let freshUser = creditsUser;
-      if (payment === "credits" && creditsUser) {
-        const { data: row } = await supabase.from("user_credits")
-          .select("balance")
-          .eq("user_id", creditsUser.id)
-          .maybeSingle();
+      let freshUser = player;
+      if (paymentMethod === "credits" && player) {
+        const { data: row } = await supabase.from("user_credits").select("balance").eq("user_id", player.id).maybeSingle();
         const fresh = +(row?.balance || 0);
-        freshUser = { ...creditsUser, credits: fresh };
-        if (fresh < total) {
-          throw new Error(`Insufficient credits — $${(total - fresh).toFixed(2)} short (balance refreshed)`);
-        }
+        freshUser = { ...player, credits: fresh };
+        if (fresh < total) throw new Error(`Not enough credits — $${(total - fresh).toFixed(2)} short`);
       }
 
       const { data: ord, error } = await supabase.from("orders").insert({
-        table_number:   tableKey,
-        user_name:      payment === "credits" && freshUser ? freshUser.name : "BAR ORDER",
-        user_id:        payment === "credits" && freshUser ? freshUser.id   : null,
+        table_number:   "BAR",
+        user_name:      paymentMethod === "credits" && freshUser ? freshUser.name : "BAR ORDER",
+        user_id:        paymentMethod === "credits" && freshUser ? freshUser.id   : null,
         items:          cart,
         total,
         status:         "completed",
-        payment_method: payment,
+        payment_method: paymentMethod,
         order_number:   orderNum,
       }).select().single();
       if (error) throw error;
-      if (!ord) throw new Error("Order creation returned no data");
 
-      // Deduct credits using the freshly-read balance (upsert into user_credits)
-      if (payment === "credits" && freshUser) {
+      if (paymentMethod === "credits" && freshUser) {
         const newBal = Math.max(0, (freshUser.credits || 0) - total);
-        const { error: upErr } = await supabase.from("user_credits")
-          .upsert({ user_id: freshUser.id, balance: newBal, updated_at: new Date().toISOString() });
-        if (upErr) throw upErr;
+        await supabase.from("user_credits").upsert({ user_id: freshUser.id, balance: newBal, updated_at: new Date().toISOString() });
         setAllUsers(prev => prev.map(u => u.id === freshUser.id ? { ...u, credits: newBal } : u));
       }
 
-      // Only print if this device matches the printer zone for the order's location
-      if (shouldAutoPrint(tableKey)) {
-        try { printReceipt(ord); } catch (_) {}
+      if (localStorage.getItem("em-printer-zone")) {
+        try { printReceipt(ord); } catch(_) {}
       }
 
-      setMsg({ ok: true, text: `✓ Order #${orderNum} placed${shouldAutoPrint() ? " — receipt printing" : ""}` });
-      setCart([]); setCreditsUser(null); setCreditsSearch("");
+      setMsg({ ok: true, text: `✓ Order #${orderNum} placed${localStorage.getItem("em-printer-zone") ? " — printing" : ""}` });
+      setCart([]); setCheckoutStep(null); setCreditsUser(null); setCreditsSearch("");
       if (onOrderPlaced) onOrderPlaced();
     } catch (e) {
       setMsg({ ok: false, text: "Error: " + (e.message || "failed") });
+      // On error stay on credits step so staff can retry
     }
     setPlacing(false);
   };
 
-  // Close handler — guards an in-progress cart with a confirm step
+  const openCheckout = () => { setCheckoutStep("pay-method"); setMsg(null); };
+
+  const backFromCheckout = () => {
+    if (checkoutStep === "credits-player") { setCheckoutStep("pay-method"); setCreditsUser(null); setCreditsSearch(""); }
+    else setCheckoutStep(null);
+  };
+
   const requestClose = () => {
+    if (checkoutStep) { backFromCheckout(); return; }
     if (cart.length > 0 && !confirmClose) { setConfirmClose(true); return; }
     onClose?.();
   };
 
-  // Quick table presets
-  const tablePresets = isP2
-    ? [{ v:"BAR",l:"BAR" },{ v:"1",l:"ZONE 1" },{ v:"2",l:"ZONE 2" },{ v:"3",l:"ZONE 3" },{ v:"4",l:"ZONE 4" }]
-    : [{ v:"BAR",l:"BAR" },{ v:"1",l:"1" },{ v:"2",l:"2" },{ v:"3",l:"3" },{ v:"4",l:"4" },{ v:"5",l:"5" },{ v:"6",l:"6" },{ v:"7",l:"7" },{ v:"8",l:"8" }];
-  const isCustomTable = !tablePresets.some(p => p.v === tableNum);
+  // Cart summary component reused in both checkout steps
+  const CartSummary = () => (
+    <div className="mo-co-cart">
+      {cart.map(c => (
+        <div key={c.id} className="mo-co-cart-row">
+          <span className="mo-co-cart-qty">{c.qty}×</span>
+          <span className="mo-co-cart-name">{c.name}</span>
+          <span className="mo-co-cart-price">${(c.price * c.qty).toFixed(2)}</span>
+        </div>
+      ))}
+      <div className="mo-co-total-row">
+        <span>TOTAL</span>
+        <span className="mo-co-total-val">${total.toFixed(2)}</span>
+      </div>
+    </div>
+  );
 
   return createPortal(
     <>
-      {/* Transparent backdrop — captures click-outside but doesn't dim the floor plan */}
       <div className="mo-backdrop" onClick={requestClose} />
       <div className="mo-panel" role="dialog" aria-label="Manual order panel">
 
         {/* ── Header ── */}
         <div className="mo-header">
-          <div>
-            <div className="mo-title">MANUAL ORDER</div>
-            <div className="mo-sub">{isP2 ? "🌴 OUTDOOR BAR" : "🏠 INDOOR BAR"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {checkoutStep && (
+              <button onClick={backFromCheckout} className="mo-back-btn" aria-label="Back">←</button>
+            )}
+            <div>
+              <div className="mo-title">
+                {checkoutStep === "pay-method" ? "PAYMENT METHOD" : checkoutStep === "credits-player" ? "PLAYER ACCOUNT" : "MANUAL ORDER"}
+              </div>
+              <div className="mo-sub">🌴 OUTDOOR BAR</div>
+            </div>
           </div>
-          <button className="mo-close" onClick={requestClose} aria-label="Close manual order panel">✕</button>
+          <button className="mo-close" onClick={requestClose} aria-label="Close">✕</button>
         </div>
 
-        {/* ── Scrollable body: everything between header and footer ── */}
-        <div className="mo-body">
+        {/* ── Main menu body (hidden when checkout overlay is open) ── */}
+        {!checkoutStep && (
+          <>
+            <div className="mo-body">
 
-          {/* Confirm-discard banner when cart has items */}
-          {confirmClose && (
-            <div style={{padding:"10px 16px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.3)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
-                Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
-              </div>
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
-                  style={{padding:"6px 12px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
-                  DISCARD
-                </button>
-                <button onClick={() => setConfirmClose(false)}
-                  style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
-                  Keep
-                </button>
-              </div>
-            </div>
-          )}
+              {confirmClose && (
+                <div style={{padding:"10px 16px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.25)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
+                    Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
+                      style={{padding:"6px 12px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
+                      DISCARD
+                    </button>
+                    <button onClick={() => setConfirmClose(false)}
+                      style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
+                      Keep
+                    </button>
+                  </div>
+                </div>
+              )}
 
-          {/* ── Player picker ── */}
-          <div className="mo-section mo-player-section">
-            <div className="mo-label" style={{display:"flex",alignItems:"center",gap:6}}>
-              <span>PLAYER</span>
-              <span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,letterSpacing:1,color:"rgba(240,192,64,.6)",textTransform:"none"}}>
-                · pay with credits
-              </span>
-            </div>
-            {!creditsUser && (
-              <>
-                <input className="mo-credits-search" value={creditsSearch}
-                  onChange={e => setCreditsSearch(e.target.value)}
-                  placeholder="🔍  Search by name, phone, or player #…"
-                  aria-label="Search players"
-                  style={{marginBottom:0}}/>
-                {filteredUsers.length > 0 && (
-                  <div className="mo-credits-list" style={{marginTop:6}}>
-                    {filteredUsers.slice(0, 6).map(u => (
-                      <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row">
-                        <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
-                          <span className="mo-credits-name">
-                            {u.name}
-                            {u.player_number ? <span style={{fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,color:"rgba(255,255,255,.35)",marginLeft:6}}>#{u.player_number}</span> : null}
-                          </span>
-                          {u.phone && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.3)"}}>{u.phone}</span>}
+              {/* Search bar */}
+              <div className="mo-section" style={{paddingBottom:6,paddingTop:14}}>
+                <input className="mo-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search items…" autoComplete="off" />
+              </div>
+
+              {/* Menu items — bigger rows */}
+              <div className="mo-items">
+                {filtered.length === 0 && <div className="mo-empty">No items found</div>}
+                {filtered.map(item => {
+                  const qty = cartQty(item.id);
+                  const cat = (item.category || "").toUpperCase();
+                  return (
+                    <div key={item.id} className={`mo-item-row${qty > 0 ? " mo-item-row-active" : ""}`}>
+                      <div className="mo-item-info">
+                        <div className="mo-item-name">{item.name}</div>
+                        <div className="mo-item-meta">
+                          {cat && <span className="mo-item-cat">{cat}</span>}
+                          <span className="mo-item-price">${(+item.price).toFixed(2)}</span>
                         </div>
-                        <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`}>
+                      </div>
+                      <div className="mo-item-ctrl">
+                        {qty > 0 && (
+                          <>
+                            <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
+                            <span className="mo-qty-val">{qty}</span>
+                          </>
+                        )}
+                        <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+            </div>
+
+            {/* Footer: cart summary + checkout CTA */}
+            {cart.length > 0 && (
+              <div className="mo-footer">
+                <div className="mo-footer-scroll">
+                  <div className="mo-cart">
+                    {cart.map(c => (
+                      <div key={c.id} className="mo-cart-row">
+                        <span className="mo-cart-item">{c.qty}× {c.name}</span>
+                        <span className="mo-cart-price">${(c.price * c.qty).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="mo-cart-total">
+                      <span>TOTAL</span>
+                      <span className="mo-total-val">${total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`} style={{margin:"0 0 8px"}}>{msg.text}</div>}
+                </div>
+                <div className="mo-footer-action">
+                  <button className="mo-place-btn mo-place-btn-active" onClick={openCheckout}>
+                    CHECKOUT · ${total.toFixed(2)}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── CHECKOUT: Step 1 — Payment method ── */}
+        {checkoutStep === "pay-method" && (
+          <div className="mo-checkout">
+            <CartSummary />
+
+            <div className="mo-co-prompt">HOW WILL THE CUSTOMER PAY?</div>
+
+            <div className="mo-co-methods">
+              <button className="mo-co-method mo-co-method-credits" onClick={() => setCheckoutStep("credits-player")}>
+                <span className="mo-co-method-icon">💳</span>
+                <div className="mo-co-method-text">
+                  <div className="mo-co-method-title">ACCOUNT CREDIT BALANCE</div>
+                  <div className="mo-co-method-sub">Deduct from player's wallet</div>
+                </div>
+                <span className="mo-co-method-arrow">›</span>
+              </button>
+              <button className="mo-co-method mo-co-method-cash" onClick={() => placeOrder("cash")} disabled={placing}>
+                <span className="mo-co-method-icon">💵</span>
+                <div className="mo-co-method-text">
+                  <div className="mo-co-method-title">CASH / CARD AT BAR</div>
+                  <div className="mo-co-method-sub">Register order — collect payment at bar</div>
+                </div>
+                {placing ? <span className="mo-co-method-arrow" style={{fontSize:12,opacity:.5}}>…</span> : <span className="mo-co-method-arrow">›</span>}
+              </button>
+            </div>
+
+            {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`} style={{margin:"16px"}}>{msg.text}</div>}
+          </div>
+        )}
+
+        {/* ── CHECKOUT: Step 2 — Select player ── */}
+        {checkoutStep === "credits-player" && (
+          <div className="mo-checkout">
+            <CartSummary />
+
+            <div className="mo-co-prompt">SEARCH PLAYER ACCOUNT</div>
+
+            {!creditsUser ? (
+              <div style={{padding:"0 16px"}}>
+                <input
+                  ref={creditsSearchRef}
+                  className="mo-credits-search"
+                  value={creditsSearch}
+                  onChange={e => setCreditsSearch(e.target.value)}
+                  placeholder="🔍  Name, phone, or player #…"
+                  style={{width:"100%",boxSizing:"border-box",fontSize:15,padding:"12px 14px"}}
+                />
+                {filteredUsers.length > 0 && (
+                  <div className="mo-credits-list" style={{marginTop:8}}>
+                    {filteredUsers.slice(0, 8).map(u => (
+                      <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row" style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
+                          <span className="mo-credits-name" style={{fontSize:15}}>
+                            {u.name}
+                            {u.player_number ? <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:"rgba(255,255,255,.35)",marginLeft:8}}>#{u.player_number}</span> : null}
+                          </span>
+                          {u.phone && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>{u.phone}</span>}
+                        </div>
+                        <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`} style={{fontSize:16}}>
                           ${(u.credits || 0).toFixed(2)}
                         </span>
                       </div>
@@ -350,131 +430,53 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                   </div>
                 )}
                 {creditsSearch.trim().length >= 2 && filteredUsers.length === 0 && (
-                  <div style={{ fontFamily:"'Outfit',sans-serif", fontSize:11, color:"rgba(255,255,255,.3)", padding:"6px 2px" }}>
-                    No players found
-                  </div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"12px 2px"}}>No players found</div>
                 )}
-              </>
-            )}
-            {creditsUser && (
-              <div className={`mo-credits-confirm ${insufficientCredits ? "mo-confirm-low" : "mo-confirm-ok"}`}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div className="mo-confirm-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                    ✓ {creditsUser.name}
-                    {creditsUser.player_number ? <span style={{marginLeft:6,opacity:.65}}>#{creditsUser.player_number}</span> : null}
+              </div>
+            ) : (
+              <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:12}}>
+                {/* Selected player card */}
+                <div className={`mo-co-player-card ${insufficientCredits ? "mo-co-player-low" : "mo-co-player-ok"}`}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#fff",marginBottom:2}}>
+                      {creditsUser.name}
+                      {creditsUser.player_number ? <span style={{marginLeft:8,opacity:.5,fontFamily:"'Anton',sans-serif",fontSize:12}}>#{creditsUser.player_number}</span> : null}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)"}}>Balance:</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
+                      {!insufficientCredits && <>
+                        <span style={{color:"rgba(255,255,255,.2)"}}>→</span>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"rgba(74,222,128,.7)"}}>${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}</span>
+                      </>}
+                    </div>
+                    {insufficientCredits && (
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#f87171",marginTop:4}}>
+                        ⚠ ${(total-(creditsUser.credits||0)).toFixed(2)} short — top up first
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:"rgba(255,255,255,.45)",marginTop:1}}>
-                    Balance: <span style={{fontFamily:"'Anton',sans-serif",fontSize:11,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
-                  </div>
+                  <button onClick={() => { setCreditsUser(null); setCreditsSearch(""); }}
+                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.4)",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                 </div>
-                <button className="mo-confirm-clear" onClick={() => { setCreditsUser(null); setCreditsSearch(""); }} aria-label="Change player">✕</button>
+
+                {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
+
+                {!insufficientCredits && (
+                  <button
+                    className="mo-place-btn mo-place-btn-active"
+                    onClick={() => placeOrder("credits", creditsUser)}
+                    disabled={placing}
+                    style={{fontSize:14,letterSpacing:2,padding:"16px 20px"}}
+                  >
+                    {placing ? "PLACING…" : `CHARGE $${total.toFixed(2)} FROM BALANCE`}
+                  </button>
+                )}
               </div>
             )}
-          </div>
-
-          {/* ── Table picker ── */}
-          <div className="mo-section" style={{paddingTop:8}}>
-            <div className="mo-label">TABLE / LOCATION</div>
-            <div className="mo-table-pills">
-              {tablePresets.map(({ v, l }) => (
-                <button key={v} onClick={() => setTableNum(v)}
-                  className={`mo-table-pill ${tableNum === v ? "mo-table-pill-on" : ""}`}>{l}</button>
-              ))}
-              <input
-                className="mo-table-other"
-                placeholder="Other…"
-                value={isCustomTable ? tableNum : ""}
-                onChange={e => setTableNum(e.target.value || "BAR")}
-              />
-            </div>
-          </div>
-
-          {/* ── Search ── */}
-          <div className="mo-section" style={{ paddingBottom: 6, paddingTop:8 }}>
-            <input className="mo-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search menu items…" />
-          </div>
-
-          {/* ── Menu items list ── */}
-          <div className="mo-items">
-            {filtered.length === 0 && <div className="mo-empty">No items found</div>}
-            {filtered.map(item => {
-              const qty = cartQty(item.id);
-              return (
-                <div key={item.id} className="mo-item-row">
-                  <div className="mo-item-info">
-                    <div className="mo-item-name">{item.name}</div>
-                    <div className="mo-item-price">${(+item.price).toFixed(2)}</div>
-                  </div>
-                  <div className="mo-item-ctrl">
-                    {qty > 0 && <>
-                      <button className="mo-qty-btn mo-qty-minus" onClick={() => removeItem(item.id)}>−</button>
-                      <span className="mo-qty-val">{qty}</span>
-                    </>}
-                    <button className="mo-qty-btn mo-qty-plus" onClick={() => addItem(item)}>+</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-        </div>{/* end mo-body */}
-
-        {/* ── Cart + payment footer (only when cart has items) ── */}
-        {cart.length > 0 && (
-          <div className="mo-footer">
-
-            {/* Scrollable cart details */}
-            <div className="mo-footer-scroll">
-              {/* Cart summary */}
-              <div className="mo-cart">
-                {cart.map(c => (
-                  <div key={c.id} className="mo-cart-row">
-                    <span className="mo-cart-item">{c.qty}× {c.name}</span>
-                    <span className="mo-cart-price">${(c.price * c.qty).toFixed(2)}</span>
-                  </div>
-                ))}
-                <div className="mo-cart-total">
-                  <span>TOTAL</span>
-                  <span className="mo-total-val">${total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Balance preview when a player is selected */}
-              {creditsUser && (
-                <div className={`mo-balance-preview ${insufficientCredits ? "mo-balance-low" : "mo-balance-ok"}`}>
-                  <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.55)"}}>After this order:</span>
-                  <div className="mo-confirm-flow" style={{gap:6}}>
-                    <span style={{ color:"rgba(255,255,255,.45)" }}>${(creditsUser.credits||0).toFixed(2)}</span>
-                    <span className="mo-confirm-arrow">→</span>
-                    <span className={insufficientCredits ? "mo-bal-low" : "mo-bal-ok"}>
-                      ${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {creditsUser && insufficientCredits && (
-                <div className="mo-warning">⚠ Insufficient credits — ${(total-(creditsUser.credits||0)).toFixed(2)} short. Top up first.</div>
-              )}
-              {!creditsUser && (
-                <div className="mo-warning" style={{background:"rgba(99,179,237,.07)",border:"1px solid rgba(99,179,237,.2)",color:"#63b3ed"}}>
-                  ↑ Select a player above to charge their credits.
-                </div>
-              )}
-
-              {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
-            </div>
-
-            {/* Place order button — always pinned at bottom */}
-            <div className="mo-footer-action">
-              <button onClick={placeOrder} disabled={!canPlace || placing}
-                aria-disabled={!canPlace || placing}
-                aria-busy={placing ? "true" : "false"}
-                className={`mo-place-btn ${canPlace && !placing ? "mo-place-btn-active" : ""}`}>
-                {placing ? "PLACING…" : `PAY WITH CREDITS · $${total.toFixed(2)}`}
-              </button>
-            </div>
           </div>
         )}
+
       </div>
     </>,
     document.body
