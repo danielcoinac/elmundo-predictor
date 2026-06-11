@@ -186,6 +186,8 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
     setPlacing(true); setMsg(null);
     try {
       const orderNum = await nextOrderNumber();
+      // For non-credits orders, use the staff's own auth UID to satisfy RLS policy
+      const { data: { user: staffAuth } } = await supabase.auth.getUser();
       let freshUser = player;
       if (paymentMethod === "credits" && player) {
         const { data: row } = await supabase.from("user_credits").select("balance").eq("user_id", player.id).maybeSingle();
@@ -197,7 +199,7 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
       const { data: ord, error } = await supabase.from("orders").insert({
         table_number:   "BAR",
         user_name:      paymentMethod === "credits" && freshUser ? freshUser.name : "BAR ORDER",
-        user_id:        paymentMethod === "credits" && freshUser ? freshUser.id   : null,
+        user_id:        paymentMethod === "credits" && freshUser ? freshUser.id : (staffAuth?.id || null),
         items:          cart,
         total,
         status:         "completed",
