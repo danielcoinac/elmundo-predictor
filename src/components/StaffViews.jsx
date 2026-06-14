@@ -258,20 +258,22 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
     </div>
   );
 
+  const totalQty = cart.reduce((s, c) => s + c.qty, 0);
+
   return createPortal(
     <>
       <div className="mo-backdrop" onClick={requestClose} />
-      <div className="mo-panel" role="dialog" aria-label="Manual order panel">
+      <div className="mo-panel" role="dialog" aria-label="Manual order">
 
         {/* ── Header ── */}
         <div className="mo-header">
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
             {checkoutStep && (
-              <button onClick={backFromCheckout} className="mo-back-btn" aria-label="Back">←</button>
+              <button onClick={backFromCheckout} className="mo-back-btn" aria-label="Back">← BACK</button>
             )}
             <div>
               <div className="mo-title">
-                {checkoutStep === "pay-method" ? "PAYMENT METHOD" : checkoutStep === "credits-player" ? "PLAYER ACCOUNT" : "MANUAL ORDER"}
+                {checkoutStep === "pay-method" ? "SELECT PAYMENT" : checkoutStep === "credits-player" ? "PLAYER ACCOUNT" : "NEW ORDER"}
               </div>
               <div className="mo-sub">🌴 OUTDOOR BAR</div>
             </div>
@@ -279,35 +281,35 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
           <button className="mo-close" onClick={requestClose} aria-label="Close">✕</button>
         </div>
 
-        {/* ── Main menu body (hidden when checkout overlay is open) ── */}
+        {/* ── Discard warning ── */}
+        {confirmClose && !checkoutStep && (
+          <div style={{padding:"10px 20px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.25)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",flexShrink:0}}>
+            <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
+              Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
+                style={{padding:"6px 14px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
+                DISCARD
+              </button>
+              <button onClick={() => setConfirmClose(false)}
+                style={{padding:"6px 14px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
+                Keep
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Main 2-column layout ── */}
         {!checkoutStep && (
-          <>
-            <div className="mo-body">
+          <div className="mo-layout">
 
-              {confirmClose && (
-                <div style={{padding:"10px 16px",background:"rgba(248,113,113,.1)",borderBottom:"1px solid rgba(248,113,113,.25)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{flex:1,minWidth:140,fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#fca5a5"}}>
-                    Discard {cart.length} item{cart.length !== 1 ? "s" : ""} in cart?
-                  </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={() => { setCart([]); setConfirmClose(false); onClose?.(); }}
-                      style={{padding:"6px 12px",background:"rgba(248,113,113,.2)",border:"1px solid rgba(248,113,113,.5)",color:"#f87171",fontFamily:"'Anton',sans-serif",fontSize:10,letterSpacing:1,cursor:"pointer",borderRadius:5}}>
-                      DISCARD
-                    </button>
-                    <button onClick={() => setConfirmClose(false)}
-                      style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.15)",color:"rgba(255,255,255,.55)",fontFamily:"'Outfit',sans-serif",fontSize:11,cursor:"pointer",borderRadius:5}}>
-                      Keep
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Search bar */}
-              <div className="mo-section" style={{paddingBottom:6,paddingTop:14}}>
-                <input className="mo-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search items…" autoComplete="off" />
+            {/* LEFT: Menu Items */}
+            <div className="mo-menu-col">
+              <div className="mo-search-wrap">
+                <input className="mo-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search items…" autoComplete="off" />
               </div>
 
-              {/* Menu items — bigger rows with serve type badges */}
               <div className="mo-items">
                 {filtered.length === 0 && <div className="mo-empty">No items found</div>}
                 {filtered.map(item => {
@@ -318,10 +320,10 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                   const isGlass  = st === "glass"  || (!st && /glass/i.test(nm));
                   const isBottle = st === "bottle" || (!st && /bottle/i.test(nm));
                   const isDraft  = st === "draft"  || (!st && /draft/i.test(nm));
-                  const serveAccent = isBucket ? "#f59e0b" : isGlass ? "#60a5fa" : isBottle ? "#60a5fa" : isDraft ? "#fbbf24" : null;
+                  const serveAccent = isBucket ? "#f59e0b" : isGlass ? "#60a5fa" : isBottle ? "#818cf8" : isDraft ? "#fbbf24" : null;
                   return (
                     <div key={item.id} className={`mo-item-row${qty > 0 ? " mo-item-row-active" : ""}`}
-                      style={serveAccent ? {borderLeftColor:`${serveAccent}55`} : {}}>
+                      style={serveAccent ? {borderLeftColor:`${serveAccent}66`} : {}}>
                       <div className="mo-item-info">
                         <div className="mo-item-name">
                           {(item.name||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}
@@ -331,9 +333,6 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                           {isGlass  && <span className="mo-serve-badge mo-serve-glass">🍷 GLASS</span>}
                           {isBottle && <span className="mo-serve-badge mo-serve-bottle">🍾 BOTTLE</span>}
                           {isDraft  && <span className="mo-serve-badge mo-serve-draft">🍺 DRAFT</span>}
-                          {!isBucket && !isGlass && !isBottle && !isDraft && item.category && (
-                            <span className="mo-item-cat">{(item.category||"").toUpperCase()}</span>
-                          )}
                         </div>
                       </div>
                       <div className="mo-item-right">
@@ -353,43 +352,72 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                 })}
               </div>
 
+              {/* Mobile sticky cart bar */}
+              {cart.length > 0 && (
+                <div className="mo-mobile-cart-bar">
+                  <div className="mo-mobile-cart-info">
+                    {totalQty} item{totalQty !== 1 ? "s" : ""} · <strong style={{color:"#F0C040"}}>${total.toFixed(2)}</strong>
+                  </div>
+                  <button className="mo-mobile-cart-btn" onClick={openCheckout}>
+                    CHECKOUT →
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Footer: cart summary + checkout CTA */}
-            {cart.length > 0 && (
-              <div className="mo-footer">
-                <div className="mo-footer-scroll">
-                  <div className="mo-cart">
+            {/* RIGHT: Cart panel */}
+            <div className="mo-cart-col">
+              <div className="mo-cart-col-hdr">
+                CART {cart.length > 0 && <span className="mo-cart-badge">{totalQty}</span>}
+              </div>
+
+              {cart.length === 0 ? (
+                <div className="mo-cart-col-empty">
+                  {msg ? (
+                    <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>
+                  ) : (
+                    <>
+                      <span style={{fontSize:36,opacity:.25}}>🛒</span>
+                      <span>Add items from the menu</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="mo-cart-col-items">
                     {cart.map(c => (
-                      <div key={c.id} className="mo-cart-row">
-                        <span className="mo-cart-item">{c.qty}× {c.name}</span>
-                        <span className="mo-cart-price">${(c.price * c.qty).toFixed(2)}</span>
+                      <div key={c.id} className="mo-cart-col-row">
+                        <div className="mo-cart-col-row-main">
+                          <span className="mo-cart-col-qty">{c.qty}×</span>
+                          <span className="mo-cart-col-name">{c.name}</span>
+                        </div>
+                        <div className="mo-cart-col-row-side">
+                          <span className="mo-cart-col-price">${(c.price * c.qty).toFixed(2)}</span>
+                          <button className="mo-cart-col-remove" onClick={() => removeItem(c.id)} title="Remove one">−</button>
+                        </div>
                       </div>
                     ))}
-                    <div className="mo-cart-total">
-                      <span>TOTAL</span>
-                      <span className="mo-total-val">${total.toFixed(2)}</span>
-                    </div>
                   </div>
-                  {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`} style={{margin:"0 0 8px"}}>{msg.text}</div>}
-                </div>
-                <div className="mo-footer-action">
+                  <div className="mo-cart-col-total">
+                    <span>TOTAL</span>
+                    <span>${total.toFixed(2)}</span>
+                  </div>
+                  {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
                   <button className="mo-place-btn mo-place-btn-active" onClick={openCheckout}>
                     CHECKOUT · ${total.toFixed(2)}
                   </button>
-                </div>
-              </div>
-            )}
-          </>
+                </>
+              )}
+            </div>
+
+          </div>
         )}
 
         {/* ── CHECKOUT: Step 1 — Payment method ── */}
         {checkoutStep === "pay-method" && (
           <div className="mo-checkout">
             <CartSummary />
-
             <div className="mo-co-prompt">HOW WILL THE CUSTOMER PAY?</div>
-
             <div className="mo-co-methods">
               <button className="mo-co-method mo-co-method-credits" onClick={() => setCheckoutStep("credits-player")}>
                 <span className="mo-co-method-icon">💳</span>
@@ -408,8 +436,7 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                 {placing ? <span className="mo-co-method-arrow" style={{fontSize:12,opacity:.5}}>…</span> : <span className="mo-co-method-arrow">›</span>}
               </button>
             </div>
-
-            {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`} style={{margin:"16px"}}>{msg.text}</div>}
+            {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`} style={{margin:"0 20px 20px"}}>{msg.text}</div>}
           </div>
         )}
 
@@ -417,23 +444,22 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
         {checkoutStep === "credits-player" && (
           <div className="mo-checkout">
             <CartSummary />
-
             <div className="mo-co-prompt">SEARCH PLAYER ACCOUNT</div>
 
             {!creditsUser ? (
-              <div style={{padding:"0 16px"}}>
+              <div style={{padding:"0 20px"}}>
                 <input
                   ref={creditsSearchRef}
                   className="mo-credits-search"
                   value={creditsSearch}
                   onChange={e => setCreditsSearch(e.target.value)}
                   placeholder="🔍  Name, phone, or player #…"
-                  style={{width:"100%",boxSizing:"border-box",fontSize:15,padding:"12px 14px"}}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:15,padding:"13px 16px"}}
                 />
                 {filteredUsers.length > 0 && (
-                  <div className="mo-credits-list" style={{marginTop:8}}>
+                  <div className="mo-credits-list">
                     {filteredUsers.slice(0, 8).map(u => (
-                      <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row" style={{padding:"12px 14px"}}>
+                      <div key={u.id} onClick={() => setCreditsUser(u)} className="mo-credits-row" style={{padding:"14px 16px"}}>
                         <div style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
                           <span className="mo-credits-name" style={{fontSize:15}}>
                             {u.name}
@@ -441,7 +467,7 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                           </span>
                           {u.phone && <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:"rgba(255,255,255,.3)"}}>{u.phone}</span>}
                         </div>
-                        <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`} style={{fontSize:16}}>
+                        <span className={`mo-credits-bal ${(u.credits||0) >= total ? "mo-bal-ok" : "mo-bal-low"}`} style={{fontSize:17}}>
                           ${(u.credits || 0).toFixed(2)}
                         </span>
                       </div>
@@ -449,24 +475,23 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                   </div>
                 )}
                 {creditsSearch.trim().length >= 2 && filteredUsers.length === 0 && (
-                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"12px 2px"}}>No players found</div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.3)",padding:"14px 2px"}}>No players found</div>
                 )}
               </div>
             ) : (
-              <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:12}}>
-                {/* Selected player card */}
+              <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:14}}>
                 <div className={`mo-co-player-card ${insufficientCredits ? "mo-co-player-low" : "mo-co-player-ok"}`}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#fff",marginBottom:2}}>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:17,fontWeight:700,color:"#fff",marginBottom:4}}>
                       {creditsUser.name}
                       {creditsUser.player_number ? <span style={{marginLeft:8,opacity:.5,fontFamily:"'Anton',sans-serif",fontSize:12}}>#{creditsUser.player_number}</span> : null}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"rgba(255,255,255,.45)"}}>Balance:</span>
-                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
+                      <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:insufficientCredits?"#f87171":"#4ade80"}}>${(creditsUser.credits||0).toFixed(2)}</span>
                       {!insufficientCredits && <>
                         <span style={{color:"rgba(255,255,255,.2)"}}>→</span>
-                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:18,color:"rgba(74,222,128,.7)"}}>${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}</span>
+                        <span style={{fontFamily:"'Anton',sans-serif",fontSize:20,color:"rgba(74,222,128,.7)"}}>${Math.max(0,(creditsUser.credits||0)-total).toFixed(2)}</span>
                       </>}
                     </div>
                     {insufficientCredits && (
@@ -476,18 +501,13 @@ function ManualOrderPanel({ menuItems = [], isP2, onClose, onOrderPlaced }) {
                     )}
                   </div>
                   <button onClick={() => { setCreditsUser(null); setCreditsSearch(""); }}
-                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.4)",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",color:"rgba(255,255,255,.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:13,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                 </div>
-
                 {msg && <div className={`mo-msg ${msg.ok ? "mo-msg-ok" : "mo-msg-err"}`}>{msg.text}</div>}
-
                 {!insufficientCredits && (
-                  <button
-                    className="mo-place-btn mo-place-btn-active"
-                    onClick={() => placeOrder("credits", creditsUser)}
-                    disabled={placing}
-                    style={{fontSize:14,letterSpacing:2,padding:"16px 20px"}}
-                  >
+                  <button className="mo-place-btn mo-place-btn-active"
+                    onClick={() => placeOrder("credits", creditsUser)} disabled={placing}
+                    style={{fontSize:15,letterSpacing:2,padding:"18px 20px"}}>
                     {placing ? "PLACING…" : `CHARGE $${total.toFixed(2)} FROM BALANCE`}
                   </button>
                 )}
