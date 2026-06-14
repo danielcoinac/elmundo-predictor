@@ -2957,6 +2957,13 @@ function ZeliBanner() {
           <span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
 
+        {/* Promo code badge — bottom-right corner */}
+        <div className="zb-promo">
+          <div className="zb-promo-label">USE CODE</div>
+          <div className="zb-promo-code">WELCOME35</div>
+          <div className="zb-promo-desc">35% off · first 3 rides</div>
+        </div>
+
         {/* Loop fade-to-black seam */}
         <div className="zb-loop-fade"></div>
       </div>
